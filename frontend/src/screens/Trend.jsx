@@ -1,9 +1,5 @@
 import { colors } from '../theme.js';
 import { SecondaryButton, PrimaryButton } from '../components/ui/Button.jsx';
-import { TRENDS, TREND_DETAIL } from '../mock/aiResponses.js';
-
-const BAR_VALS = [92, 78, 64, 51, 37];
-const BAR_LABELS = TRENDS.concat(['가을 신메뉴']).slice(0, 5);
 
 export default function Trend({ state, actions }) {
   return (
@@ -11,11 +7,11 @@ export default function Trend({ state, actions }) {
       <div style={{ background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: 16, padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>이번 주 급상승 — 검색량 지수</span>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, height: 150 }}>
-          {BAR_LABELS.map((label, i) => (
-            <div key={label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, justifyContent: 'flex-end', height: '100%' }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: colors.primary }}>{BAR_VALS[i]}</span>
-              <div style={{ width: '100%', borderRadius: '8px 8px 4px 4px', background: i === 0 ? colors.primary : colors.onboardBorder, height: `${Math.round(BAR_VALS[i] * 0.95)}px` }} />
-              <span style={{ fontSize: 11.5, fontWeight: 600, color: colors.textSub, textAlign: 'center' }}>{label}</span>
+          {state.trendBars.map((b, i) => (
+            <div key={b.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, justifyContent: 'flex-end', height: '100%' }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: colors.primary }}>{b.value}</span>
+              <div style={{ width: '100%', borderRadius: '8px 8px 4px 4px', background: i === 0 ? colors.primary : colors.onboardBorder, height: `${Math.round(b.value * 0.95)}px` }} />
+              <span style={{ fontSize: 11.5, fontWeight: 600, color: colors.textSub, textAlign: 'center' }}>{b.label}</span>
             </div>
           ))}
         </div>
@@ -23,7 +19,7 @@ export default function Trend({ state, actions }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>트렌드 종류 — 누르면 자세히 보기</span>
-        {TREND_DETAIL.map((t, i) => {
+        {state.trendDetail.map((t, i) => {
           const open = state.openTrend === t.name;
           return (
             <div key={t.name} style={{ border: `1px solid ${open ? colors.onboardBorder : colors.cardBorder}`, background: open ? colors.onboardBg : '#fff', borderRadius: 14, overflow: 'hidden' }}>

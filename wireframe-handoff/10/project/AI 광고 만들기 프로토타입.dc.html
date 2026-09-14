@@ -1,0 +1,1834 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+<template id="__bundler_thumbnail" data-bg-color="#16A06B">
+<svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+<rect width="1200" height="800" fill="#16A06B"/>
+<g fill="#ffffff" fill-opacity="0.94">
+<rect x="380" y="230" width="200" height="150" rx="18"/>
+<rect x="620" y="230" width="200" height="150" rx="18"/>
+<rect x="380" y="420" width="200" height="150" rx="18"/>
+<rect x="620" y="420" width="200" height="150" rx="18"/>
+</g>
+</svg>
+</template>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<style>
+@font-face{font-family:'Pretendard';font-style:normal;font-weight:400;font-display:swap;src:url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/packages/pretendard/dist/web/static/woff2/Pretendard-Regular.woff2') format('woff2')}
+@font-face{font-family:'Pretendard';font-style:normal;font-weight:500;font-display:swap;src:url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/packages/pretendard/dist/web/static/woff2/Pretendard-Medium.woff2') format('woff2')}
+@font-face{font-family:'Pretendard';font-style:normal;font-weight:700;font-display:swap;src:url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/packages/pretendard/dist/web/static/woff2/Pretendard-Bold.woff2') format('woff2')}
+</style>
+<style>
+body{margin:0;background:#F6F8F9;color:#2B2F36;font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;-webkit-font-smoothing:antialiased}
+*{box-sizing:border-box}
+a{color:#138A5C}a:hover{color:#16A06B}
+input,textarea,select,button{font-family:inherit}
+input:focus,textarea:focus{outline:2px solid #CFEFE0;outline-offset:0}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes shimmer{0%{opacity:.55}50%{opacity:1}100%{opacity:.55}}
+input[type="time"],input[type="date"]{cursor:pointer;font-family:inherit}
+input[type="time"]::-webkit-calendar-picker-indicator,input[type="date"]::-webkit-calendar-picker-indicator{opacity:.75;cursor:pointer;padding:2px;margin-left:2px}
+input[type="time"]::-webkit-calendar-picker-indicator:hover,input[type="date"]::-webkit-calendar-picker-indicator:hover{opacity:1}
+</style>
+</helmet>
+<div style="min-height:100vh;padding:22px 18px 56px;display:flex;flex-direction:column;align-items:center;gap:14px">
+
+<div style="width:100%;max-width:1020px;display:flex;align-items:center;gap:10px">
+<div style="display:flex;align-items:center;gap:6px;background:#fff;border:1px solid #E8EAEC;border-radius:999px;padding:6px 12px 6px 10px">
+<span style="width:9px;height:9px;border-radius:50%;background:#E8EAEC;display:inline-block"></span>
+<span style="width:9px;height:9px;border-radius:50%;background:#E8EAEC;display:inline-block"></span>
+<span style="width:9px;height:9px;border-radius:50%;background:#E8EAEC;display:inline-block"></span>
+<span style="font-size:11.5px;color:#979CA2;margin-left:8px;font-family:ui-monospace,Menlo,monospace">ai-ad.kr{{ urlPath }}</span>
+</div>
+<div style="flex:1"></div>
+<div style="position:relative">
+<button onClick="{{ toggleNotif }}" style="{{ notifBtnStyle }}">알림<span style="{{ notifBadgeStyle }}">{{ notifCount }}</span></button>
+<sc-if value="{{ notifOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;top:40px;right:0;width:322px;background:#fff;border:1px solid #E8EAEC;border-radius:14px;box-shadow:0 14px 30px rgba(18,22,26,.16);padding:12px;display:flex;flex-direction:column;gap:9px;z-index:60;animation:pop .16s ease">
+<span style="font-size:11.5px;font-weight:700;color:#979CA2;letter-spacing:.3px">알림</span>
+<sc-if value="{{ notifEmpty }}" hint-placeholder-val="{{ true }}">
+<span style="font-size:12.5px;line-height:19px;color:#979CA2;padding:4px 2px 8px">매진 시각이 빈 생산 기록이 없어요. 새 기록이 생기면 여기로 알려드려요.</span>
+</sc-if>
+<sc-for list="{{ notifs }}" as="n" hint-placeholder-count="2">
+<div style="display:flex;align-items:center;gap:10px;background:#FFF6E6;border:1px solid #F0DCB4;border-radius:11px;padding:10px 11px">
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px">
+<span style="font-size:12.5px;font-weight:700;color:#7A5C15">{{ n.title }}</span>
+<span style="font-size:11.5px;color:#A08344">{{ n.meta }}</span>
+</div>
+<button onClick="{{ n.fix }}" style="height:32px;border-radius:9px;border:0;background:#8A6A20;color:#fff;font-size:12px;font-weight:700;padding:0 11px;cursor:pointer;flex:none">입력</button>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+<button onClick="{{ reset }}" style="height:32px;border-radius:999px;padding:0 14px;font-size:12.5px;font-weight:600;background:#EFF2F4;color:#6A7077;border:0;cursor:pointer">데모 초기화</button>
+</div>
+
+<div style="width:100%;max-width:1020px;background:#FFFFFF;border-radius:20px;box-shadow:0 2px 6px rgba(20,28,36,.05);overflow:hidden;border:1px solid #E8EAEC">
+
+<div style="display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid #E8EAEC;background:#fff">
+<sc-if value="{{ canBack }}" hint-placeholder-val="{{ false }}">
+<button onClick="{{ back }}" aria-label="뒤로" style="width:34px;height:34px;border-radius:10px;border:0;background:#EFF2F4;color:#2B2F36;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center">←</button>
+</sc-if>
+<div style="display:flex;flex-direction:column;gap:1px">
+<span style="font-size:17px;font-weight:700;letter-spacing:-.3px">{{ title }}</span>
+<span style="font-size:11.5px;font-weight:500;color:#979CA2">{{ subtitle }}</span>
+</div>
+<sc-if value="{{ showSettings }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding-left:6px">
+<sc-for list="{{ settingChips }}" as="c" hint-placeholder-count="3">
+<span style="{{ c.style }}">{{ c.text }}</span>
+</sc-for>
+</div>
+</sc-if>
+<div style="flex:1"></div>
+<sc-if value="{{ headTag }}" hint-placeholder-val="{{ false }}">
+<span style="font-size:11px;font-weight:700;background:#E6F7EF;color:#2E6B4E;border-radius:999px;padding:5px 11px">{{ headTag }}</span>
+</sc-if>
+</div>
+
+<sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+<div style="padding:24px 22px 26px;display:flex;flex-direction:column;gap:18px">
+<div style="background:#F1FBF6;border:1px solid #CFEFE0;border-radius:16px;padding:20px 22px;display:flex;flex-direction:column;gap:6px">
+<span style="font-size:19px;font-weight:700;letter-spacing:-.4px">가게 정보만 넣으면, AI가 네컷만화 광고를 만들어 드려요</span>
+<span style="font-size:13.5px;line-height:20px;color:#6A7077">가게 정보 → 마스코트 캐릭터 → 스토리보드 대화 → 네컷만화. 세 단계만 거치면 인스타에 바로 올릴 수 있는 빵집 광고가 나옵니다.</span>
+</div>
+
+<sc-if value="{{ hasMissing }}" hint-placeholder-val="{{ false }}">
+<button onClick="{{ goProd }}" style="cursor:pointer;text-align:left;background:#FFF6E6;border:1px solid #F0DCB4;border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+<span style="font-size:13.5px;font-weight:700;color:#7A5C15">매진 시각이 비어 있는 생산 기록 {{ notifCount }}건</span>
+<span style="font-size:12.5px;color:#A08344;line-height:18px">언제 매진됐는지 적어두면 다음 광고 타이밍을 잡아드려요</span>
+<span style="flex:1"></span>
+<span style="font-size:12.5px;font-weight:700;color:#8A6A20">지금 입력 →</span>
+</button>
+</sc-if>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px">
+<button onClick="{{ goStore }}" style="text-align:left;cursor:pointer;background:#fff;border:1px solid #E8EAEC;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:7px;box-shadow:0 2px 6px rgba(20,28,36,.05)">
+<span style="font-size:11px;font-weight:700;color:#16A06B;letter-spacing:.4px">STEP 1</span>
+<span style="font-size:16px;font-weight:700">가게 정보 입력</span>
+<span style="font-size:12.5px;line-height:18px;color:#6A7077">업종 · 상품 사진 · 영업시간</span>
+<span style="font-size:12px;font-weight:700;color:{{ storeStatusColor }}">{{ storeStatus }}</span>
+</button>
+<button onClick="{{ goChar }}" style="{{ card2Style }}">
+<span style="font-size:11px;font-weight:700;color:#16A06B;letter-spacing:.4px">STEP 2</span>
+<span style="font-size:16px;font-weight:700">마스코트 캐릭터</span>
+<span style="font-size:12.5px;line-height:18px;color:#6A7077">AI와 대화하며 캐릭터를 만들어요</span>
+<span style="font-size:12px;font-weight:700;color:{{ charStatusColor }}">{{ charStatus }}</span>
+</button>
+<button onClick="{{ goAd }}" style="{{ card3Style }}">
+<span style="font-size:11px;font-weight:700;color:#16A06B;letter-spacing:.4px">STEP 3</span>
+<span style="font-size:16px;font-weight:700">광고 생성</span>
+<span style="font-size:12.5px;line-height:18px;color:#6A7077">종류 · 컨셉을 고르고 네컷만화까지</span>
+<span style="font-size:12px;font-weight:700;color:{{ adStatusColor }}">{{ adStatus }}</span>
+</button>
+<button onClick="{{ goTrendHome }}" style="text-align:left;cursor:pointer;background:#fff;border:1px solid #E8EAEC;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:7px;box-shadow:0 2px 6px rgba(20,28,36,.05)">
+<span style="font-size:11px;font-weight:700;color:#4A86C5;letter-spacing:.4px">언제든지</span>
+<span style="font-size:16px;font-weight:700">트렌드 확인</span>
+<span style="font-size:12.5px;line-height:18px;color:#6A7077">이번 주 뜨는 밈·해시태그 대시보드</span>
+<span style="font-size:12px;font-weight:700;color:#979CA2">바로 열기</span>
+</button>
+<button onClick="{{ goProd }}" style="text-align:left;cursor:pointer;background:#fff;border:1px solid #E8EAEC;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:7px;box-shadow:0 2px 6px rgba(20,28,36,.05)">
+<span style="font-size:11px;font-weight:700;color:#4A86C5;letter-spacing:.4px">언제든지</span>
+<span style="font-size:16px;font-weight:700">생산 기록</span>
+<span style="font-size:12.5px;line-height:18px;color:#6A7077">품목 · 생산 시각 · 매진 시각</span>
+<span style="font-size:12px;font-weight:700;color:{{ prodStatusColor }}">{{ prodStatus }}</span>
+</button>
+</div>
+
+<button onClick="{{ goMy }}" style="cursor:pointer;background:#EFF2F4;border:0;border-radius:14px;padding:15px 18px;display:flex;align-items:center;gap:12px;text-align:left">
+<span style="font-size:14px;font-weight:700">내 정보</span>
+<span style="font-size:12.5px;color:#6A7077">히스토리 · 생산 기록 · 가게/캐릭터 정보 · 내보내기</span>
+<span style="flex:1"></span>
+<span style="font-size:12px;font-weight:700;color:#6A7077">저장된 광고 {{ historyCount }}개 →</span>
+</button>
+</div>
+</sc-if>
+
+<sc-if value="{{ isStore }}" hint-placeholder-val="{{ false }}">
+<div style="padding:22px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;flex-direction:column;gap:7px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">업종</span>
+<select value="{{ storeCategory }}" onChange="{{ onCategory }}" disabled="{{ storeReadOnly }}" style="{{ inputStyle }}">
+<option>베이커리</option><option>카페</option><option>음식점</option><option>소매점</option><option>기타</option>
+</select>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">대표 상품 이미지 — ＋로 계속 추가</span>
+<div style="display:flex;gap:10px;flex-wrap:wrap">
+<sc-for list="{{ storeImages }}" as="im" hint-placeholder-count="2">
+<div style="width:112px;height:88px;border-radius:12px;border:1px solid #E8EAEC;position:relative;overflow:hidden;background:{{ im.bg }};display:flex;align-items:flex-end;padding:7px">
+<span style="font-size:11px;font-weight:700;color:#2E6B4E;background:rgba(255,255,255,.8);border-radius:6px;padding:2px 6px">{{ im.label }}</span>
+<button onClick="{{ im.reroll }}" title="다시 생성" style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:8px;border:0;background:rgba(255,255,255,.92);color:#2B2F36;font-size:13px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.12)">↻</button>
+</div>
+</sc-for>
+<button onClick="{{ addImage }}" disabled="{{ storeReadOnly }}" style="{{ addImageStyle }}">＋</button>
+</div>
+</div>
+<div style="display:flex;gap:12px;flex-wrap:wrap">
+<div style="flex:1 1 240px;display:flex;flex-direction:column;gap:7px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">가게 주소</span>
+<input value="{{ storeAddress }}" onChange="{{ onAddress }}" readOnly="{{ storeReadOnly }}" placeholder="주소 입력" style="{{ inputStyle }}">
+</div>
+<div style="flex:1 1 240px;display:flex;flex-direction:column;gap:7px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">영업시간</span>
+<input value="{{ storeHours }}" onChange="{{ onHours }}" readOnly="{{ storeReadOnly }}" placeholder="예) 10:00 – 21:00, 월 휴무" style="{{ inputStyle }}">
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">가게 소개</span>
+<textarea value="{{ storeDesc }}" onChange="{{ onDesc }}" readOnly="{{ storeReadOnly }}" placeholder="우리 가게를 한두 문장으로" style="{{ textareaStyle }}"></textarea>
+</div>
+<div style="display:flex;gap:10px;justify-content:flex-end;padding-top:4px">
+<button onClick="{{ editStore }}" style="height:52px;min-width:120px;border-radius:12px;border:1.5px solid #DBDEE1;background:#fff;color:#2B2F36;font-size:16px;font-weight:700;cursor:pointer">수정</button>
+<button onClick="{{ saveStore }}" disabled="{{ storeReadOnly }}" style="{{ saveStoreStyle }}">입력(저장)</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isChar }}" hint-placeholder-val="{{ false }}">
+<div style="padding:18px 20px 20px;display:flex;gap:16px;flex-wrap:wrap;align-items:stretch">
+<div style="flex:1 1 250px;min-width:0;display:flex;flex-direction:column;gap:10px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">캐릭터 정보 — 대화로 채워지고, 직접 고칠 수도 있어요</span>
+<input value="{{ charName }}" onChange="{{ onCharName }}" placeholder="이름" style="{{ inputStyle }}">
+<div style="display:flex;gap:8px">
+<input value="{{ charAge }}" onChange="{{ onCharAge }}" placeholder="나이" style="{{ inputStyle }}">
+<input value="{{ charGender }}" onChange="{{ onCharGender }}" placeholder="성별" style="{{ inputStyle }}">
+</div>
+<input value="{{ charHobby }}" onChange="{{ onCharHobby }}" placeholder="취미" style="{{ inputStyle }}">
+<textarea value="{{ charLook }}" onChange="{{ onCharLook }}" placeholder="외형" style="{{ textareaStyle }}"></textarea>
+<div style="display:flex;gap:8px;margin-top:2px">
+<button onClick="{{ loadChar }}" style="flex:1;height:40px;border-radius:10px;border:1.5px solid #DBDEE1;background:#fff;font-size:14px;font-weight:700;cursor:pointer">불러오기</button>
+<button onClick="{{ genCandidates }}" style="flex:1;height:40px;border-radius:10px;border:0;background:#E6F7EF;color:#2E6B4E;font-size:14px;font-weight:700;cursor:pointer">후보 생성</button>
+</div>
+<div style="flex:1"></div>
+<button onClick="{{ confirmChar }}" disabled="{{ confirmCharDisabled }}" style="{{ confirmCharStyle }}">캐릭터 확정</button>
+</div>
+
+<div style="flex:2 1 420px;min-width:0;display:flex;flex-direction:column;gap:8px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">AI와 대화로 캐릭터 만들기</span>
+<div ref="{{ charListRef }}" style="flex:1;min-height:430px;background:#F6F8F9;border:1px solid #E8EAEC;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:520px">
+<sc-for list="{{ charMsgs }}" as="m" hint-placeholder-count="3">
+<div style="{{ m.wrapStyle }}">
+<sc-if value="{{ m.isText }}" hint-placeholder-val="{{ true }}">
+<div style="{{ m.bubbleStyle }}">{{ m.text }}</div>
+</sc-if>
+<sc-if value="{{ m.isCands }}" hint-placeholder-val="{{ false }}">
+<div style="max-width:96%;background:#fff;border:1px solid #E8EAEC;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:9px;animation:pop .22s ease">
+<span style="font-size:13px;font-weight:700">후보가 나왔어요 — 하나 골라주세요</span>
+<div style="display:flex;gap:9px;flex-wrap:wrap">
+<sc-for list="{{ m.items }}" as="c" hint-placeholder-count="3">
+<div style="position:relative">
+<button onClick="{{ c.select }}" style="{{ c.style }}">{{ c.label }}</button>
+<button onClick="{{ c.reroll }}" title="같은 설정으로 다시 생성" style="position:absolute;top:5px;right:5px;width:22px;height:22px;border-radius:7px;border:0;background:rgba(255,255,255,.94);font-size:12px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.12)">↻</button>
+</div>
+</sc-for>
+</div>
+<span style="font-size:11.5px;color:#979CA2">↻ 는 설정을 그대로 두고 그림만 다시 뽑아요. 고치고 싶은 점은 그냥 말해주세요.</span>
+</div>
+</sc-if>
+<sc-if value="{{ m.isConfirm }}" hint-placeholder-val="{{ false }}">
+<div style="max-width:96%;background:#fff;border:1.5px solid #CFEFE0;border-radius:14px;padding:13px;display:flex;flex-direction:column;gap:10px;animation:pop .22s ease">
+<span style="font-size:13px;font-weight:700">{{ m.confirm.title }}</span>
+<sc-for list="{{ m.confirm.diffs }}" as="d" hint-placeholder-count="2">
+<div style="display:flex;flex-direction:column;gap:4px;background:#F6F8F9;border-radius:10px;padding:9px 11px">
+<span style="font-size:10.5px;font-weight:800;color:#979CA2;letter-spacing:.3px">{{ d.label }}</span>
+<span style="font-size:12px;line-height:17px;color:#979CA2;text-decoration:line-through">{{ d.from }}</span>
+<span style="font-size:12.5px;line-height:18px;color:#2B2F36;font-weight:600">{{ d.to }}</span>
+</div>
+</sc-for>
+<sc-if value="{{ m.confirm.open }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:8px">
+<button onClick="{{ m.confirm.confirm }}" style="flex:1;height:42px;border-radius:11px;border:0;background:#16A06B;color:#fff;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 5px 10px rgba(22,160,107,.28)">확인 — 이대로 변경</button>
+<button onClick="{{ m.confirm.decline }}" style="flex:none;height:42px;padding:0 16px;border-radius:11px;border:1.5px solid #DBDEE1;background:#fff;color:#2B2F36;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap">그대로 두기</button>
+</div>
+</sc-if>
+<sc-if value="{{ m.confirm.done }}" hint-placeholder-val="{{ false }}">
+<span style="{{ m.confirm.statusStyle }}">{{ m.confirm.statusText }}</span>
+</sc-if>
+</div>
+</sc-if>
+<sc-if value="{{ m.isViews }}" hint-placeholder-val="{{ false }}">
+<div style="max-width:96%;background:#fff;border:1px solid #E8EAEC;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:9px;animation:pop .22s ease">
+<span style="font-size:13px;font-weight:700">4방향으로 뽑았어요</span>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<sc-for list="{{ m.items }}" as="v" hint-placeholder-count="4">
+<div style="position:relative;width:86px;height:86px;border-radius:12px;border:1px solid #E8EAEC;overflow:hidden;background:{{ v.bg }};display:flex;align-items:flex-end;justify-content:center;padding:6px">
+<span style="font-size:11px;font-weight:700;color:#2E6B4E;background:rgba(255,255,255,.85);border-radius:6px;padding:2px 6px">{{ v.label }}</span>
+<button onClick="{{ v.reroll }}" style="position:absolute;top:5px;right:5px;width:22px;height:22px;border-radius:7px;border:0;background:rgba(255,255,255,.94);font-size:12px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.12)">↻</button>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+</div>
+</sc-for>
+<sc-if value="{{ charThinking }}" hint-placeholder-val="{{ false }}">
+<div style="align-self:flex-start;background:#fff;border:1px solid #E8EAEC;border-radius:14px;padding:10px 14px;font-size:13.5px;color:#979CA2;animation:shimmer 1.1s infinite">생각하는 중…</div>
+</sc-if>
+</div>
+<div style="display:flex;gap:8px">
+<input value="{{ charInput }}" onChange="{{ onCharInput }}" onKeyDown="{{ onCharKey }}" placeholder="메시지 입력…" style="flex:1;min-width:0;{{ inputStyle }}">
+<button onClick="{{ sendChar }}" style="flex:none;white-space:nowrap;height:44px;padding:0 22px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(22,160,107,.32)">전송</button>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isCharInfo }}" hint-placeholder-val="{{ false }}">
+<div style="padding:22px;display:flex;gap:18px;flex-wrap:wrap">
+<div style="flex:1 1 280px;display:flex;flex-direction:column;gap:9px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">확정된 캐릭터 — 4방향</span>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+<sc-for list="{{ charViews }}" as="v" hint-placeholder-count="4">
+<div style="position:relative;height:120px;border-radius:14px;border:1px solid #E8EAEC;overflow:hidden;background:{{ v.bg }};display:flex;align-items:flex-end;justify-content:center;padding:8px">
+<span style="font-size:11.5px;font-weight:700;color:#2E6B4E;background:rgba(255,255,255,.85);border-radius:6px;padding:2px 7px">{{ v.label }}</span>
+<button onClick="{{ v.reroll }}" style="position:absolute;top:7px;right:7px;width:24px;height:24px;border-radius:8px;border:0;background:rgba(255,255,255,.94);font-size:13px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.12)">↻</button>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="flex:1 1 300px;display:flex;flex-direction:column;gap:10px">
+<input value="{{ charName }}" onChange="{{ onCharName }}" readOnly="{{ charInfoReadOnly }}" placeholder="이름" style="{{ inputStyle }}">
+<div style="display:flex;gap:8px">
+<input value="{{ charAge }}" onChange="{{ onCharAge }}" readOnly="{{ charInfoReadOnly }}" placeholder="나이" style="{{ inputStyle }}">
+<input value="{{ charGender }}" onChange="{{ onCharGender }}" readOnly="{{ charInfoReadOnly }}" placeholder="성별" style="{{ inputStyle }}">
+</div>
+<input value="{{ charHobby }}" onChange="{{ onCharHobby }}" readOnly="{{ charInfoReadOnly }}" placeholder="취미" style="{{ inputStyle }}">
+<textarea value="{{ charLook }}" onChange="{{ onCharLook }}" readOnly="{{ charInfoReadOnly }}" placeholder="외형" style="{{ textareaStyle }}"></textarea>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">
+<button onClick="{{ toggleCharEdit }}" style="flex:1;height:44px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(22,160,107,.32)">{{ charEditLabel }}</button>
+<button onClick="{{ goChar }}" style="flex:1;height:44px;border-radius:12px;border:1.5px solid #DBDEE1;background:#fff;font-size:15px;font-weight:700;cursor:pointer">다시 만들기</button>
+<button onClick="{{ goHome }}" style="flex:1;height:44px;border-radius:12px;border:0;background:#EFF2F4;color:#2B2F36;font-size:15px;font-weight:700;cursor:pointer">홈으로</button>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isAd }}" hint-placeholder-val="{{ false }}">
+<div style="padding:22px;display:flex;flex-direction:column;gap:16px;position:relative">
+<div style="display:flex;flex-direction:column;gap:7px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">광고 종류 선택</span>
+<select value="{{ adType }}" onChange="{{ onAdType }}" style="{{ inputStyle }}">
+<option>인스타 게시물</option><option>포스터</option><option>메뉴판</option>
+</select>
+</div>
+<div style="display:flex;flex-direction:column;gap:7px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">광고 컨셉 (설정)</span>
+<select value="{{ adConcept }}" onChange="{{ onAdConcept }}" style="{{ inputStyle }}">
+<option>유쾌함</option><option>감성</option><option>정보형</option><option>담백함</option>
+</select>
+</div>
+<div style="background:#EFF2F4;border-radius:14px;padding:14px 16px;display:flex;gap:12px;align-items:center">
+<span style="font-size:12.5px;line-height:19px;color:#6A7077">사용될 캐릭터 — <b style="color:#2B2F36">{{ charName }}</b> · 가게 — <b style="color:#2B2F36">{{ storeCategory }}</b></span>
+</div>
+<button onClick="{{ applyAd }}" style="height:52px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(22,160,107,.32)">적용</button>
+
+<sc-if value="{{ trendPopup }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;background:rgba(18,22,26,.42);display:flex;align-items:center;justify-content:center;padding:20px">
+<div style="width:360px;max-width:100%;background:#fff;border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:12px;box-shadow:0 18px 40px rgba(18,22,26,.22);animation:pop .18s ease">
+<span style="font-size:17px;font-weight:700;text-align:center;letter-spacing:-.3px">트렌드를 적용할까요?</span>
+<span style="font-size:13px;line-height:20px;color:#6A7077;text-align:center">{{ trendHint }}</span>
+<div style="display:flex;gap:9px">
+<button onClick="{{ trendNo }}" style="flex:1;height:48px;border-radius:12px;border:1.5px solid #DBDEE1;background:#fff;font-size:15px;font-weight:700;cursor:pointer">아니오</button>
+<button onClick="{{ trendYes }}" disabled="{{ trendYesDisabled }}" style="{{ trendYesStyle }}">예</button>
+</div>
+<button onClick="{{ goTrendFromAd }}" style="height:44px;border-radius:12px;border:0;background:#EFF2F4;color:#2B2F36;font-size:14px;font-weight:700;cursor:pointer">요즘 트렌드가 뭔데? — 트렌드 확인</button>
+</div>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ isTrend }}" hint-placeholder-val="{{ false }}">
+<div style="padding:22px;display:flex;flex-direction:column;gap:16px">
+<div style="background:#fff;border:1px solid #E8EAEC;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:14px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">이번 주 급상승 — 검색량 지수</span>
+<div style="display:flex;align-items:flex-end;gap:14px;height:150px">
+<sc-for list="{{ trendBars }}" as="b" hint-placeholder-count="5">
+<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;justify-content:flex-end;height:100%">
+<span style="font-size:12px;font-weight:700;color:#16A06B">{{ b.value }}</span>
+<div style="width:100%;border-radius:8px 8px 4px 4px;background:{{ b.fill }};height:{{ b.h }}"></div>
+<span style="font-size:11.5px;font-weight:600;color:#6A7077;text-align:center">{{ b.label }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">트렌드 종류 — 누르면 자세히 보기</span>
+<sc-for list="{{ trendAccordion }}" as="t" hint-placeholder-count="4">
+<div style="{{ t.wrapStyle }}">
+<button onClick="{{ t.toggle }}" style="width:100%;display:flex;align-items:center;gap:12px;background:transparent;border:0;cursor:pointer;padding:15px 16px;text-align:left">
+<span style="font-size:11px;font-weight:800;color:#2E6B4E;background:#E6F7EF;border-radius:7px;padding:4px 8px;flex:none">{{ t.rank }}</span>
+<span style="font-size:14.5px;font-weight:700;color:#2B2F36">{{ t.name }}</span>
+<span style="font-size:12px;font-weight:700;color:#16A06B">{{ t.delta }}</span>
+<span style="flex:1"></span>
+<span style="{{ t.caretStyle }}">⌄</span>
+</button>
+<sc-if value="{{ t.open }}" hint-placeholder-val="{{ false }}">
+<div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:12px;animation:pop .18s ease">
+<span style="font-size:13px;line-height:20px;color:#6A7077">{{ t.summary }}</span>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<sc-for list="{{ t.stats }}" as="st" hint-placeholder-count="3">
+<div style="background:#F6F8F9;border-radius:10px;padding:9px 12px;display:flex;flex-direction:column;gap:2px;min-width:96px">
+<span style="font-size:11px;font-weight:600;color:#979CA2">{{ st.k }}</span>
+<span style="font-size:14px;font-weight:700;color:#2B2F36">{{ st.v }}</span>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ t.links }}" as="l" hint-placeholder-count="3">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="width:6px;height:6px;border-radius:50%;background:#16A06B;flex:none"></span>
+<span style="font-size:13px;font-weight:600">{{ l.title }}</span>
+<span style="font-size:11.5px;color:#979CA2">{{ l.meta }}</span>
+</div>
+</sc-for>
+</div>
+<button onClick="{{ t.use }}" style="align-self:flex-start;height:40px;border-radius:10px;border:0;background:#E6F7EF;color:#2E6B4E;font-size:14px;font-weight:700;padding:0 16px;cursor:pointer">이 트렌드로 광고 만들기</button>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;gap:10px;flex-wrap:wrap">
+<button onClick="{{ goHome }}" style="flex:1;height:48px;border-radius:12px;border:1.5px solid #DBDEE1;background:#fff;font-size:15px;font-weight:700;cursor:pointer">메인 화면으로</button>
+<sc-if value="{{ fromAd }}" hint-placeholder-val="{{ false }}">
+<button onClick="{{ backToAd }}" style="flex:1;height:48px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(22,160,107,.32)">광고 생성으로 돌아가기</button>
+</sc-if>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSb }}" hint-placeholder-val="{{ false }}">
+<div style="padding:18px 20px 20px;display:flex;gap:16px;flex-wrap:wrap;align-items:stretch">
+<div style="flex:1 1 230px;min-width:0;display:flex;flex-direction:column;gap:12px">
+<div style="{{ sbSetWrapStyle }}">
+<button onClick="{{ toggleSbSet }}" style="width:100%;display:flex;align-items:center;gap:8px;background:transparent;border:0;cursor:pointer;padding:13px 14px;text-align:left">
+<span style="font-size:12px;font-weight:700;color:#6A7077;flex:none">광고 설정</span>
+<span style="font-size:11px;color:#979CA2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ sbSummary }}</span>
+<span style="flex:1"></span>
+<span style="{{ sbSetCaretStyle }}">⌄</span>
+</button>
+<sc-if value="{{ sbSetOpen }}" hint-placeholder-val="{{ false }}">
+<div style="padding:0 14px 13px;display:flex;flex-direction:column;gap:10px;animation:pop .18s ease">
+<sc-if value="{{ sbTrendMode }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:6px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">트렌드 선택</span>
+<select value="{{ trendPick }}" onChange="{{ onTrendPick }}" style="{{ inputStyle }}">
+<sc-for list="{{ trendNames }}" as="t" hint-placeholder-count="4">
+<option>{{ t }}</option>
+</sc-for>
+</select>
+</div>
+</sc-if>
+<div style="display:flex;flex-direction:column;gap:6px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">광고 종류</span>
+<select value="{{ adType }}" onChange="{{ onAdType }}" style="{{ inputStyle }}">
+<option>인스타 게시물</option><option>포스터</option><option>메뉴판</option>
+</select>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">광고 컨셉</span>
+<select value="{{ adConcept }}" onChange="{{ onAdConcept }}" style="{{ inputStyle }}">
+<option>유쾌함</option><option>감성</option><option>정보형</option><option>담백함</option>
+</select>
+</div>
+</div>
+</sc-if>
+</div>
+<div style="{{ sbProdWrapStyle }}">
+<button onClick="{{ toggleSbProd }}" style="width:100%;display:flex;align-items:center;gap:8px;background:transparent;border:0;cursor:pointer;padding:13px 14px;text-align:left">
+<span style="font-size:12px;font-weight:700;color:#6A7077">최근 생산 기록</span>
+<span style="{{ sbProdCountStyle }}">{{ sbProdCount }}</span>
+<span style="flex:1"></span>
+<span style="{{ sbProdCaretStyle }}">⌄</span>
+</button>
+<sc-if value="{{ sbProdOpen }}" hint-placeholder-val="{{ false }}">
+<div style="padding:0 14px 13px;display:flex;flex-direction:column;gap:8px;animation:pop .18s ease">
+<sc-if value="{{ prodEmpty }}" hint-placeholder-val="{{ false }}">
+<span style="font-size:11.5px;line-height:18px;color:#979CA2">아직 기록이 없어요 — 대화에서 생산한 품목을 말하면 자동으로 남아요.</span>
+</sc-if>
+<sc-for list="{{ recentProds }}" as="p" hint-placeholder-count="2">
+<div style="{{ p.miniStyle }}">
+<div style="display:flex;align-items:center;gap:7px">
+<input value="{{ p.name }}" onChange="{{ p.onName }}" style="{{ p.nameInputStyle }}">
+<span style="font-size:11px;font-weight:700;color:#979CA2;flex:none">{{ p.qty }}</span>
+</div>
+<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+<span style="font-size:10.5px;font-weight:700;color:#979CA2;flex:none;width:26px">생산</span>
+<input type="date" value="{{ p.date }}" onChange="{{ p.onDate }}" onClick="{{ openPicker }}" style="{{ p.miniDateStyle }}">
+<input type="time" value="{{ p.time }}" onChange="{{ p.onTime }}" onClick="{{ openPicker }}" onFocus="{{ openPicker }}" style="{{ p.timeInputStyle }}">
+</div>
+<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+<span style="font-size:10.5px;font-weight:700;color:#979CA2;flex:none;width:26px">매진</span>
+<input type="time" value="{{ p.soldOut }}" onChange="{{ p.onSoldOut }}" onClick="{{ openPicker }}" onFocus="{{ openPicker }}" style="{{ p.timeInputStyle }}">
+<span style="flex:1"></span>
+</div>
+<span style="{{ p.statusStyle }}">{{ p.statusText }}</span>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+<div style="background:#fff;border:1px solid #E8EAEC;border-radius:14px;padding:13px 14px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center;gap:8px">
+<span style="font-size:12px;font-weight:700;color:#6A7077">지금 정해진 스토리</span>
+<span style="flex:1"></span>
+<span style="{{ storyBadgeStyle }}">{{ storyBadge }}</span>
+</div>
+<sc-if value="{{ storyEmpty }}" hint-placeholder-val="{{ true }}">
+<span style="font-size:11.5px;line-height:18px;color:#979CA2">아직 비어 있어요 — 대화로 정하고 확인을 누르면 컷별로 여기에 쌓여요.</span>
+</sc-if>
+<sc-for list="{{ storyCuts }}" as="c" hint-placeholder-count="4">
+<div style="display:flex;gap:8px;align-items:flex-start">
+<span style="font-size:10.5px;font-weight:800;color:#2E6B4E;background:#E6F7EF;border-radius:6px;padding:3px 6px;flex:none">{{ c.n }}컷</span>
+<span style="font-size:12px;line-height:18px;color:#2B2F36">{{ c.line }}</span>
+</div>
+</sc-for>
+</div>
+<div style="flex:1"></div>
+<button onClick="{{ makeComic }}" disabled="{{ makeComicDisabled }}" style="{{ makeComicStyle }}">{{ makeComicLabel }}</button>
+</div>
+
+<div style="flex:2 1 430px;min-width:0;display:flex;flex-direction:column;gap:8px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">원하는 스토리 — AI와 대화</span>
+<div ref="{{ sbListRef }}" style="flex:1;min-height:430px;background:#F6F8F9;border:1px solid #E8EAEC;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px;overflow-y:auto;max-height:540px">
+<sc-for list="{{ sbMsgs }}" as="m" hint-placeholder-count="3">
+<div style="{{ m.wrapStyle }}">
+<sc-if value="{{ m.isText }}" hint-placeholder-val="{{ true }}">
+<div style="{{ m.bubbleStyle }}">{{ m.text }}</div>
+</sc-if>
+<sc-if value="{{ m.isConfirm }}" hint-placeholder-val="{{ false }}">
+<div style="max-width:96%;background:#fff;border:1.5px solid #CFEFE0;border-radius:14px;padding:13px;display:flex;flex-direction:column;gap:10px;animation:pop .22s ease">
+<span style="font-size:13px;font-weight:700">{{ m.confirm.title }}</span>
+<sc-for list="{{ m.confirm.diffs }}" as="d" hint-placeholder-count="2">
+<div style="display:flex;flex-direction:column;gap:4px;background:#F6F8F9;border-radius:10px;padding:9px 11px">
+<span style="font-size:10.5px;font-weight:800;color:#979CA2;letter-spacing:.3px">{{ d.label }}</span>
+<span style="font-size:12px;line-height:17px;color:#979CA2;text-decoration:line-through">{{ d.from }}</span>
+<span style="font-size:12.5px;line-height:18px;color:#2B2F36;font-weight:600">{{ d.to }}</span>
+</div>
+</sc-for>
+<sc-if value="{{ m.confirm.open }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:8px">
+<button onClick="{{ m.confirm.confirm }}" style="flex:1;height:42px;border-radius:11px;border:0;background:#16A06B;color:#fff;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 5px 10px rgba(22,160,107,.28)">확인 — 이대로 변경</button>
+<button onClick="{{ m.confirm.decline }}" style="flex:none;height:42px;padding:0 16px;border-radius:11px;border:1.5px solid #DBDEE1;background:#fff;color:#2B2F36;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap">그대로 두기</button>
+</div>
+</sc-if>
+<sc-if value="{{ m.confirm.done }}" hint-placeholder-val="{{ false }}">
+<span style="{{ m.confirm.statusStyle }}">{{ m.confirm.statusText }}</span>
+</sc-if>
+</div>
+</sc-if>
+<sc-if value="{{ m.isPlan }}" hint-placeholder-val="{{ false }}">
+<div style="max-width:96%;background:#fff;border:1px solid #E8EAEC;border-radius:14px;padding:13px;display:flex;flex-direction:column;gap:8px;animation:pop .22s ease">
+<span style="font-size:13px;font-weight:700">스토리보드 텍스트 결과</span>
+<sc-for list="{{ m.items }}" as="c" hint-placeholder-count="4">
+<div style="display:flex;gap:9px;align-items:flex-start">
+<span style="font-size:11px;font-weight:700;color:#2E6B4E;background:#E6F7EF;border-radius:6px;padding:3px 7px;flex:none">{{ c.n }}컷</span>
+<span style="font-size:13px;line-height:19px;color:#2B2F36">{{ c.line }}</span>
+</div>
+</sc-for>
+<span style="font-size:11.5px;color:#979CA2">고치고 싶은 컷을 말해주세요 — 그 자리에서 바로 반영돼요.</span>
+</div>
+</sc-if>
+<sc-if value="{{ m.isComic }}" hint-placeholder-val="{{ false }}">
+<div style="max-width:96%;background:#fff;border:1px solid #E8EAEC;border-radius:14px;padding:13px;display:flex;flex-direction:column;gap:9px;animation:pop .22s ease">
+<span style="font-size:13px;font-weight:700">네컷만화 결과 — 누르면 크게 보기</span>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;width:230px">
+<sc-for list="{{ m.items }}" as="c" hint-placeholder-count="4">
+<div style="position:relative;height:100px;border-radius:10px;overflow:hidden;border:1px solid #E8EAEC;background:{{ c.bg }}">
+<button onClick="{{ openResult }}" style="position:absolute;inset:0;border:0;background:transparent;cursor:pointer;display:flex;align-items:flex-end;padding:6px">
+<span style="font-size:10.5px;font-weight:700;color:#2E6B4E;background:rgba(255,255,255,.85);border-radius:5px;padding:2px 5px">{{ c.n }}컷</span>
+</button>
+<button onClick="{{ c.reroll }}" title="이 컷만 다시 생성" style="position:absolute;top:5px;right:5px;width:22px;height:22px;border-radius:7px;border:0;background:rgba(255,255,255,.94);font-size:12px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.12)">↻</button>
+</div>
+</sc-for>
+</div>
+<span style="font-size:11.5px;color:#979CA2">컷마다 ↻ 로 그 컷만 다시 뽑을 수 있어요.</span>
+</div>
+</sc-if>
+<sc-if value="{{ m.isProd }}" hint-placeholder-val="{{ false }}">
+<div style="max-width:96%;background:#fff;border:1px solid #E8EAEC;border-radius:14px;padding:13px;display:flex;flex-direction:column;gap:10px;animation:pop .22s ease">
+<span style="font-size:13px;font-weight:700">생산 기록을 남겼어요 — 여기서 바로 고칠 수 있어요</span>
+<div style="display:flex;gap:9px;flex-wrap:wrap">
+<div style="flex:2 1 150px;display:flex;flex-direction:column;gap:4px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">품목</span>
+<input value="{{ m.prod.name }}" onChange="{{ m.prod.onName }}" style="{{ m.prod.cardInputStyle }}">
+</div>
+<div style="flex:1 1 92px;display:flex;flex-direction:column;gap:4px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">수량</span>
+<input value="{{ m.prod.qty }}" onChange="{{ m.prod.onQty }}" placeholder="60개" style="{{ m.prod.cardInputStyle }}">
+</div>
+<div style="flex:1 1 136px;display:flex;flex-direction:column;gap:4px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">생산 날짜</span>
+<input type="date" value="{{ m.prod.date }}" onChange="{{ m.prod.onDate }}" onClick="{{ openPicker }}" style="{{ m.prod.cardDateStyle }}">
+</div>
+<div style="flex:1 1 104px;display:flex;flex-direction:column;gap:4px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">생산 시각</span>
+<input type="time" value="{{ m.prod.time }}" onChange="{{ m.prod.onTime }}" onClick="{{ openPicker }}" onFocus="{{ openPicker }}" style="{{ m.prod.cardTimeStyle }}">
+</div>
+<div style="flex:1 1 112px;display:flex;flex-direction:column;gap:4px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">매진 시각</span>
+<input type="time" value="{{ m.prod.soldOut }}" onChange="{{ m.prod.onSoldOut }}" onClick="{{ openPicker }}" onFocus="{{ openPicker }}" style="{{ m.prod.cardSoldStyle }}">
+</div>
+</div>
+<span style="{{ m.prod.statusStyle }}">{{ m.prod.statusText }}</span>
+</div>
+</sc-if>
+</div>
+</sc-for>
+<sc-if value="{{ sbThinking }}" hint-placeholder-val="{{ false }}">
+<div style="align-self:flex-start;background:#fff;border:1px solid #E8EAEC;border-radius:14px;padding:10px 14px;font-size:13.5px;color:#979CA2;animation:shimmer 1.1s infinite">그리는 중…</div>
+</sc-if>
+</div>
+<div style="display:flex;gap:8px">
+<input value="{{ sbInput }}" onChange="{{ onSbInput }}" onKeyDown="{{ onSbKey }}" placeholder="메시지 입력…" style="flex:1;min-width:0;{{ inputStyle }}">
+<button onClick="{{ sendSb }}" style="flex:none;white-space:nowrap;height:44px;padding:0 22px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(22,160,107,.32)">전송</button>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isResult }}" hint-placeholder-val="{{ false }}">
+<div style="padding:22px;display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start">
+<div style="flex:1 1 340px;min-width:0;border:1px solid #E8EAEC;border-radius:18px;overflow:hidden;background:#fff">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;background:#E8EAEC">
+<sc-for list="{{ comicCuts }}" as="c" hint-placeholder-count="4">
+<div style="position:relative;aspect-ratio:1/1;background:{{ c.bg }};display:flex;align-items:flex-end;padding:10px">
+<span style="font-size:12px;font-weight:700;color:#2E6B4E;background:rgba(255,255,255,.85);border-radius:6px;padding:3px 8px">{{ c.n }}컷 · {{ c.short }}</span>
+<button onClick="{{ c.reroll }}" style="position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:8px;border:0;background:rgba(255,255,255,.94);font-size:13px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.12)">↻</button>
+</div>
+</sc-for>
+</div>
+</div>
+<div style="flex:1 1 280px;min-width:0;display:flex;flex-direction:column;gap:12px">
+<div style="background:#F6F8F9;border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:8px">
+<span style="font-size:11px;font-weight:700;color:#979CA2;letter-spacing:.4px">광고 문구</span>
+<span style="font-size:17px;font-weight:700;letter-spacing:-.3px;line-height:25px">{{ resultHeadline }}</span>
+<span style="font-size:13.5px;line-height:21px;color:#6A7077">{{ resultBody }}</span>
+<span style="font-size:12.5px;font-weight:600;color:#2E6B4E">{{ resultTags }}</span>
+</div>
+<button onClick="{{ backToSb }}" style="height:48px;border-radius:12px;border:1.5px solid #DBDEE1;background:#fff;font-size:15px;font-weight:700;cursor:pointer">대화로 돌아가 수정</button>
+<button onClick="{{ confirmResult }}" style="height:52px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(22,160,107,.32)">확정</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSave }}" hint-placeholder-val="{{ false }}">
+<div style="padding:26px 22px;display:flex;flex-direction:column;align-items:center;gap:16px">
+<div style="width:300px;max-width:100%;border:1px solid #E8EAEC;border-radius:16px;overflow:hidden">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;background:#E8EAEC">
+<sc-for list="{{ comicCuts }}" as="c" hint-placeholder-count="4">
+<div style="aspect-ratio:1/1;background:{{ c.bg }}"></div>
+</sc-for>
+</div>
+<div style="padding:12px 14px;display:flex;flex-direction:column;gap:5px;background:#fff">
+<span style="font-size:14px;font-weight:700">{{ resultHeadline }}</span>
+<span style="font-size:12px;color:#6A7077;line-height:18px">{{ resultTags }}</span>
+</div>
+</div>
+<span style="font-size:13.5px;color:#6A7077;text-align:center;max-width:420px;line-height:20px">{{ saveNote }}</span>
+<div style="display:flex;gap:10px;flex-wrap:wrap;width:340px;max-width:100%">
+<button onClick="{{ download }}" style="flex:1;height:52px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(22,160,107,.32)">다운로드</button>
+<button onClick="{{ goHome }}" style="flex:1;height:52px;border-radius:12px;border:1.5px solid #DBDEE1;background:#fff;font-size:16px;font-weight:700;cursor:pointer">홈으로</button>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isMy }}" hint-placeholder-val="{{ false }}">
+<div style="padding:20px;display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+<div style="flex:1 1 190px;display:flex;flex-direction:column;gap:8px">
+<button onClick="{{ myHistory }}" style="{{ myTab1Style }}">히스토리</button>
+<button onClick="{{ goProd }}" style="{{ myTabProdStyle }}">생산 기록<span style="{{ myTabProdBadge }}">{{ notifCount }}</span></button>
+<button onClick="{{ myStore }}" style="{{ myTab2Style }}">내 가게 정보</button>
+<button onClick="{{ myChar }}" style="{{ myTab3Style }}">내 캐릭터 정보</button>
+<button onClick="{{ goData }}" style="{{ myTabDataStyle }}">내보내기 · 불러오기</button>
+</div>
+<div style="flex:3 1 430px;min-width:0;display:flex;flex-direction:column;gap:10px">
+<sc-if value="{{ showHistEmpty }}" hint-placeholder-val="{{ false }}">
+<div style="border:1px dashed #DBDEE1;border-radius:16px;padding:36px;text-align:center;font-size:13.5px;color:#979CA2;line-height:21px">아직 저장한 광고가 없어요.<br>홈에서 광고를 만들어 보세요.</div>
+</sc-if>
+<sc-for list="{{ historyShown }}" as="h" hint-placeholder-count="2">
+<div style="display:flex;gap:12px;align-items:center;background:#fff;border:1px solid #E8EAEC;border-radius:14px;padding:12px">
+<div style="width:56px;height:56px;border-radius:10px;flex:none;display:grid;grid-template-columns:1fr 1fr;gap:1px;overflow:hidden;background:#E8EAEC">
+<sc-for list="{{ h.cuts }}" as="c" hint-placeholder-count="4">
+<div style="background:{{ c.bg }}"></div>
+</sc-for>
+</div>
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+<span style="font-size:14px;font-weight:700">{{ h.title }}</span>
+<span style="font-size:12px;color:#979CA2">{{ h.meta }}</span>
+</div>
+<button onClick="{{ h.open }}" style="height:40px;border-radius:10px;border:1.5px solid #DBDEE1;background:#fff;font-size:14px;font-weight:700;padding:0 14px;cursor:pointer">열기</button>
+</div>
+</sc-for>
+
+<sc-if value="{{ isDataTab }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:13px">
+<div style="background:#F1FBF6;border:1px solid #CFEFE0;border-radius:16px;padding:16px 18px;display:flex;flex-direction:column;gap:6px">
+<span style="font-size:15px;font-weight:700;letter-spacing:-.2px">지금까지 만든 모든 것을 파일 하나로 내보내고, 다시 불러올 수 있어요</span>
+<span style="font-size:12.5px;line-height:19px;color:#6A7077">가게 정보 · 마스코트 캐릭터와 이미지 · 품목 · 생산 기록 · 저장된 광고 히스토리 · 광고 설정이 모두 담깁니다.</span>
+</div>
+
+<div style="background:#fff;border:1px solid #E8EAEC;border-radius:16px;padding:15px 16px;display:flex;flex-direction:column;gap:11px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">이 파일에 담기는 것</span>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px">
+<sc-for list="{{ backupSummary }}" as="b" hint-placeholder-count="5">
+<div style="background:#F6F8F9;border-radius:11px;padding:11px 13px;display:flex;flex-direction:column;gap:3px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">{{ b.k }}</span>
+<span style="font-size:14px;font-weight:700;color:#2B2F36">{{ b.v }}</span>
+</div>
+</sc-for>
+</div>
+</div>
+
+<div style="display:flex;gap:11px;flex-wrap:wrap">
+<div style="flex:1 1 260px;background:#fff;border:1px solid #E8EAEC;border-radius:16px;padding:15px 16px;display:flex;flex-direction:column;gap:9px">
+<span style="font-size:13.5px;font-weight:700">내보내기</span>
+<span style="font-size:12.5px;line-height:19px;color:#6A7077">JSON 백업 파일 한 개로 내려받아요. 다른 기기에서 불러오면 그대로 이어서 작업할 수 있어요.</span>
+<span style="flex:1"></span>
+<button onClick="{{ exportData }}" style="height:48px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(22,160,107,.32)">백업 파일 내보내기</button>
+</div>
+<div style="flex:1 1 260px;background:#fff;border:1px solid #E8EAEC;border-radius:16px;padding:15px 16px;display:flex;flex-direction:column;gap:9px">
+<span style="font-size:13.5px;font-weight:700">불러오기</span>
+<span style="font-size:12.5px;line-height:19px;color:#6A7077">내보낸 파일을 고르면 히스토리 · 내 정보 · 마스코트 이미지까지 그대로 복원돼요. 현재 화면의 내용은 덮어써지고, AI와 주고받은 대화는 새로 시작합니다.</span>
+<span style="flex:1"></span>
+<input id="restoreFile" type="file" accept=".json,application/json" onChange="{{ importFile }}" style="display:none">
+<label for="restoreFile" style="height:48px;border-radius:12px;border:1.5px solid #DBDEE1;background:#fff;color:#2B2F36;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center">백업 파일 선택해 불러오기</label>
+</div>
+</div>
+
+<div style="{{ backupNoteStyle }}">{{ backupNote }}</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isProdTab }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:13px">
+
+<div style="background:#fff;border:1px solid #E8EAEC;border-radius:16px;padding:15px 16px;display:flex;flex-direction:column;gap:11px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">품목 — 생산 기록에 쓸 목록</span>
+<div style="border:1px solid #E8EAEC;border-radius:12px;overflow:hidden">
+<div style="display:flex;align-items:center;gap:10px;background:#F6F8F9;border-bottom:1px solid #E8EAEC;padding:9px 14px">
+<span style="flex:2 1 150px;font-size:11.5px;font-weight:700;color:#979CA2">품목명</span>
+<span style="flex:1 1 90px;font-size:11.5px;font-weight:700;color:#979CA2">생산 건수</span>
+<span style="flex:1 1 110px;font-size:11.5px;font-weight:700;color:#979CA2">최근 생산</span>
+<span style="width:52px;flex:none"></span>
+</div>
+<sc-for list="{{ itemRows }}" as="it" hint-placeholder-count="3">
+<div style="{{ it.rowStyle }}">
+<input value="{{ it.name }}" onChange="{{ it.onName }}" style="flex:2 1 150px;min-width:0;height:34px;border-radius:8px;border:1px solid transparent;background:transparent;color:#2B2F36;font-size:13.5px;font-weight:600;padding:0 8px" style-focus="border-color:#CFEFE0;background:#fff">
+<span style="flex:1 1 90px;font-size:13px;color:#6A7077">{{ it.count }}</span>
+<span style="flex:1 1 110px;font-size:13px;color:#6A7077">{{ it.last }}</span>
+<button onClick="{{ it.del }}" title="품목 삭제" style="width:52px;flex:none;height:30px;border-radius:8px;border:0;background:#EFF2F4;color:#6A7077;font-size:11.5px;font-weight:700;cursor:pointer">삭제</button>
+</div>
+</sc-for>
+<sc-if value="{{ itemsEmpty }}" hint-placeholder-val="{{ false }}">
+<div style="padding:20px;text-align:center;font-size:12.5px;color:#979CA2">등록된 품목이 없어요. 아래에서 추가해주세요.</div>
+</sc-if>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<input value="{{ newItem }}" onChange="{{ onNewItem }}" onKeyDown="{{ onNewItemKey }}" placeholder="품목 이름 — 예) 소금빵" style="{{ inputStyle }}">
+<button onClick="{{ addItem }}" style="height:44px;padding:0 18px;border-radius:12px;border:0;background:#E6F7EF;color:#2E6B4E;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap">품목 추가</button>
+</div>
+</div>
+
+<div style="background:#fff;border:1px solid #E8EAEC;border-radius:16px;padding:15px 16px;display:flex;flex-direction:column;gap:11px">
+<span style="font-size:13px;font-weight:700;color:#6A7077">생산 기록 추가</span>
+<div style="display:flex;gap:9px;flex-wrap:wrap">
+<div style="flex:2 1 170px;display:flex;flex-direction:column;gap:5px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">품목</span>
+<select value="{{ draftItem }}" onChange="{{ onDraftItem }}" style="{{ inputStyle }}">
+<sc-for list="{{ items }}" as="i" hint-placeholder-count="3">
+<option>{{ i }}</option>
+</sc-for>
+</select>
+</div>
+<div style="flex:1 1 96px;display:flex;flex-direction:column;gap:5px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">수량</span>
+<input value="{{ draftQty }}" onChange="{{ onDraftQty }}" placeholder="60개" style="{{ inputStyle }}">
+</div>
+<div style="flex:1 1 142px;display:flex;flex-direction:column;gap:5px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">생산 날짜</span>
+<input type="date" value="{{ draftDate }}" onChange="{{ onDraftDate }}" onClick="{{ openPicker }}" style="{{ inputStyle }}">
+</div>
+<div style="flex:1 1 112px;display:flex;flex-direction:column;gap:5px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">생산 시각</span>
+<input type="time" value="{{ draftTime }}" onChange="{{ onDraftTime }}" onClick="{{ openPicker }}" onFocus="{{ openPicker }}" style="{{ inputStyle }}">
+</div>
+<div style="flex:1 1 118px;display:flex;flex-direction:column;gap:5px">
+<span style="font-size:11px;font-weight:700;color:#979CA2">매진 시각 (나중에 가능)</span>
+<input type="time" value="{{ draftSold }}" onChange="{{ onDraftSold }}" onClick="{{ openPicker }}" onFocus="{{ openPicker }}" style="{{ inputStyle }}">
+</div>
+</div>
+<button onClick="{{ addProd }}" style="align-self:flex-start;height:48px;min-width:150px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(22,160,107,.32)">생산 기록 저장</button>
+</div>
+
+<div style="display:flex;align-items:baseline;gap:9px;padding:2px 2px 0;flex-wrap:wrap">
+<span style="font-size:13px;font-weight:700;color:#6A7077">생산 히스토리</span>
+<span style="font-size:11.5px;color:#979CA2;line-height:17px">매진 시각이 빈 줄은 노란색으로 표시돼요 — 그 자리에서 입력하면 됩니다</span>
+</div>
+<sc-if value="{{ prodEmpty }}" hint-placeholder-val="{{ false }}">
+<div style="border:1px dashed #DBDEE1;border-radius:16px;padding:32px;text-align:center;font-size:13.5px;color:#979CA2;line-height:21px">아직 생산 기록이 없어요.<br>위에서 추가하거나, 광고 생성 대화에서 말하면 자동으로 남아요.</div>
+</sc-if>
+<sc-for list="{{ prodRows }}" as="p" hint-placeholder-count="3">
+<div style="{{ p.rowStyle }}">
+<div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+<span style="font-size:11px;font-weight:700;color:#979CA2">품목</span>
+<input value="{{ p.name }}" onChange="{{ p.onName }}" style="{{ p.rowInputStyle }}">
+</div>
+<div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+<span style="font-size:11px;font-weight:700;color:#979CA2">수량</span>
+<input value="{{ p.qty }}" onChange="{{ p.onQty }}" placeholder="60개" style="{{ p.rowInputStyle }}">
+</div>
+<div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+<span style="font-size:11px;font-weight:700;color:#979CA2">생산 날짜</span>
+<input type="date" value="{{ p.date }}" onChange="{{ p.onDate }}" onClick="{{ openPicker }}" style="{{ p.rowDateStyle }}">
+</div>
+<div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+<span style="font-size:11px;font-weight:700;color:#979CA2">생산 시각</span>
+<input type="time" value="{{ p.time }}" onChange="{{ p.onTime }}" onClick="{{ openPicker }}" onFocus="{{ openPicker }}" style="{{ p.rowTimeStyle }}">
+</div>
+<div style="display:flex;flex-direction:column;gap:4px;min-width:0">
+<span style="font-size:11px;font-weight:700;color:#979CA2">매진 시각</span>
+<input type="time" value="{{ p.soldOut }}" onChange="{{ p.onSoldOut }}" onClick="{{ openPicker }}" onFocus="{{ openPicker }}" style="{{ p.rowSoldStyle }}">
+</div>
+<div style="display:flex;flex-direction:column;gap:5px;min-width:0">
+<span style="font-size:11px;font-weight:700;color:#979CA2">상태</span>
+<div style="display:flex;align-items:center;gap:8px;height:38px">
+<span style="{{ p.statusStyle }}">{{ p.statusText }}</span>
+<span style="flex:1"></span>
+<button onClick="{{ p.del }}" style="height:28px;border-radius:8px;border:0;background:#EFF2F4;color:#6A7077;font-size:11.5px;font-weight:700;padding:0 10px;cursor:pointer;flex:none">삭제</button>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isMyStore }}" hint-placeholder-val="{{ false }}">
+<div style="padding:22px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;gap:12px;flex-wrap:wrap">
+<div style="flex:1 1 220px;display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:700;color:#979CA2">업종</span><span style="font-size:15px;font-weight:600">{{ storeCategory }}</span></div>
+<div style="flex:1 1 220px;display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:700;color:#979CA2">가게 주소</span><span style="font-size:15px;font-weight:600">{{ storeAddress }}</span></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<span style="font-size:12px;font-weight:700;color:#979CA2">대표 상품 이미지</span>
+<div style="display:flex;gap:10px;flex-wrap:wrap">
+<sc-for list="{{ storeImages }}" as="im" hint-placeholder-count="2">
+<div style="width:104px;height:78px;border-radius:12px;border:1px solid #E8EAEC;background:{{ im.bg }}"></div>
+</sc-for>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:700;color:#979CA2">영업시간</span><span style="font-size:15px;font-weight:600">{{ storeHours }}</span></div>
+<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:12px;font-weight:700;color:#979CA2">가게 소개</span><span style="font-size:14px;line-height:21px;color:#6A7077">{{ storeDesc }}</span></div>
+<div style="display:flex;gap:10px;padding-top:4px">
+<button onClick="{{ editStoreFromMy }}" style="flex:1;height:48px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(22,160,107,.32)">수정</button>
+<button onClick="{{ goHome }}" style="flex:1;height:48px;border-radius:12px;border:1.5px solid #DBDEE1;background:#fff;font-size:15px;font-weight:700;cursor:pointer">홈으로</button>
+</div>
+</div>
+</sc-if>
+
+</div>
+
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+<div style="position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#2B2F36;color:#fff;font-size:13.5px;font-weight:600;padding:12px 20px;border-radius:999px;box-shadow:0 10px 24px rgba(18,22,26,.25);animation:pop .18s ease;z-index:40">{{ toast }}</div>
+</sc-if>
+
+<span style="font-size:11.5px;color:#979CA2">프로토타입 · 이미지는 생성 자리표시자입니다</span>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1100,&quot;height&quot;:860},&quot;preseed&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;데모&quot;},&quot;showSuggestions&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;데모&quot;},&quot;adTypeDefault&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;인스타 게시물&quot;,&quot;포스터&quot;,&quot;메뉴판&quot;],&quot;default&quot;:&quot;인스타 게시물&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;데모&quot;}}">
+const BG = (h) => `linear-gradient(135deg,hsl(${h} 58% 92%),hsl(${(h + 42) % 360} 52% 84%))`;
+const rnd = () => Math.floor(Math.random() * 360);
+
+const VIEW_LABELS = ['정면', '좌측면', '우측면', '뒷면'];
+
+const BASE_PLAN = [
+  { n: 1, line: '캐릭터가 가게 문을 열며 손님에게 인사한다.', short: '인사' },
+  { n: 2, line: '갓 구운 소금빵을 두 손으로 내밀며 소개한다.', short: '갓 구운 빵' },
+  { n: 3, line: '한 입 베어 문 손님이 눈이 번쩍 뜨이는 리액션.', short: '리액션' },
+  { n: 4, line: '가게 이름·위치·영업시간이 적힌 간판 컷으로 마무리.', short: '마무리' }
+];
+
+const pad2 = n => String(n).padStart(2, '0');
+const isoDay = (dayOffset = 0) => { const d = new Date(); d.setDate(d.getDate() + dayOffset); return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; };
+const fmtDay = (iso) => { const p = (iso || '').split('-'); return p.length === 3 ? `${Number(p[1])}/${Number(p[2])}` : (iso || ''); };
+const nowHM = () => { const d = new Date(); return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; };
+const dayFrom = (text) => {
+  const t = text || '';
+  if (/그저께|그제/.test(t)) return isoDay(-2);
+  if (/어제/.test(t)) return isoDay(-1);
+  const m = t.match(/(\d{1,2})\s*[\/\-월\.]\s*(\d{1,2})/);
+  if (m) { const d = new Date(); return `${d.getFullYear()}-${pad2(Number(m[1]))}-${pad2(Number(m[2]))}`; }
+  return isoDay(0);
+};
+const timeFrom = (text) => {
+  const m = (text || '').match(/(\d{1,2})\s*(?::|시)\s*(\d{1,2})?/);
+  if (!m) return nowHM();
+  return `${pad2(Number(m[1]))}:${pad2(Number(m[2] || 0))}`;
+};
+
+const TRENDS = ['눈이 번쩍 챌린지', '소금빵 대유행', '퇴근길 빵 한 봉지', '사장님 브이로그'];
+
+const TREND_DETAIL = [
+  {
+    name: '눈이 번쩍 챌린지', delta: '+312%',
+    summary: '한 입 먹고 과장되게 놀라는 리액션 밈. 베이커리·디저트 업종에서 가장 많이 쓰이고, 네컷만화 3컷째에 넣기 좋아요.',
+    stats: [{ k: '게시물', v: '12.4만' }, { k: '평균 저장률', v: '8.1%' }, { k: '상승 주차', v: '2주째' }],
+    links: [
+      { title: '#눈이번쩍챌린지 인스타 릴스 모음', meta: '게시물 12.4만' },
+      { title: '빵집 업종 활용 사례 10선', meta: '블로그' },
+      { title: '따라 하기 쉬운 구도 3가지', meta: '가이드' }
+    ]
+  },
+  {
+    name: '소금빵 대유행', delta: '+186%',
+    summary: '겉은 바삭, 속은 버터로 촉촉한 소금빵이 전방위로 확산 중. 갓 구운 시간대를 함께 알리면 반응이 좋아요.',
+    stats: [{ k: '검색량', v: '7.8만' }, { k: '연관 품목', v: '소금빵·크루아상' }, { k: '상승 주차', v: '5주째' }],
+    links: [
+      { title: '소금빵 판매 상승 리포트', meta: '리포트' },
+      { title: '#소금빵 인기 게시물', meta: '게시물 4.6만' },
+      { title: '갓 구운 빵 사진 잘 찍는 법', meta: '가이드' }
+    ]
+  },
+  {
+    name: '퇴근길 빵 한 봉지', delta: '+94%',
+    summary: '저녁 6–8시 마감 세일을 노리는 시간대 타깃 문구. 영업시간과 남은 수량을 강조하는 마지막 컷과 궁합이 좋아요.',
+    stats: [{ k: '피크 시간', v: '18–20시' }, { k: '게시물', v: '2.9만' }, { k: '상승 주차', v: '3주째' }],
+    links: [
+      { title: '저녁 시간대 광고 성과 비교', meta: '리포트' },
+      { title: '#퇴근길빵 태그 모음', meta: '게시물 2.9만' },
+      { title: '야간 조명 사진 톤 맞추기', meta: '가이드' }
+    ]
+  },
+  {
+    name: '사장님 브이로그', delta: '+61%',
+    summary: '사장이 직접 등장해 새벽 반죽·굽는 과정을 보여주는 형식. 마스코트 캐릭터를 사장 역할로 세우면 그대로 적용돼요.',
+    stats: [{ k: '평균 조회', v: '1.2만' }, { k: '완주율', v: '54%' }, { k: '상승 주차', v: '1주째' }],
+    links: [
+      { title: '동네 가게 브이로그 인기 포맷', meta: '블로그' },
+      { title: '#사장님브이로그 최신 게시물', meta: '게시물 1.7만' },
+      { title: '캐릭터로 대체해 만든 사례', meta: '사례' }
+    ]
+  },
+  {
+    name: '가을 신메뉴', delta: '+38%',
+    summary: '계절 한정 키워드. 밤·고구마 빵류와 잘 붙고 9–11월 내내 유지되어 오래 쓰기 좋아요.',
+    stats: [{ k: '유지 기간', v: '9–11월' }, { k: '게시물', v: '9.3만' }, { k: '경쟁도', v: '높음' }],
+    links: [
+      { title: '가을 한정 메뉴 키워드 분석', meta: '리포트' },
+      { title: '#가을신메뉴 인기 게시물', meta: '게시물 9.3만' },
+      { title: '계절 컬러 팔레트 참고', meta: '가이드' }
+    ]
+  }
+];
+
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const seeded = props.preseed !== false;
+    this.state = {
+      screen: 'home',
+      stack: [],
+      toast: '',
+      storeSaved: seeded,
+      storeReadOnly: seeded,
+      storeCategory: seeded ? '베이커리' : '베이커리',
+      storeAddress: seeded ? '서울 마포구 연남로 21' : '',
+      storeHours: seeded ? '08:00 – 20:00, 월 휴무' : '',
+      storeDesc: seeded ? '매일 새벽 반죽해 오븐에서 바로 꺼내는 동네 빵집. 소금빵과 통밀 캄파뉴가 간판이에요.' : '',
+      storeImages: seeded
+        ? [{ label: '소금빵', hue: 38 }, { label: '오늘 구운 빵 진열대', hue: 26 }]
+        : [],
+      charName: '', charAge: '', charGender: '', charHobby: '', charLook: '',
+      charMsgs: [{ role: 'ai', kind: 'text', text: '어떤 마스코트를 원하세요? 가게 분위기나 느낌을 편하게 말해주세요.' }],
+      charInput: '',
+      charThinking: false,
+      charTurn: 0,
+      charCands: [],
+      charSelected: -1,
+      charViews: [],
+      charConfirmed: false,
+      charInfoReadOnly: true,
+      adType: props.adTypeDefault || '인스타 게시물',
+      adConcept: '유쾌함',
+      trendPopup: false,
+      trendApplied: false,
+      trendPick: TRENDS[0],
+      openTrend: '',
+      fromAd: false,
+      sbMsgs: [{ role: 'ai', kind: 'text', text: '어떤 이야기로 광고를 만들까요? 알리고 싶은 걸 말해주세요.' }],
+      sbInput: '',
+      sbThinking: false,
+      sbTurn: 0,
+      plan: [],
+      comicCuts: [],
+      myTab: 'history',
+      history: [],
+      items: seeded ? ['소금빵', '버터 크루아상', '통밀 캄파뉴'] : [],
+      prods: seeded ? [
+        { id: 3, name: '소금빵', qty: '60개', date: isoDay(0), time: '07:40', soldOut: '' },
+        { id: 2, name: '버터 크루아상', qty: '40개', date: isoDay(-1), time: '13:20', soldOut: '' },
+        { id: 1, name: '통밀 캄파뉴', qty: '12개', date: isoDay(-1), time: '06:50', soldOut: '16:10' }
+      ] : [],
+      newItem: '',
+      draftItem: seeded ? '소금빵' : '',
+      draftQty: '', draftDate: isoDay(0), draftTime: '', draftSold: '',
+      notifOpen: false,
+      sbProdOpen: false,
+      sbSetOpen: false,
+      pending: {},
+      sbProdLogged: false,
+      backupNote: '', backupErr: false
+    };
+  }
+
+  charListRef = React.createRef();
+  sbListRef = React.createRef();
+
+  pinBottom(ref) {
+    const el = ref && ref.current;
+    if (!el) return;
+    const run = () => {
+      if (el.scrollTo) el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+      el.scrollTop = el.scrollHeight;
+    };
+    run();
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+  }
+
+  componentDidMount() {
+    if (super.componentDidMount) super.componentDidMount();
+    this.pinBottom(this.charListRef);
+    this.pinBottom(this.sbListRef);
+  }
+
+  componentDidUpdate(prevProps, prevState) {
+    if (super.componentDidUpdate) super.componentDidUpdate(prevProps, prevState);
+    if (prevState.charMsgs.length !== this.state.charMsgs.length
+      || prevState.charThinking !== this.state.charThinking
+      || (prevState.screen !== this.state.screen && this.state.screen === 'char')) {
+      this.pinBottom(this.charListRef);
+    }
+    if (prevState.sbMsgs.length !== this.state.sbMsgs.length
+      || prevState.sbThinking !== this.state.sbThinking
+      || (prevState.screen !== this.state.screen && this.state.screen === 'sb')) {
+      this.pinBottom(this.sbListRef);
+    }
+  }
+
+  toast(t) {
+    clearTimeout(this._tt);
+    this.setState({ toast: t });
+    this._tt = setTimeout(() => this.setState({ toast: '' }), 2200);
+  }
+
+  go(screen) {
+    this.setState(s => ({ screen, stack: [...s.stack, s.screen], trendPopup: false }));
+  }
+
+  back = () => {
+    this.setState(s => {
+      const st = [...s.stack];
+      const prev = st.pop() || 'home';
+      return { screen: prev, stack: st, trendPopup: false };
+    });
+  };
+
+  /* ---------- store ---------- */
+  addImage = () => this.setState(s => ({
+    storeImages: [...s.storeImages, { label: `상품 ${s.storeImages.length + 1}`, hue: rnd() }]
+  }));
+
+  rerollStoreImage(i) {
+    this.setState(s => ({
+      storeImages: s.storeImages.map((im, k) => k === i ? { ...im, hue: rnd() } : im)
+    }));
+    this.toast('사진만 다시 생성했어요');
+  }
+
+  saveStore = () => {
+    this.setState({ storeSaved: true, storeReadOnly: true });
+    this.toast('가게 정보를 저장했어요 — 캐릭터 만들기가 열렸어요');
+  };
+
+  /* ---------- proposal + confirm ---------- */
+  propose(which, kind, text, diffs, payload) {
+    const pid = 'p' + Date.now() + Math.random().toString(36).slice(2, 6);
+    const key = which === 'char' ? 'charMsgs' : 'sbMsgs';
+    this.setState(s => ({
+      charThinking: which === 'char' ? false : s.charThinking,
+      sbThinking: which === 'char' ? s.sbThinking : false,
+      charTurn: which === 'char' ? s.charTurn + 1 : s.charTurn,
+      sbTurn: which === 'char' ? s.sbTurn : s.sbTurn + 1,
+      pending: { ...s.pending, [pid]: { kind, diffs, payload, status: 'open' } },
+      [key]: [...s[key], { role: 'ai', kind: 'text', text }, { role: 'ai', kind: 'confirm', pid }]
+    }));
+  }
+
+  confirmPending(pid) {
+    const p = this.state.pending[pid];
+    if (!p || p.status !== 'open') return;
+    const marked = s => ({ ...s.pending, [pid]: { ...s.pending[pid], status: 'applied' } });
+    if (p.kind === 'plan') {
+      this.setState(s => ({
+        pending: marked(s), plan: p.payload.plan,
+        sbMsgs: [...s.sbMsgs,
+          { role: 'ai', kind: 'text', text: '반영했어요. 왼쪽 스토리에서 볼 수 있어요.' },
+          { role: 'ai', kind: 'plan', ref: 'plan' }]
+      }));
+      this.toast('스토리를 반영했어요');
+    } else if (p.kind === 'comic') {
+      this.setState(s => ({
+        pending: marked(s), comicCuts: p.payload.cuts,
+        sbMsgs: [...s.sbMsgs, { role: 'ai', kind: 'comic', ref: 'comic' }]
+      }));
+      this.toast('네컷만화를 반영했어요');
+    } else if (p.kind === 'char') {
+      const tail = p.payload.cands
+        ? [{ role: 'ai', kind: 'text', text: '반영했어요. 후보 그림도 뽑아뒀어요 — 하나 골라주세요.' }, { role: 'ai', kind: 'cands', ref: 'cands' }]
+        : [{ role: 'ai', kind: 'text', text: '반영했어요. 4방향으로 확인해보세요.' }, { role: 'ai', kind: 'views', ref: 'views' }];
+      this.setState(s => ({
+        pending: marked(s), ...p.payload.fields,
+        charViews: p.payload.views || s.charViews,
+        charMsgs: [...s.charMsgs, ...tail]
+      }));
+      this.toast('캐릭터를 반영했어요');
+    }
+  }
+
+  declinePending(pid) {
+    const p = this.state.pending[pid];
+    if (!p || p.status !== 'open') return;
+    const key = p.kind === 'char' ? 'charMsgs' : 'sbMsgs';
+    this.setState(s => ({
+      pending: { ...s.pending, [pid]: { ...s.pending[pid], status: 'declined' } },
+      [key]: [...s[key], { role: 'ai', kind: 'text', text: '그대로 둘게요. 어떻게 바꾸면 좋을지 말해주세요.' }]
+    }));
+  }
+
+  /* ---------- export / import ---------- */
+  exportData = () => {
+    const s = this.state;
+    const data = {
+      app: 'ai-ad-proto', version: 1, exportedAt: new Date().toISOString(),
+      store: {
+        saved: s.storeSaved, category: s.storeCategory, address: s.storeAddress,
+        hours: s.storeHours, desc: s.storeDesc, images: s.storeImages
+      },
+      character: {
+        confirmed: s.charConfirmed, name: s.charName, age: s.charAge, gender: s.charGender,
+        hobby: s.charHobby, look: s.charLook, cands: s.charCands, selected: s.charSelected, views: s.charViews
+      },
+      items: s.items, prods: s.prods, history: s.history,
+      ad: { type: s.adType, concept: s.adConcept, trendApplied: s.trendApplied, trendPick: s.trendPick },
+      comicCuts: s.comicCuts, plan: s.plan
+    };
+    try {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ai-ad-백업-${isoDay(0)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      this.setState({ backupErr: false, backupNote: `${isoDay(0)} 백업 파일을 내보냈어요 — 광고 ${s.history.length}건 · 생산 기록 ${s.prods.length}건 포함` });
+      this.toast('백업 파일을 내려받았어요');
+    } catch (err) {
+      this.setState({ backupErr: true, backupNote: '내보내기에 실패했어요. 브라우저 다운로드가 막혀 있지 않은지 확인해주세요.' });
+      this.toast('내보내기에 실패했어요');
+    }
+  };
+
+  importFile = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let data = null;
+      try { data = JSON.parse(reader.result); } catch (err) { data = null; }
+      this.applyImport(data, file.name);
+    };
+    reader.onerror = () => {
+      this.setState({ backupErr: true, backupNote: '파일을 읽지 못했어요. 다시 시도해주세요.' });
+      this.toast('파일을 읽지 못했어요');
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  applyImport(d, fileName) {
+    if (!d || d.app !== 'ai-ad-proto') {
+      this.setState({ backupErr: true, backupNote: '이 앱에서 내보낸 백업 파일이 아니에요. 내보내기로 만든 JSON 파일을 골라주세요. (기존 내용은 그대로 있어요)' });
+      this.toast('백업 파일 형식이 아니에요');
+      return;
+    }
+    const st = d.store || {}, ch = d.character || {}, ad = d.ad || {};
+    const arr = v => Array.isArray(v) ? v : [];
+    this.setState({
+      screen: 'my', stack: [], myTab: 'data', notifOpen: false, trendPopup: false, backupErr: false,
+      storeSaved: st.saved !== false,
+      storeCategory: st.category || '베이커리',
+      storeAddress: st.address || '',
+      storeHours: st.hours || '',
+      storeDesc: st.desc || '',
+      storeImages: arr(st.images),
+      storeReadOnly: true,
+      charConfirmed: !!ch.confirmed,
+      charName: ch.name || '', charAge: ch.age || '', charGender: ch.gender || '',
+      charHobby: ch.hobby || '', charLook: ch.look || '',
+      charCands: arr(ch.cands), charSelected: typeof ch.selected === 'number' ? ch.selected : -1,
+      charViews: arr(ch.views), charInfoReadOnly: true,
+      items: arr(d.items),
+      prods: arr(d.prods),
+      history: arr(d.history),
+      plan: arr(d.plan), comicCuts: arr(d.comicCuts),
+      adType: ad.type || '인스타 게시물',
+      adConcept: ad.concept || '유쾌함',
+      trendApplied: !!ad.trendApplied,
+      trendPick: ad.trendPick || TRENDS[0],
+      backupNote: `${fileName || '백업 파일'}을 불러왔어요 — 광고 ${arr(d.history).length}건 · 생산 기록 ${arr(d.prods).length}건 · 품목 ${arr(d.items).length}개${d.exportedAt ? ` (내보낸 시점 ${String(d.exportedAt).slice(0, 10)})` : ''}. 대화 내용은 복원되지 않고 새로 시작해요.`
+    });
+    this.toast('백업을 불러왔어요 — 히스토리와 내 정보가 복원됐어요');
+  }
+
+  /* ---------- production records ---------- */
+  patchProd(id, patch) {
+    this.setState(s => ({ prods: s.prods.map(p => p.id === id ? { ...p, ...patch } : p) }));
+  }
+  setSoldOut(id, v) {
+    this.patchProd(id, { soldOut: v });
+    if (v) this.toast('매진 시각을 저장했어요');
+  }
+  delProd(id) {
+    this.setState(s => ({ prods: s.prods.filter(p => p.id !== id) }));
+    this.toast('생산 기록을 지웠어요');
+  }
+  addItem = () => {
+    const n = this.state.newItem.trim();
+    if (!n) { this.toast('품목 이름을 적어주세요'); return; }
+    if (this.state.items.includes(n)) { this.toast('이미 있는 품목이에요'); return; }
+    this.setState(s => ({ items: [...s.items, n], newItem: '', draftItem: s.draftItem || n }));
+    this.toast(`'${n}' 품목을 추가했어요`);
+  };
+  renameItem(oldName, next) {
+    const name = (next || '').trim();
+    if (!name || name === oldName) return;
+    this.setState(s => ({
+      items: s.items.map(i => i === oldName ? name : i),
+      prods: s.prods.map(p => p.name === oldName ? { ...p, name } : p),
+      draftItem: s.draftItem === oldName ? name : s.draftItem
+    }));
+  }
+  delItem(name) {
+    this.setState(s => ({ items: s.items.filter(i => i !== name), draftItem: s.draftItem === name ? '' : s.draftItem }));
+  }
+  addProd = () => {
+    const s = this.state;
+    const name = s.draftItem || s.items[0];
+    if (!name) { this.toast('품목을 먼저 추가해주세요'); return; }
+    const hm = s.draftTime || nowHM();
+    this.setState(st => ({
+      prods: [{ id: Date.now(), name, qty: st.draftQty.trim(), date: st.draftDate || isoDay(0), time: hm, soldOut: st.draftSold }, ...st.prods],
+      draftQty: '', draftTime: '', draftSold: ''
+    }));
+    this.toast(s.draftSold ? '생산 기록을 저장했어요' : '저장했어요 — 매진 시각은 나중에 입력하면 돼요');
+  };
+  itemFrom(text) {
+    const t = text || '';
+    const hit = this.state.items.find(i => t.includes(i));
+    if (hit) return hit;
+    const cleaned = t
+      .replace(/\d+\s*(잔|개|세트|박스|병|kg|판)/g, ' ')
+      .replace(/(생산했어요|생산함|생산|만들었어요|만듦|구웠어요|팔았어요|했어요|오늘|어제)/g, ' ')
+      .replace(/[.,!?·]/g, ' ')
+      .trim();
+    return cleaned.split(/\s+/).filter(Boolean).slice(0, 3).join(' ') || '신규 품목';
+  }
+  qtyFrom(text) {
+    const m = (text || '').match(/\d+\s*(잔|개|세트|박스|병|kg|판)/);
+    return m ? m[0].replace(/\s+/g, '') : '';
+  }
+
+  /* ---------- character ---------- */
+  makeCands() {
+    return [0, 1, 2].map(i => ({ hue: rnd(), label: `후보 ${i + 1}` }));
+  }
+  makeViews() {
+    const base = rnd();
+    return VIEW_LABELS.map((l, i) => ({ label: l, hue: (base + i * 14) % 360 }));
+  }
+
+  genCandidates = () => {
+    const cands = this.makeCands();
+    this.setState(s => ({
+      charCands: cands, charSelected: -1,
+      charMsgs: [...s.charMsgs, { role: 'ai', kind: 'cands', ref: 'cands' }]
+    }));
+  };
+
+  aiChar(userText) {
+    const t = this.state.charTurn;
+    this.setState({ charThinking: true });
+    setTimeout(() => {
+      const s = this.state;
+      if (t === 0) {
+        const fields = {
+          charName: s.charName || '소금이',
+          charAge: s.charAge || '5살',
+          charGender: s.charGender || '중성',
+          charHobby: s.charHobby || '새벽 반죽 냄새 맡기',
+          charLook: s.charLook || '앞치마를 두른 통통한 곰. 둥근 눈, 밀색 털, 밀가루 묻은 베이지 앞치마.'
+        };
+        this.setState({ charCands: this.makeCands(), charSelected: -1 });
+        this.propose('char', 'char', '말씀해주신 느낌으로 이렇게 채워봤어요. 확인을 누르면 캐릭터 정보에 반영할게요.', [
+          { label: '이름', from: s.charName || '비어 있음', to: fields.charName },
+          { label: '나이 · 성별', from: `${s.charAge || '비어 있음'} · ${s.charGender || '비어 있음'}`, to: `${fields.charAge} · ${fields.charGender}` },
+          { label: '취미', from: s.charHobby || '비어 있음', to: fields.charHobby },
+          { label: '외형', from: s.charLook || '비어 있음', to: fields.charLook }
+        ], { fields, views: null, cands: true });
+      } else {
+        const nextLook = `${s.charLook || '앞치마를 두른 통통한 곰.'} 몸은 더 둥글게, 눈은 더 크게.`;
+        this.propose('char', 'char', '말씀하신 대로 고쳐봤어요. 확인하면 외형과 4방향 이미지가 바뀝니다.', [
+          { label: '외형', from: s.charLook || '비어 있음', to: nextLook }
+        ], { fields: { charLook: nextLook }, views: this.makeViews() });
+      }
+    }, 650);
+  }
+
+  sendChar = () => {
+    const text = this.state.charInput.trim();
+    if (!text) return;
+    this.setState(s => ({ charInput: '', charMsgs: [...s.charMsgs, { role: 'me', kind: 'text', text }] }));
+    this.aiChar(text);
+  };
+
+  selectCand(i) {
+    const views = this.makeViews();
+    this.setState(s => ({
+      charSelected: i, charViews: views,
+      charMsgs: [...s.charMsgs,
+        { role: 'me', kind: 'text', text: `${i + 1}번으로 할게요` },
+        { role: 'ai', kind: 'text', text: `${i + 1}번으로 정했어요. 4방향으로 뽑아둘게요 — 확정하면 광고에 계속 쓰여요.` },
+        { role: 'ai', kind: 'views', ref: 'views' }]
+    }));
+  }
+
+  rerollCand(i) {
+    this.setState(s => ({ charCands: s.charCands.map((c, k) => k === i ? { ...c, hue: rnd() } : c) }));
+    this.toast('같은 설정으로 그림만 다시 뽑았어요');
+  }
+
+  rerollView(i) {
+    this.setState(s => ({ charViews: s.charViews.map((v, k) => k === i ? { ...v, hue: rnd() } : v) }));
+    this.toast(`${VIEW_LABELS[i]}만 다시 생성했어요`);
+  }
+
+  confirmChar = () => {
+    this.setState({ charConfirmed: true });
+    this.go('charInfo');
+    this.toast('캐릭터를 확정했어요 — 광고 생성이 열렸어요');
+  };
+
+  loadChar = () => {
+    const views = this.makeViews();
+    this.setState(s => ({
+      charName: '소금이', charAge: '5살', charGender: '중성', charHobby: '새벽 반죽 냄새 맡기',
+      charLook: '앞치마를 두른 통통한 곰. 둥근 눈, 밀색 털, 밀가루 묻은 베이지 앞치마.',
+      charCands: s.charCands.length ? s.charCands : this.makeCands(),
+      charSelected: 0, charViews: views,
+      charMsgs: [...s.charMsgs, { role: 'ai', kind: 'text', text: '지난번에 만든 캐릭터를 불러왔어요.' }, { role: 'ai', kind: 'views', ref: 'views' }]
+    }));
+  };
+
+  /* ---------- ad ---------- */
+  applyAd = () => this.setState({ trendPopup: true });
+
+  trendYes = () => {
+    this.setState({ trendPopup: false, trendApplied: true });
+    this.resetSb(true);
+    this.go('sb');
+  };
+  trendNo = () => {
+    this.setState({ trendPopup: false, trendApplied: false });
+    this.resetSb(false);
+    this.go('sb');
+  };
+  resetSb(withTrend) {
+    this.setState({
+      sbMsgs: [{ role: 'ai', kind: 'text', text: withTrend
+        ? '이 트렌드로 광고를 만들어볼게요. 먼저 — 오늘 생산한 품목이 있나요? 품목 이름과 수량을 말해주면 생산 기록으로 남겨둘게요.'
+        : '광고를 만들기 전에 하나만요 — 오늘 생산한 품목이 있나요? 품목 이름과 수량을 말해주면 생산 기록으로 남겨둘게요.' }],
+      sbTurn: 0, plan: [], comicCuts: [], sbProdLogged: false
+    });
+  }
+
+  /* ---------- storyboard ---------- */
+  aiSb(userText) {
+    this.setState({ sbThinking: true });
+    setTimeout(() => {
+      const s = this.state;
+      if (!s.sbProdLogged) {
+        if (/안 ?했|없어|없습니다|안했|건너|아니/.test(userText || '')) {
+          this.setState(st => ({
+            sbThinking: false, sbProdLogged: true,
+            sbMsgs: [...st.sbMsgs, { role: 'ai', kind: 'text', text: '알겠어요, 생산 기록은 넘어갈게요. 그럼 어떤 이야기로 광고를 만들까요?' }]
+          }));
+          return;
+        }
+        const name = this.itemFrom(userText);
+        const qty = this.qtyFrom(userText);
+        const day = dayFrom(userText);
+        const isToday = day === isoDay(0);
+        const id = Date.now();
+        this.setState(st => ({
+          sbThinking: false, sbProdLogged: true,
+          items: st.items.includes(name) ? st.items : [...st.items, name],
+          prods: [{ id, name, qty, date: day, time: timeFrom(userText), soldOut: '' }, ...st.prods],
+          sbMsgs: [...st.sbMsgs,
+            { role: 'ai', kind: 'text', text: `'${name}' 생산 기록을 ${fmtDay(day)}${isToday ? '(오늘)' : ''}로 남겼어요. 다르면 아래에서 바로 고쳐주세요. 매진 시각을 비워두면 알림으로 다시 물어볼게요.` },
+            { role: 'ai', kind: 'prod', prodId: id },
+            { role: 'ai', kind: 'text', text: `그럼 ${name} 이야기로 광고를 만들어볼까요? 알리고 싶은 걸 말해주세요.` }]
+        }));
+        return;
+      }
+      if (!s.plan.length) {
+        const plan = BASE_PLAN.map(c => ({ ...c }));
+        if (s.trendApplied) plan[2].line = `'${s.trendPick}' 밈을 그대로 따라 하는 손님 리액션 컷.`;
+        this.propose('sb', 'plan', '이렇게 4컷으로 잡아봤어요. 확인을 누르면 스토리에 반영할게요.',
+          plan.map(c => ({ label: `${c.n}컷`, from: '아직 없음', to: c.line })), { plan });
+      } else if (!s.comicCuts.length) {
+        const nextLine = '손님이 소금빵을 들고 과장되게 놀라는 컷 — 효과선 추가.';
+        const plan = s.plan.map(c => c.n === 3 ? { ...c, line: nextLine } : c);
+        this.propose('sb', 'plan', '3컷을 이렇게 바꿔볼게요. 확인하면 스토리가 바뀝니다.',
+          [{ label: '3컷', from: (s.plan[2] && s.plan[2].line) || '없음', to: nextLine }], { plan });
+      } else {
+        const cuts = s.comicCuts.map(c => c.n === 2 ? { ...c, hue: rnd() } : c);
+        this.propose('sb', 'comic', '2컷 그림을 다시 뽑아볼게요. 확인하면 그 컷만 교체됩니다.',
+          [{ label: '2컷 그림', from: '지금 그림', to: '새로 뽑은 그림' }], { cuts });
+      }
+    }, 700);
+  }
+
+  sendSb = () => {
+    const text = this.state.sbInput.trim();
+    if (!text) return;
+    this.setState(s => ({ sbInput: '', sbMsgs: [...s.sbMsgs, { role: 'me', kind: 'text', text }] }));
+    this.aiSb(text);
+  };
+
+  makeComic = () => {
+    this.setState({ sbThinking: true });
+    setTimeout(() => {
+      const s = this.state;
+      const base = rnd();
+      const cuts = s.plan.map((c, i) => ({ n: c.n, short: c.short, line: c.line, hue: (base + i * 26) % 360 }));
+      const existed = s.comicCuts.length > 0;
+      this.propose('sb', 'comic',
+        existed ? '스토리대로 네컷만화를 새로 그렸어요. 확인하면 기존 그림을 교체합니다.' : '스토리대로 네컷만화를 그렸어요. 확인하면 결과에 반영할게요.',
+        cuts.map(c => ({ label: `${c.n}컷`, from: existed ? '지금 그림' : '아직 없음', to: c.line })),
+        { cuts });
+    }, 900);
+  };
+
+  rerollCut(n) {
+    this.setState(s => ({ comicCuts: s.comicCuts.map(c => c.n === n ? { ...c, hue: rnd() } : c) }));
+    this.toast(`${n}컷만 다시 그렸어요`);
+  }
+
+  confirmResult = () => {
+    this.go('save');
+  };
+
+  download = () => {
+    const item = {
+      id: Date.now(),
+      title: `${this.state.adType} · ${this.state.adConcept}`,
+      meta: `${this.state.trendApplied ? this.state.trendPick + ' · ' : ''}네컷만화 · 방금 저장`,
+      cuts: this.state.comicCuts.map(c => ({ hue: c.hue }))
+    };
+    this.setState(s => ({ history: [item, ...s.history] }));
+    this.toast('이미지와 문구를 내려받았어요');
+  };
+
+  renderVals() {
+    const s = this.state;
+    const inputStyle = 'height:44px;border-radius:12px;border:1.5px solid #DBDEE1;background:#fff;color:#2B2F36;font-size:14.5px;padding:0 14px;width:100%;min-width:0';
+    const textareaStyle = 'min-height:84px;border-radius:12px;border:1.5px solid #DBDEE1;background:#fff;color:#2B2F36;font-size:14.5px;padding:11px 14px;width:100%;resize:vertical;line-height:21px';
+    const roStyle = ';background:#F6F8F9;color:#6A7077';
+    const primary = 'height:52px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 6px 12px rgba(22,160,107,.32)';
+    const dis = 'height:52px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:16px;font-weight:700;opacity:.45;cursor:not-allowed';
+    const cardBase = 'text-align:left;background:#fff;border:1px solid #E8EAEC;border-radius:16px;padding:18px;display:flex;flex-direction:column;gap:7px;box-shadow:0 2px 6px rgba(20,28,36,.05)';
+
+    const charLocked = !s.storeSaved;
+    const adLocked = !s.charConfirmed;
+
+    const titles = {
+      home: ['AI 광고 만들기', '네컷만화 광고를 3단계로'],
+      store: ['가게 정보', s.storeReadOnly ? '저장된 내용을 보고 있어요' : '편집 중'],
+      char: ['마스코트 캐릭터 만들기', 'AI와 대화하며 캐릭터를 완성해요'],
+      charInfo: ['캐릭터 정보', '확정된 마스코트'],
+      ad: ['광고 생성', '종류와 컨셉을 고르세요'],
+      trend: ['트렌드 확인', '이번 주 뜨는 것들'],
+      sb: [s.trendApplied ? '스토리보드 및 트렌드 선택' : '스토리보드', '대화로 만들고 대화로 고쳐요'],
+      result: ['결과 크게 보기', `${s.adType} 기준`],
+      save: ['결과물 저장', '내려받고 바로 올리세요'],
+      my: ['내 정보', '히스토리 · 생산 기록 · 가게 · 캐릭터 · 백업'],
+      myStore: ['내 가게 정보', '조회 전용']
+    };
+    const [title, subtitle] = titles[s.screen] || titles.home;
+
+    const urlPaths = { home: '/', store: '/store', char: '/character', charInfo: '/character/info', ad: '/ad/new', trend: '/trend', sb: '/ad/storyboard', result: '/ad/result', save: '/ad/save', my: '/me', myStore: '/me/store' };
+
+    const EMPTY_CONFIRM = { title: '', diffs: [], open: false, done: false, statusText: '', statusStyle: '', confirm: () => {}, decline: () => {} };
+    const confirmView = (pid) => {
+      const p = s.pending[pid];
+      if (!p) return null;
+      const open = p.status === 'open';
+      return {
+        title: p.kind === 'comic' ? '네컷만화 변경 제안' : p.kind === 'char' ? '캐릭터 변경 제안' : '스토리 변경 제안',
+        diffs: p.diffs || [],
+        open, done: !open,
+        statusText: p.status === 'applied' ? '확인 — 이 내용으로 반영했어요' : '변경하지 않았어요',
+        statusStyle: `font-size:11.5px;font-weight:700;color:${p.status === 'applied' ? '#16A06B' : '#979CA2'}`,
+        confirm: () => this.confirmPending(pid),
+        decline: () => this.declinePending(pid)
+      };
+    };
+    const EMPTY_PROD = { name: '', qty: '', producedAt: '', soldOut: '', statusText: '', statusStyle: '', cardInputStyle: '', cardTimeStyle: '', onName: () => {}, onQty: () => {}, onSoldOut: () => {} };
+    const msgMap = (list, kindKeys) => list.map((m, i) => ({
+      wrapStyle: `display:flex;justify-content:${m.role === 'me' ? 'flex-end' : 'flex-start'}`,
+      isText: m.kind === 'text',
+      isCands: m.kind === 'cands',
+      isViews: m.kind === 'views',
+      isPlan: m.kind === 'plan',
+      isComic: m.kind === 'comic',
+      isProd: m.kind === 'prod',
+      isConfirm: m.kind === 'confirm',
+      confirm: (m.kind === 'confirm' && confirmView(m.pid)) || EMPTY_CONFIRM,
+      prod: (m.kind === 'prod' && prodView(s.prods.find(p => p.id === m.prodId))) || EMPTY_PROD,
+      text: m.text,
+      bubbleStyle: m.role === 'me'
+        ? 'max-width:80%;background:#16A06B;color:#fff;border-radius:14px 14px 4px 14px;padding:10px 14px;font-size:13.5px;line-height:20px;font-weight:500'
+        : 'max-width:86%;background:#fff;border:1px solid #E8EAEC;border-radius:14px 14px 14px 4px;padding:10px 14px;font-size:13.5px;line-height:20px',
+      items: kindKeys[m.ref] || []
+    }));
+
+    const prodView = (p) => {
+      if (!p) return null;
+      const missing = !p.soldOut;
+      const fieldBase = 'height:38px;border-radius:9px;border:1.5px solid #DBDEE1;background:#fff;color:#2B2F36;font-size:13.5px;padding:0 10px;width:100%;min-width:0';
+      const dateField = fieldBase.replace('min-width:0', 'min-width:168px') + ';cursor:pointer';
+      const timeField = fieldBase.replace('min-width:0', 'min-width:138px') + ';cursor:pointer';
+      return {
+        id: p.id, name: p.name, qty: p.qty, date: p.date, time: p.time,
+        producedAt: `${fmtDay(p.date)} ${p.time}`, soldOut: p.soldOut, missing,
+        statusText: missing ? '매진 시각 미입력' : `매진 ${p.soldOut} 기록됨`,
+        statusStyle: `font-size:11.5px;font-weight:700;color:${missing ? '#8A6A20' : '#16A06B'}`,
+        rowStyle: `display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:11px 13px;align-items:start;background:${missing ? '#FFF6E6' : '#fff'};border:1px solid ${missing ? '#F0DCB4' : '#E8EAEC'};border-radius:14px;padding:13px 15px`,
+        rowInputStyle: fieldBase,
+        rowDateStyle: dateField,
+        rowTimeStyle: timeField,
+        rowSoldStyle: timeField + (missing ? ';border-color:#E0BE74' : ''),
+        miniStyle: `display:flex;flex-direction:column;gap:7px;background:${missing ? '#FFF6E6' : '#F6F8F9'};border:1px solid ${missing ? '#F0DCB4' : '#E8EAEC'};border-radius:11px;padding:10px 11px`,
+        nameInputStyle: 'flex:1;min-width:0;height:30px;border-radius:8px;border:1px solid #DBDEE1;background:#fff;color:#2B2F36;font-size:12.5px;font-weight:600;padding:0 8px',
+        timeInputStyle: `flex:1 1 138px;min-width:138px;height:34px;border-radius:8px;border:1px solid ${missing ? '#E0BE74' : '#DBDEE1'};background:#fff;color:#2B2F36;font-size:12.5px;padding:0 8px;cursor:pointer`,
+        cardInputStyle: fieldBase,
+        cardDateStyle: dateField,
+        cardTimeStyle: timeField,
+        cardSoldStyle: timeField + (missing ? ';border-color:#E0BE74' : ''),
+        miniDateStyle: `flex:1 1 168px;min-width:168px;height:34px;border-radius:8px;border:1px solid #DBDEE1;background:#fff;color:#2B2F36;font-size:12.5px;padding:0 8px;cursor:pointer`,
+        onName: e => this.patchProd(p.id, { name: e.target.value }),
+        onQty: e => this.patchProd(p.id, { qty: e.target.value }),
+        onDate: e => this.patchProd(p.id, { date: e.target.value }),
+        onTime: e => this.patchProd(p.id, { time: e.target.value }),
+        onSoldOut: e => this.setSoldOut(p.id, e.target.value),
+        del: () => this.delProd(p.id)
+      };
+    };
+    const prodRows = s.prods.map(prodView);
+    const openPicker = e => { const el = e.target; if (el && el.showPicker) { try { el.showPicker(); } catch (err) {} } };
+    const missingProds = s.prods.filter(p => !p.soldOut);
+    const openProdTab = () => { this.setState({ myTab: 'prod', notifOpen: false }); if (this.state.screen !== 'my') this.go('my'); };
+
+    const candItems = s.charCands.map((c, i) => ({
+      label: c.label,
+      style: `width:92px;height:92px;border-radius:12px;cursor:pointer;background:${BG(c.hue)};border:${s.charSelected === i ? '2.5px solid #16A06B' : '1px solid #E8EAEC'};color:#2E6B4E;font-size:11.5px;font-weight:700;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px`,
+      select: () => this.selectCand(i),
+      reroll: () => this.rerollCand(i)
+    }));
+    const viewItems = s.charViews.map((v, i) => ({
+      label: v.label, bg: BG(v.hue), reroll: () => this.rerollView(i)
+    }));
+    const planItems = s.plan.map(c => ({ n: c.n, line: c.line }));
+    const comicItems = s.comicCuts.map(c => ({ n: c.n, bg: BG(c.hue), reroll: () => this.rerollCut(c.n) }));
+
+    const barVals = [92, 78, 64, 51, 37];
+    const trendBars = TRENDS.concat(['가을 신메뉴']).slice(0, 5).map((t, i) => ({
+      label: t, value: barVals[i],
+      h: `${Math.round(barVals[i] * 0.95)}px`,
+      fill: i === 0 ? '#16A06B' : '#CFEFE0'
+    }));
+
+    const trendAccordion = TREND_DETAIL.map((t, i) => {
+      const open = s.openTrend === t.name;
+      return {
+        name: t.name, delta: t.delta, summary: t.summary, stats: t.stats, links: t.links,
+        rank: `${i + 1}위`,
+        open,
+        wrapStyle: `border:1px solid ${open ? '#CFEFE0' : '#E8EAEC'};background:${open ? '#F1FBF6' : '#fff'};border-radius:14px;overflow:hidden`,
+        caretStyle: `font-size:15px;color:#979CA2;transition:transform .18s ease;display:inline-block;transform:rotate(${open ? 180 : 0}deg)`,
+        toggle: () => this.setState(st => ({ openTrend: st.openTrend === t.name ? '' : t.name })),
+        use: () => {
+          if (!this.state.charConfirmed) { this.toast('캐릭터를 먼저 확정해주세요'); return; }
+          this.setState({ trendPick: t.name, trendApplied: true, fromAd: false });
+          this.resetSb(true);
+          this.go('sb');
+        }
+      };
+    });
+
+    const sbSummary = `${s.adType} · ${s.adConcept}${s.trendApplied ? ` · ${s.trendPick}` : ''}${s.charName ? ` · ${s.charName}` : ''}`;
+
+    return {
+      urlPath: urlPaths[s.screen] || '/',
+      title, subtitle,
+      headTag: s.screen === 'store' && s.storeReadOnly ? '조회 모드'
+        : s.screen === 'myStore' ? '조회 모드'
+        : '',
+      showSettings: s.screen === 'sb' || s.screen === 'result',
+      settingChips: [
+        { text: s.adType, tone: 'plain' },
+        { text: s.adConcept, tone: 'plain' },
+        s.trendApplied ? { text: s.trendPick, tone: 'accent' } : null,
+        s.charName ? { text: s.charName, tone: 'plain' } : null
+      ].filter(Boolean).map(c => ({
+        text: c.text,
+        style: c.tone === 'accent'
+          ? 'font-size:11px;font-weight:700;background:#E6F7EF;color:#2E6B4E;border-radius:999px;padding:5px 11px'
+          : 'font-size:11px;font-weight:600;background:#F6F8F9;border:1px solid #E8EAEC;color:#6A7077;border-radius:999px;padding:4px 10px'
+      })),
+      canBack: s.screen !== 'home',
+      back: this.back,
+      toast: s.toast,
+      reset: () => { try { localStorage.removeItem('aiad-proto'); } catch (e) {} location.reload(); },
+
+      isHome: s.screen === 'home', isStore: s.screen === 'store', isChar: s.screen === 'char',
+      isCharInfo: s.screen === 'charInfo', isAd: s.screen === 'ad', isTrend: s.screen === 'trend',
+      isSb: s.screen === 'sb', isResult: s.screen === 'result', isSave: s.screen === 'save',
+      isMy: s.screen === 'my', isMyStore: s.screen === 'myStore',
+
+      inputStyle, textareaStyle,
+
+      goHome: () => this.setState({ screen: 'home', stack: [], trendPopup: false }),
+      goStore: () => this.go('store'),
+      goChar: () => { if (charLocked) { this.toast('가게 정보를 먼저 저장해주세요'); return; } this.go('char'); },
+      goAd: () => { if (adLocked) { this.toast('캐릭터를 먼저 확정해주세요'); return; } this.go('ad'); },
+      goTrendHome: () => { this.setState({ fromAd: false }); this.go('trend'); },
+      goMy: () => { this.setState({ myTab: 'history' }); this.go('my'); },
+
+      storeStatus: s.storeSaved ? '입력 완료 · 보기/수정' : '미입력',
+      storeStatusColor: s.storeSaved ? '#16A06B' : '#C9912B',
+      charStatus: s.charConfirmed ? `확정 — ${s.charName}` : charLocked ? '잠김 · 가게 정보 먼저' : '아직 없음',
+      charStatusColor: s.charConfirmed ? '#16A06B' : charLocked ? '#979CA2' : '#C9912B',
+      adStatus: adLocked ? '잠김 · 캐릭터 먼저' : '시작할 수 있어요',
+      adStatusColor: adLocked ? '#979CA2' : '#16A06B',
+      charLocked, adLocked,
+      card2Style: cardBase + (charLocked ? ';opacity:.45;cursor:not-allowed' : ';cursor:pointer'),
+      card3Style: cardBase + (adLocked ? ';opacity:.45;cursor:not-allowed' : ';cursor:pointer'),
+      historyCount: s.history.length,
+
+      storeCategory: s.storeCategory, storeAddress: s.storeAddress, storeHours: s.storeHours,
+      storeDesc: s.storeDesc, storeReadOnly: s.storeReadOnly,
+      storeImages: s.storeImages.map((im, i) => ({ label: im.label, bg: BG(im.hue), reroll: () => this.rerollStoreImage(i) })),
+      addImage: this.addImage,
+      addImageStyle: `width:112px;height:88px;border-radius:12px;border:1.5px dashed #DBDEE1;background:#fff;color:#6A7077;font-size:24px;cursor:${s.storeReadOnly ? 'not-allowed' : 'pointer'};opacity:${s.storeReadOnly ? .45 : 1}`,
+      onCategory: e => this.setState({ storeCategory: e.target.value }),
+      onAddress: e => this.setState({ storeAddress: e.target.value }),
+      onHours: e => this.setState({ storeHours: e.target.value }),
+      onDesc: e => this.setState({ storeDesc: e.target.value }),
+      editStore: () => { this.setState({ storeReadOnly: false }); this.toast('편집할 수 있어요'); },
+      saveStore: this.saveStore,
+      saveStoreStyle: (s.storeReadOnly ? dis : primary) + ';min-width:150px',
+
+      charName: s.charName, charAge: s.charAge, charGender: s.charGender,
+      charHobby: s.charHobby, charLook: s.charLook,
+      onCharName: e => this.setState({ charName: e.target.value }),
+      onCharAge: e => this.setState({ charAge: e.target.value }),
+      onCharGender: e => this.setState({ charGender: e.target.value }),
+      onCharHobby: e => this.setState({ charHobby: e.target.value }),
+      onCharLook: e => this.setState({ charLook: e.target.value }),
+      charListRef: this.charListRef,
+      charMsgs: msgMap(s.charMsgs, { cands: candItems, views: viewItems }),
+      charThinking: s.charThinking,
+      charInput: s.charInput,
+      onCharInput: e => this.setState({ charInput: e.target.value }),
+      onCharKey: e => { if (e.key === 'Enter') this.sendChar(); },
+      sendChar: this.sendChar,
+      genCandidates: this.genCandidates,
+      loadChar: this.loadChar,
+      confirmChar: this.confirmChar,
+      confirmCharDisabled: s.charSelected < 0,
+      confirmCharStyle: s.charSelected < 0 ? dis : primary,
+      charViews: viewItems,
+      charInfoReadOnly: s.charInfoReadOnly,
+      charEditLabel: s.charInfoReadOnly ? '수정 (수기 입력)' : '수정 완료',
+      toggleCharEdit: () => { this.setState(st => ({ charInfoReadOnly: !st.charInfoReadOnly })); if (!s.charInfoReadOnly) this.toast('캐릭터 정보를 저장했어요'); },
+
+      adType: s.adType, adConcept: s.adConcept,
+      onAdType: e => this.setState({ adType: e.target.value }),
+      onAdConcept: e => this.setState({ adConcept: e.target.value }),
+      applyAd: this.applyAd,
+      trendPopup: s.trendPopup,
+      trendHint: s.adType === '메뉴판'
+        ? '메뉴판은 트렌드를 붙이기 어려워 \u0027예\u0027가 꺼져 있어요.'
+        : '요즘 뜨는 밈을 얹으면 반응이 빨라요.',
+      trendYes: this.trendYes, trendNo: this.trendNo,
+      trendYesDisabled: s.adType === '메뉴판',
+      trendYesStyle: `flex:1;height:48px;border-radius:12px;border:0;background:#16A06B;color:#fff;font-size:15px;font-weight:700;${s.adType === '메뉴판' ? 'opacity:.45;cursor:not-allowed' : 'cursor:pointer;box-shadow:0 6px 12px rgba(22,160,107,.32)'}`,
+      goTrendFromAd: () => { this.setState({ fromAd: true, trendPopup: false }); this.go('trend'); },
+      fromAd: s.fromAd,
+      backToAd: () => { this.setState({ fromAd: false, screen: 'ad', trendPopup: true }); },
+
+      trendBars, trendNames: TRENDS, trendPick: s.trendPick,
+      onTrendPick: e => this.setState({ trendPick: e.target.value }),
+      trendAccordion,
+
+      sbTrendMode: s.trendApplied,
+      sbSummary,
+      sbListRef: this.sbListRef,
+      sbMsgs: msgMap(s.sbMsgs, { plan: planItems, comic: comicItems }),
+      sbThinking: s.sbThinking,
+      sbInput: s.sbInput,
+      onSbInput: e => this.setState({ sbInput: e.target.value }),
+      onSbKey: e => { if (e.key === 'Enter') this.sendSb(); },
+      sendSb: this.sendSb,
+      sbSetOpen: s.sbSetOpen,
+      toggleSbSet: () => this.setState(st => ({ sbSetOpen: !st.sbSetOpen })),
+      sbSetWrapStyle: `border:1px solid ${s.sbSetOpen ? '#CFEFE0' : '#E8EAEC'};background:${s.sbSetOpen ? '#F1FBF6' : '#fff'};border-radius:14px;overflow:hidden`,
+      sbSetCaretStyle: `font-size:14px;color:#979CA2;display:inline-block;flex:none;transition:transform .18s ease;transform:rotate(${s.sbSetOpen ? 180 : 0}deg)`,
+      storyCuts: s.plan.map(c => ({ n: c.n, line: c.line })),
+      storyEmpty: s.plan.length === 0,
+      storyBadge: s.plan.length ? (s.comicCuts.length ? '네컷만화 반영됨' : '4컷 확정') : '비어 있음',
+      storyBadgeStyle: `font-size:10.5px;font-weight:700;border-radius:999px;padding:3px 8px;background:${s.plan.length ? '#E6F7EF' : '#EFF2F4'};color:${s.plan.length ? '#2E6B4E' : '#979CA2'}`,
+      makeComic: () => { if (!s.plan.length) { this.toast('먼저 대화로 플랜을 만들어주세요'); return; } this.makeComic(); },
+      makeComicDisabled: !s.plan.length,
+      makeComicLabel: s.comicCuts.length ? '네컷만화 재생성' : '네컷만화 생성',
+      makeComicStyle: !s.plan.length ? dis : primary,
+      openResult: () => this.go('result'),
+
+      comicCuts: s.comicCuts.map(c => ({ n: c.n, short: c.short, bg: BG(c.hue), reroll: () => this.rerollCut(c.n) })),
+      resultHeadline: s.trendApplied ? `눈이 번쩍! 소금빵 갓 나왔습니다` : `오늘 아침 갓 구운 소금빵`,
+      resultBody: `${s.storeCategory} · ${s.storeAddress || '연남동'} · ${s.storeHours || '11:00 – 22:00'}\n새벽에 반죽해 오븐에서 바로 꺼냈어요. ${s.charName || '마스코트'}가 기다릴게요.`,
+      resultTags: s.trendApplied ? `#${s.trendPick.replace(/ /g, '')} #소금빵 #연남동빵집` : '#소금빵 #연남동빵집 #갓구운빵',
+      backToSb: () => this.setState(st => ({ screen: 'sb', stack: st.stack.filter(x => x !== 'result') })),
+      confirmResult: this.confirmResult,
+      saveNote: '이미지 4컷과 광고 문구가 함께 저장돼요. 인스타에 올릴 땐 문구를 그대로 붙여 넣으면 됩니다.',
+      download: this.download,
+
+      myTab1Style: `height:48px;border-radius:12px;border:0;font-size:15px;font-weight:700;cursor:pointer;text-align:left;padding:0 16px;background:${s.myTab === 'history' ? '#2B2F36' : '#EFF2F4'};color:${s.myTab === 'history' ? '#fff' : '#2B2F36'}`,
+      myTab2Style: 'height:48px;border-radius:12px;border:0;font-size:15px;font-weight:700;cursor:pointer;text-align:left;padding:0 16px;background:#EFF2F4;color:#2B2F36',
+      myTab3Style: 'height:48px;border-radius:12px;border:0;font-size:15px;font-weight:700;cursor:pointer;text-align:left;padding:0 16px;background:#EFF2F4;color:#2B2F36',
+      myHistory: () => this.setState({ myTab: 'history', notifOpen: false }),
+      myStore: () => this.go('myStore'),
+      myChar: () => { if (!s.charConfirmed) { this.toast('아직 확정된 캐릭터가 없어요'); return; } this.go('charInfo'); },
+      myEmpty: s.history.length === 0,
+      showHistEmpty: s.myTab === 'history' && s.history.length === 0,
+      isHistoryTab: s.myTab === 'history',
+      isProdTab: s.myTab === 'prod',
+      myTabProdStyle: `height:48px;border-radius:12px;border:0;font-size:15px;font-weight:700;cursor:pointer;text-align:left;padding:0 16px;display:flex;align-items:center;gap:8px;background:${s.myTab === 'prod' ? '#2B2F36' : '#EFF2F4'};color:${s.myTab === 'prod' ? '#fff' : '#2B2F36'}`,
+      myTabProdBadge: missingProds.length
+        ? 'font-size:11px;font-weight:800;background:#C9912B;color:#fff;border-radius:999px;padding:2px 7px'
+        : 'display:none',
+      goProd: openProdTab,
+      openPicker,
+      sbProdOpen: s.sbProdOpen,
+      toggleSbProd: () => this.setState(st => ({ sbProdOpen: !st.sbProdOpen })),
+      sbProdWrapStyle: `border:1px solid ${s.sbProdOpen ? '#CFEFE0' : '#E8EAEC'};background:${s.sbProdOpen ? '#F1FBF6' : '#fff'};border-radius:14px;overflow:hidden`,
+      sbProdCaretStyle: `font-size:14px;color:#979CA2;display:inline-block;transition:transform .18s ease;transform:rotate(${s.sbProdOpen ? 180 : 0}deg)`,
+      sbProdCount: missingProds.length ? `${s.prods.length}건 · 매진 미입력 ${missingProds.length}` : `${s.prods.length}건`,
+      sbProdCountStyle: `font-size:11px;font-weight:700;border-radius:999px;padding:3px 8px;background:${missingProds.length ? '#FFF6E6' : '#EFF2F4'};color:${missingProds.length ? '#7A5C15' : '#6A7077'}`,
+      isDataTab: s.myTab === 'data',
+      myTabDataStyle: `height:48px;border-radius:12px;border:0;font-size:15px;font-weight:700;cursor:pointer;text-align:left;padding:0 16px;background:${s.myTab === 'data' ? '#2B2F36' : '#EFF2F4'};color:${s.myTab === 'data' ? '#fff' : '#2B2F36'}`,
+      goData: () => { this.setState({ myTab: 'data', notifOpen: false }); if (this.state.screen !== 'my') this.go('my'); },
+      exportData: this.exportData,
+      importFile: this.importFile,
+      backupSummary: [
+        { k: '저장된 광고', v: `${s.history.length}건` },
+        { k: '생산 기록', v: `${s.prods.length}건${missingProds.length ? ` · 미입력 ${missingProds.length}` : ''}` },
+        { k: '품목', v: `${s.items.length}개` },
+        { k: '마스코트', v: s.charConfirmed ? `${s.charName || '이름 없음'} · 4방향 이미지` : '아직 확정 안 됨' },
+        { k: '가게 정보', v: s.storeSaved ? `${s.storeCategory} · 이미지 ${s.storeImages.length}장` : '미입력' }
+      ],
+      backupNote: s.backupNote || '내보낸 파일은 이 프로토타입에서만 열 수 있어요.',
+      backupNoteStyle: s.backupErr
+        ? 'font-size:12.5px;line-height:19px;padding:12px 14px;border-radius:12px;background:#FFF6E6;border:1px solid #F0DCB4;color:#7A5C15;font-weight:600'
+        : `font-size:12.5px;line-height:19px;padding:12px 14px;border-radius:12px;background:${s.backupNote ? '#F1FBF6' : '#F6F8F9'};border:1px solid ${s.backupNote ? '#CFEFE0' : '#E8EAEC'};color:${s.backupNote ? '#2E6B4E' : '#979CA2'};font-weight:${s.backupNote ? 600 : 500}`,
+      prodRows, prodEmpty: s.prods.length === 0,
+      recentProds: prodRows.slice(0, 3),
+      items: s.items, itemsEmpty: s.items.length === 0,
+      itemRows: s.items.map((n, i) => {
+        const mine = s.prods.filter(p => p.name === n);
+        const last = mine[0];
+        return {
+          name: n, count: `${mine.length}건`,
+          last: last ? `${fmtDay(last.date)} ${last.time}` : '—',
+          rowStyle: `display:flex;align-items:center;gap:10px;padding:7px 14px;background:#fff${i < s.items.length - 1 ? ';border-bottom:1px solid #F1F3F4' : ''}`,
+          onName: e => this.renameItem(n, e.target.value),
+          del: () => this.delItem(n)
+        };
+      }),
+      newItem: s.newItem,
+      onNewItem: e => this.setState({ newItem: e.target.value }),
+      onNewItemKey: e => { if (e.key === 'Enter') this.addItem(); },
+      addItem: this.addItem,
+      draftItem: s.draftItem, draftQty: s.draftQty, draftDate: s.draftDate, draftTime: s.draftTime, draftSold: s.draftSold,
+      onDraftDate: e => this.setState({ draftDate: e.target.value }),
+      onDraftItem: e => this.setState({ draftItem: e.target.value }),
+      onDraftQty: e => this.setState({ draftQty: e.target.value }),
+      onDraftTime: e => this.setState({ draftTime: e.target.value }),
+      onDraftSold: e => this.setState({ draftSold: e.target.value }),
+      addProd: this.addProd,
+      prodStatus: s.prods.length ? (missingProds.length ? `매진 미입력 ${missingProds.length}건` : `기록 ${s.prods.length}건 · 모두 입력됨`) : '기록 없음',
+      prodStatusColor: missingProds.length ? '#C9912B' : s.prods.length ? '#16A06B' : '#979CA2',
+      hasMissing: missingProds.length > 0,
+      notifCount: missingProds.length,
+      notifEmpty: missingProds.length === 0,
+      notifOpen: s.notifOpen,
+      toggleNotif: () => this.setState(st => ({ notifOpen: !st.notifOpen })),
+      notifBtnStyle: `height:32px;border-radius:999px;padding:0 12px;font-size:12.5px;font-weight:700;border:1px solid ${missingProds.length ? '#F0DCB4' : '#E8EAEC'};background:${missingProds.length ? '#FFF6E6' : '#fff'};color:${missingProds.length ? '#7A5C15' : '#6A7077'};cursor:pointer;display:flex;align-items:center;gap:7px`,
+      notifBadgeStyle: missingProds.length
+        ? 'font-size:11px;font-weight:800;background:#C9912B;color:#fff;border-radius:999px;padding:2px 7px'
+        : 'display:none',
+      notifs: missingProds.map(p => ({
+        title: `'${p.name}' 매진 시각을 적어주세요`,
+        meta: `${fmtDay(p.date)} ${p.time} 생산${p.qty ? ' · ' + p.qty : ''}`,
+        fix: openProdTab
+      })),
+      historyShown: (s.myTab === 'history' ? s.history : []).map(h => ({
+        title: h.title, meta: h.meta,
+        cuts: h.cuts.map(c => ({ bg: BG(c.hue) })),
+        open: () => { this.setState({ comicCuts: h.cuts.map((c, i) => ({ n: i + 1, short: BASE_PLAN[i].short, hue: c.hue })) }); this.go('result'); }
+      })),
+      editStoreFromMy: () => { this.setState({ storeReadOnly: false }); this.go('store'); }
+    };
+  }
+}
+
+</script>
+</body>
+</html>

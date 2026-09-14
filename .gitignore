@@ -1,0 +1,13 @@
+# 압축 산출물 — VM 업로드용으로 임시 생성한 것들, 소스만 커밋
+*.zip
+
+# frontend (Vite)
+frontend/node_modules/
+frontend/dist/
+
+# backend (FastAPI)
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.db
+backend/.env

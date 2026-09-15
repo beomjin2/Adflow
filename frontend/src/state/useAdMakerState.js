@@ -149,11 +149,21 @@ export function useAdMakerState() {
     try {
       const updated = await CharacterAPI.genCandidates();
       update({ ...updated, charThinking: false });
+      // 항목만 먼저 반환됨 — 실제 이미지는 하나씩 순차로 채운다 (요청당 이미지 1장, 타임아웃 방지)
+      for (let i = 0; i < (updated.charCands || []).length; i++) {
+        try { update(await CharacterAPI.rerollCandidate(i)); } catch (e) { fail(e); }
+      }
     } catch (e) { update({ charThinking: false }); fail(e); }
   }, [update, fail]);
 
   const selectCand = useCallback(async (i) => {
-    try { update(await CharacterAPI.select(i)); } catch (e) { fail(e); }
+    try {
+      const updated = await CharacterAPI.select(i);
+      update(updated);
+      for (let v = 0; v < (updated.charViews || []).length; v++) {
+        try { update(await CharacterAPI.rerollView(v)); } catch (e) { fail(e); }
+      }
+    } catch (e) { fail(e); }
   }, [update, fail]);
 
   const rerollCand = useCallback(async (i) => {

@@ -7,6 +7,17 @@ from datetime import datetime, timedelta
 from app.services.image_gen import random_hue
 
 VIEW_LABELS = ["정면", "좌측면", "우측면", "뒷면"]
+VIEW_HINTS = {"정면": "front view", "좌측면": "left side view", "우측면": "right side view", "뒷면": "back view"}
+
+
+def character_prompt(char, hint: str = "") -> str:
+    base = (char.look or "").strip()
+    if not base:
+        base = ", ".join(p for p in [char.name, char.age, char.gender, char.hobby] if p) or "cute mascot character"
+    pieces = [base, "mascot character illustration", "simple white background", "high quality", "anime style"]
+    if hint:
+        pieces.append(hint)
+    return ", ".join(pieces)
 
 
 def generate_candidates(count: int = 3) -> list[dict]:

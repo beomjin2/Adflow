@@ -21,12 +21,14 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll }) {
         {items.map((c, i) => (
           <div key={i} style={{ position: 'relative' }}>
             <button onClick={() => onSelect(i)} style={{
-              width: 92, height: 92, borderRadius: 12, cursor: 'pointer',
-              background: bgGradient(c.hue),
+              width: 92, height: 92, borderRadius: 12, cursor: 'pointer', overflow: 'hidden',
+              background: c.image ? undefined : bgGradient(c.hue),
+              backgroundImage: c.image ? `url(${c.image})` : undefined,
+              backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
               border: selected === i ? `2.5px solid ${colors.primary}` : `1px solid ${colors.cardBorder}`,
               color: colors.primarySoftText, fontSize: 11.5, fontWeight: 700,
               display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 8
-            }}>{c.label}</button>
+            }}>{!c.image && c.label}</button>
             <button onClick={() => onReroll(i)} title="같은 설정으로 다시 생성" style={rerollButtonStyle}>↻</button>
           </div>
         ))}
@@ -42,7 +44,13 @@ export function ViewsBubble({ items, onReroll }) {
       <span style={bubbleTitleStyle}>4방향으로 뽑았어요</span>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {items.map((v, i) => (
-          <div key={i} style={{ position: 'relative', width: 86, height: 86, borderRadius: 12, border: `1px solid ${colors.cardBorder}`, overflow: 'hidden', background: bgGradient(v.hue), display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 6 }}>
+          <div key={i} style={{
+            position: 'relative', width: 86, height: 86, borderRadius: 12, border: `1px solid ${colors.cardBorder}`,
+            overflow: 'hidden', background: v.image ? undefined : bgGradient(v.hue),
+            backgroundImage: v.image ? `url(${v.image})` : undefined,
+            backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+            display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 6
+          }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: colors.primarySoftText, background: 'rgba(255,255,255,.85)', borderRadius: 6, padding: '2px 6px' }}>{v.label}</span>
             <button onClick={() => onReroll(i)} style={rerollButtonStyle}>↻</button>
           </div>

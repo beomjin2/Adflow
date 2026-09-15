@@ -3,8 +3,8 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.core.database import get_db
-from app.services.chat_ai import generate_candidates, generate_views
-from app.services.image_gen import random_hue
+from app.services.chat_ai import VIEW_HINTS, character_prompt, generate_candidates, generate_views
+from app.services.image_gen import generate_image, random_hue
 
 router = APIRouter(prefix="/api/character", tags=["character"])
 
@@ -69,10 +69,19 @@ def gen_candidates(db: Session = Depends(get_db)):
 @router.post("/candidates/{index}/reroll", response_model=schemas.CharacterOut)
 def reroll_candidate(index: int, db: Session = Depends(get_db)):
     char = _get(db)
+    cands = char.candidates or []
+    if not 0 <= index < len(cands):
+        raise HTTPException(404, "candidate index out of range")
+    label = cands[index].get("label", f"후보{index + 1}")
+    prompt = character_prompt(char, f"variation {index + 1}")
+
+    image = generate_image(prompt)
+
+    db.refresh(char)
     cands = list(char.candidates or [])
     if not 0 <= index < len(cands):
         raise HTTPException(404, "candidate index out of range")
-    cands[index] = {**cands[index], "hue": random_hue()}
+    cands[index] = {"label": label, "hue": random_hue(), "image": image}
     char.candidates = cands
     db.commit()
     db.refresh(char)
@@ -100,10 +109,19 @@ def select_candidate(index: int, db: Session = Depends(get_db)):
 @router.post("/views/{index}/reroll", response_model=schemas.CharacterOut)
 def reroll_view(index: int, db: Session = Depends(get_db)):
     char = _get(db)
+    views = char.views or []
+    if not 0 <= index < len(views):
+        raise HTTPException(404, "view index out of range")
+    label = views[index].get("label", "정면")
+    prompt = character_prompt(char, VIEW_HINTS.get(label, "front view"))
+
+    image = generate_image(prompt)
+
+    db.refresh(char)
     views = list(char.views or [])
     if not 0 <= index < len(views):
         raise HTTPException(404, "view index out of range")
-    views[index] = {**views[index], "hue": random_hue()}
+    views[index] = {"label": label, "hue": random_hue(), "image": image}
     char.views = views
     db.commit()
     db.refresh(char)

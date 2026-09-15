@@ -9,9 +9,10 @@ class Settings(BaseSettings):
     comfy_base_url: str = ""
     comfy_user: str = ""
     comfy_password: str = ""
-    comfy_unet_name: str = "anima-aesthetic-v1.1.safetensors"
-    comfy_clip_name: str = "qwen_3_06b_base.safetensors"
-    comfy_vae_name: str = "qwen_image_vae.safetensors"
+    # app/services/workflows/ 밑의 파일명 (또는 절대경로). ComfyUI에서 Export(API format)한
+    # 그래프를 그대로 이 파일에 덮어쓰면 워크플로우를 바꿀 수 있다 (image_gen.py가 positive/negative
+    # 연결을 따라가 프롬프트를 자동으로 채워 넣는다).
+    comfy_workflow_file: str = "character_default.json"
     comfy_timeout_seconds: int = 150
 
     @property

@@ -28,6 +28,24 @@ const SCREENS = {
 
 export default function App() {
   const { state, actions, charLocked, adLocked } = useAdMakerState();
+
+  if (state.loading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6A7077', fontSize: 14 }}>
+        불러오는 중…
+      </div>
+    );
+  }
+
+  if (state.loadError) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center', justifyContent: 'center', color: '#2B2F36', fontSize: 14, padding: 24, textAlign: 'center' }}>
+        <span style={{ fontWeight: 700 }}>백엔드에 연결하지 못했어요</span>
+        <span style={{ color: '#6A7077', fontSize: 13 }}>{state.loadError}</span>
+      </div>
+    );
+  }
+
   const Screen = SCREENS[state.screen] || Home;
   const missingProdsCount = state.prods.filter(p => !p.soldOut).length;
 

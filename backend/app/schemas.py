@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 class ImageItem(BaseModel):
     label: str
     hue: int
+    image: str | None = None
 
 
 # ---------- store ----------

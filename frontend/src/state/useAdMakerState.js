@@ -1,78 +1,49 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  BASE_PLAN, TRENDS, generateCandidates, generateViews,
-  itemFrom, qtyFrom, dayFrom, timeFrom, isoDay, fmtDay
-} from '../mock/aiResponses.js';
-import { randomHue } from '../theme.js';
-
-const SEEDED = true;
+  AdAPI, CharacterAPI, HistoryAPI, ProductionAPI, StoreAPI, StoryboardAPI, TrendAPI,
+} from '../api/client.js';
 
 function initialState() {
+  const today = new Date().toISOString().slice(0, 10);
   return {
     screen: 'home',
     stack: [],
     toast: '',
+    loading: true,
+    loadError: '',
 
-    storeSaved: SEEDED,
-    storeReadOnly: SEEDED,
-    storeCategory: '베이커리',
-    storeAddress: SEEDED ? '서울 마포구 연남로 21' : '',
-    storeHours: SEEDED ? '08:00 – 20:00, 월 휴무' : '',
-    storeDesc: SEEDED ? '매일 새벽 반죽해 오븐에서 바로 꺼내는 동네 빵집. 소금빵과 통밀 캄파뉴가 간판이에요.' : '',
-    storeImages: SEEDED ? [{ label: '소금빵', hue: 38 }, { label: '오늘 구운 빵 진열대', hue: 26 }] : [],
+    storeSaved: false, storeReadOnly: false,
+    storeCategory: '', storeAddress: '', storeHours: '', storeDesc: '', storeImages: [],
 
     charName: '', charAge: '', charGender: '', charHobby: '', charLook: '',
-    charMsgs: [{ role: 'ai', kind: 'text', text: '어떤 마스코트를 원하세요? 가게 분위기나 느낌을 편하게 말해주세요.' }],
-    charInput: '',
-    charThinking: false,
-    charCands: [],
-    charSelected: -1,
-    charViews: [],
-    charConfirmed: false,
-    charInfoReadOnly: true,
+    charMsgs: [], charInput: '', charThinking: false,
+    charCands: [], charSelected: -1, charViews: [],
+    charConfirmed: false, charInfoReadOnly: true,
 
-    adType: '인스타 게시물',
-    adConcept: '유쾌함',
-    trendPopup: false,
-    trendApplied: false,
-    trendPick: TRENDS[0],
-    openTrend: '',
-    fromAd: false,
+    adType: '인스타 게시물', adConcept: '유쾌함',
+    trendPopup: false, trendApplied: false, trendPick: '', openTrend: '', fromAd: false,
+    trendBars: [], trendDetail: [],
 
-    sbMsgs: [{ role: 'ai', kind: 'text', text: '어떤 이야기로 광고를 만들까요? 알리고 싶은 걸 말해주세요.' }],
-    sbInput: '',
-    sbThinking: false,
-    plan: [],
-    comicCuts: [],
-    sbProdLogged: false,
-    sbSetOpen: false,
-    sbProdOpen: false,
+    sbMsgs: [], sbInput: '', sbThinking: false,
+    plan: [], comicCuts: [], sbProdLogged: false, sbSetOpen: false, sbProdOpen: false, pending: {},
 
-    myTab: 'history',
-    history: [],
+    myTab: 'history', history: [],
 
-    items: SEEDED ? ['소금빵', '버터 크루아상', '통밀 캄파뉴'] : [],
-    prods: SEEDED ? [
-      { id: 3, name: '소금빵', qty: '60개', date: isoDay(0), time: '07:40', soldOut: '' },
-      { id: 2, name: '버터 크루아상', qty: '40개', date: isoDay(-1), time: '13:20', soldOut: '' },
-      { id: 1, name: '통밀 캄파뉴', qty: '12개', date: isoDay(-1), time: '06:50', soldOut: '16:10' }
-    ] : [],
-    newItem: '',
-    draftItem: SEEDED ? '소금빵' : '',
-    draftQty: '', draftDate: isoDay(0), draftTime: '', draftSold: '',
+    items: [], prods: [],
+    newItem: '', draftItem: '', draftQty: '', draftDate: today, draftTime: '', draftSold: '',
 
-    notifOpen: false,
-    pending: {},
-    backupNote: '', backupErr: false
+    notifOpen: false, backupNote: '', backupErr: false,
   };
 }
 
 export function useAdMakerState() {
   const [state, setState] = useState(initialState);
   const toastTimer = useRef(null);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const update = useCallback((patch) => {
-    setState(s => ({ ...s, ...(typeof patch === 'function' ? patch(s) : patch) }));
+    setState((s) => ({ ...s, ...(typeof patch === 'function' ? patch(s) : patch) }));
   }, []);
 
   const set = useCallback((field, value) => update({ [field]: value }), [update]);
@@ -83,12 +54,38 @@ export function useAdMakerState() {
     toastTimer.current = setTimeout(() => update({ toast: '' }), 2200);
   }, [update]);
 
+  const fail = useCallback((e) => toast(e.message || '요청에 실패했어요'), [toast]);
+
+  // ---------- initial load ----------
+  useEffect(() => {
+    (async () => {
+      try {
+        const [store, character, ad, trend, storyboard, items, prods, history] = await Promise.all([
+          StoreAPI.get(), CharacterAPI.get(), AdAPI.get(), TrendAPI.get(), StoryboardAPI.get(),
+          ProductionAPI.listItems(), ProductionAPI.listRecords(), HistoryAPI.list(),
+        ]);
+        update({
+          ...store, ...character, ...ad,
+          trendBars: trend.bars, trendDetail: trend.detail,
+          ...storyboard,
+          items, prods, history,
+          storeReadOnly: store.storeSaved,
+          draftItem: items[0] || '',
+          loading: false,
+        });
+      } catch (e) {
+        update({ loading: false, loadError: e.message || '백엔드에 연결할 수 없어요' });
+      }
+    })();
+  }, [update]);
+
+  // ---------- navigation (전부 로컬 UI 상태) ----------
   const go = useCallback((screen) => {
-    update(s => ({ screen, stack: [...s.stack, s.screen] }));
+    update((s) => ({ screen, stack: [...s.stack, s.screen] }));
   }, [update]);
 
   const back = useCallback(() => {
-    update(s => {
+    update((s) => {
       const stack = [...s.stack];
       const prev = stack.pop();
       return { screen: prev || 'home', stack };
@@ -96,6 +93,7 @@ export function useAdMakerState() {
   }, [update]);
 
   const goHome = useCallback(() => update({ screen: 'home', stack: [], trendPopup: false }), [update]);
+  const resetDemo = useCallback(() => window.location.reload(), []);
 
   const charLocked = !state.storeSaved;
   const adLocked = !state.charConfirmed;
@@ -114,356 +112,281 @@ export function useAdMakerState() {
   const openProdTab = useCallback(() => { update({ myTab: 'prod', notifOpen: false }); go('my'); }, [go, update]);
   const goData = useCallback(() => { update({ myTab: 'data', notifOpen: false }); go('my'); }, [go, update]);
 
-  const resetDemo = useCallback(() => setState(initialState()), []);
-
   // ---------- store ----------
   const editStore = useCallback(() => { update({ storeReadOnly: false }); toast('편집할 수 있어요'); }, [update, toast]);
-  const saveStore = useCallback(() => {
-    update({ storeSaved: true, storeReadOnly: true });
-    toast('가게 정보를 저장했어요');
-  }, [update, toast]);
-  const addImage = useCallback(() => {
-    update(s => ({ storeImages: [...s.storeImages, { label: `이미지 ${s.storeImages.length + 1}`, hue: randomHue() }] }));
-  }, [update]);
-  const rerollStoreImage = useCallback((i) => {
-    update(s => ({ storeImages: s.storeImages.map((im, idx) => idx === i ? { ...im, hue: randomHue() } : im) }));
-    toast('다시 생성했어요');
-  }, [update, toast]);
 
-  // ---------- proposal / confirm (storyboard의 plan/comic 제안-승인 카드) ----------
-  const confirmPending = useCallback((pid) => {
-    update(s => {
-      const p = s.pending[pid];
-      if (!p) return {};
-      const key = p.which === 'char' ? 'charMsgs' : 'sbMsgs';
-      const patch = { pending: { ...s.pending, [pid]: { ...p, status: 'applied' } } };
-      if (p.kind === 'plan') {
-        patch.plan = p.payload.plan;
-        patch[key] = [...s[key], { role: 'ai', kind: 'plan', ref: 'plan' }];
-      } else if (p.kind === 'comic') {
-        patch.comicCuts = p.payload.cuts;
-        patch[key] = [...s[key], { role: 'ai', kind: 'comic', ref: 'comic' }];
-      } else {
-        patch[key] = s[key];
-      }
-      return patch;
-    });
-    toast('반영했어요');
-  }, [update, toast]);
+  const saveStore = useCallback(async () => {
+    const s = stateRef.current;
+    try {
+      await StoreAPI.update({ category: s.storeCategory, address: s.storeAddress, hours: s.storeHours, desc: s.storeDesc });
+      const updated = await StoreAPI.save();
+      update({ ...updated, storeReadOnly: true });
+      toast('가게 정보를 저장했어요');
+    } catch (e) { fail(e); }
+  }, [update, toast, fail]);
 
-  const declinePending = useCallback((pid) => {
-    update(s => {
-      const p = s.pending[pid];
-      if (!p || p.status !== 'open') return {};
-      const key = p.which === 'char' ? 'charMsgs' : 'sbMsgs';
-      return {
-        pending: { ...s.pending, [pid]: { ...p, status: 'declined' } },
-        [key]: [...s[key], { role: 'ai', kind: 'text', text: '그대로 둘게요. 어떻게 바꾸면 좋을지 말해주세요.' }]
-      };
-    });
-  }, [update]);
+  const addImage = useCallback(async () => {
+    try { update(await StoreAPI.addImage()); } catch (e) { fail(e); }
+  }, [update, fail]);
+
+  const rerollStoreImage = useCallback(async (i) => {
+    try { update(await StoreAPI.rerollImage(i)); toast('다시 생성했어요'); } catch (e) { fail(e); }
+  }, [update, toast, fail]);
 
   // ---------- character ----------
-  const genCandidates = useCallback(() => {
-    update(s => ({
-      charThinking: true
-    }));
-    setTimeout(() => {
-      const cands = generateCandidates(3);
-      update(s => ({
-        charThinking: false,
-        charCands: cands, charSelected: -1,
-        charMsgs: [...s.charMsgs, { role: 'ai', kind: 'cands', ref: 'cands' }]
-      }));
-    }, 700);
-  }, [update]);
-
-  const sendChar = useCallback(() => {
-    const text = state.charInput.trim();
+  const sendChar = useCallback(async () => {
+    const text = stateRef.current.charInput.trim();
     if (!text) return;
-    update(s => ({ charInput: '', charMsgs: [...s.charMsgs, { role: 'me', kind: 'text', text }] }));
-    aiChar(text);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.charInput, update]);
+    update((s) => ({ charInput: '', charThinking: true, charMsgs: [...s.charMsgs, { role: 'me', kind: 'text', text }] }));
+    try {
+      const updated = await CharacterAPI.chat(text);
+      update({ ...updated, charThinking: false });
+    } catch (e) { update({ charThinking: false }); fail(e); }
+  }, [update, fail]);
 
-  function aiChar(userText) {
+  const genCandidates = useCallback(async () => {
     update({ charThinking: true });
-    setTimeout(() => {
-      update(s => {
-        if (!s.charCands.length) {
-          return {
-            charThinking: false,
-            charName: s.charName || '동글이',
-            charLook: s.charLook || `${userText} 느낌으로 그려볼게요.`,
-            charCands: generateCandidates(3),
-            charSelected: -1,
-            charMsgs: [...s.charMsgs,
-              { role: 'ai', kind: 'text', text: '이름·외형을 채웠어요. 왼쪽에서 직접 고쳐도 돼요.' },
-              { role: 'ai', kind: 'cands', ref: 'cands' }]
-          };
-        }
-        return {
-          charThinking: false,
-          charMsgs: [...s.charMsgs, { role: 'ai', kind: 'text', text: '알겠어요, 반영해서 다시 뽑아볼게요.' }]
-        };
-      });
-    }, 700);
-  }
+    try {
+      const updated = await CharacterAPI.genCandidates();
+      update({ ...updated, charThinking: false });
+      // 항목만 먼저 반환됨 — 실제 이미지는 하나씩 순차로 채운다 (요청당 이미지 1장, 타임아웃 방지)
+      for (let i = 0; i < (updated.charCands || []).length; i++) {
+        try { update(await CharacterAPI.rerollCandidate(i)); } catch (e) { fail(e); }
+      }
+    } catch (e) { update({ charThinking: false }); fail(e); }
+  }, [update, fail]);
 
-  const selectCand = useCallback((i) => {
-    update({ charThinking: true });
-    setTimeout(() => {
-      update(s => {
-        const views = generateViews();
-        return {
-          charThinking: false,
-          charSelected: i, charViews: views,
-          charMsgs: [...s.charMsgs,
-            { role: 'me', kind: 'text', text: `${i + 1}번으로 할게요` },
-            { role: 'ai', kind: 'text', text: `${i + 1}번으로 정했어요. 4방향으로 뽑아둘게요 — 확정하면 광고에 계속 쓰여요.` },
-            { role: 'ai', kind: 'views', ref: 'views' }]
-        };
-      });
-    }, 600);
-  }, [update]);
+  const selectCand = useCallback(async (i) => {
+    try {
+      const updated = await CharacterAPI.select(i);
+      update(updated);
+      for (let v = 0; v < (updated.charViews || []).length; v++) {
+        try { update(await CharacterAPI.rerollView(v)); } catch (e) { fail(e); }
+      }
+    } catch (e) { fail(e); }
+  }, [update, fail]);
 
-  const rerollCand = useCallback((i) => {
-    update(s => ({ charCands: s.charCands.map((c, idx) => idx === i ? { ...c, hue: randomHue() } : c) }));
-    toast('다시 그렸어요');
-  }, [update, toast]);
+  const rerollCand = useCallback(async (i) => {
+    try { update(await CharacterAPI.rerollCandidate(i)); toast('다시 그렸어요'); } catch (e) { fail(e); }
+  }, [update, toast, fail]);
 
-  const rerollView = useCallback((i) => {
-    update(s => ({ charViews: s.charViews.map((v, idx) => idx === i ? { ...v, hue: randomHue() } : v) }));
-    toast('다시 그렸어요');
-  }, [update, toast]);
+  const rerollView = useCallback(async (i) => {
+    try { update(await CharacterAPI.rerollView(i)); toast('다시 그렸어요'); } catch (e) { fail(e); }
+  }, [update, toast, fail]);
 
-  const loadChar = useCallback(() => {
-    const views = generateViews();
-    update(s => ({
-      charName: '동글이', charAge: '3살', charGender: '남성', charHobby: '빵 굽기',
-      charLook: '앞치마를 두른 통통한 곰. 둥근 눈, 밀색 털, 밀가루 묻은 베이지 앞치마.',
-      charCands: s.charCands.length ? s.charCands : generateCandidates(3),
-      charSelected: 0, charViews: views,
-      charMsgs: [...s.charMsgs,
-        { role: 'ai', kind: 'text', text: '지난번에 만든 캐릭터를 불러왔어요.' },
-        { role: 'ai', kind: 'views', ref: 'views' }]
-    }));
-  }, [update]);
+  const loadChar = useCallback(async () => {
+    try { update(await CharacterAPI.loadPrevious()); } catch (e) { fail(e); }
+  }, [update, fail]);
 
-  const confirmChar = useCallback(() => {
-    if (state.charSelected < 0) return;
-    update({ charConfirmed: true, charInfoReadOnly: true });
-    toast('캐릭터를 확정했어요');
-    go('charInfo');
-  }, [state.charSelected, update, toast, go]);
+  const confirmChar = useCallback(async () => {
+    const s = stateRef.current;
+    if (s.charSelected < 0) return;
+    try {
+      await CharacterAPI.update({ name: s.charName, age: s.charAge, gender: s.charGender, hobby: s.charHobby, look: s.charLook });
+      const updated = await CharacterAPI.confirm();
+      update({ ...updated, charInfoReadOnly: true });
+      toast('캐릭터를 확정했어요');
+      go('charInfo');
+    } catch (e) { fail(e); }
+  }, [update, toast, fail, go]);
 
-  const toggleCharEdit = useCallback(() => {
-    update(s => ({ charInfoReadOnly: !s.charInfoReadOnly }));
-    if (!state.charInfoReadOnly) toast('캐릭터 정보를 저장했어요');
-  }, [state.charInfoReadOnly, update, toast]);
+  const toggleCharEdit = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.charInfoReadOnly) {
+      try {
+        const updated = await CharacterAPI.update({ name: s.charName, age: s.charAge, gender: s.charGender, hobby: s.charHobby, look: s.charLook });
+        update({ ...updated, charInfoReadOnly: true });
+        toast('캐릭터 정보를 저장했어요');
+      } catch (e) { fail(e); }
+    } else {
+      update({ charInfoReadOnly: false });
+    }
+  }, [update, toast, fail]);
 
   // ---------- ad ----------
-  const applyAd = useCallback(() => { update({ trendPopup: true }); }, [update]);
-  const resetSb = useCallback((withTrend) => {
-    update({
-      sbMsgs: [{
-        role: 'ai', kind: 'text', text: withTrend
-          ? '이 트렌드로 광고를 만들어볼게요. 먼저 — 오늘 생산한 품목이 있나요? 품목 이름과 수량을 말해주면 생산 기록으로 남겨둘게요.'
-          : '광고를 만들기 전에 하나만요 — 오늘 생산한 품목이 있나요? 품목 이름과 수량을 말해주면 생산 기록으로 남겨둘게요.'
-      }],
-      plan: [], comicCuts: [], sbProdLogged: false
-    });
-  }, [update]);
-  const trendYes = useCallback(() => {
-    update({ trendPopup: false, trendApplied: true });
-    resetSb(true);
-    go('sb');
-  }, [update, resetSb, go]);
-  const trendNo = useCallback(() => {
-    update({ trendPopup: false, trendApplied: false });
-    resetSb(false);
-    go('sb');
-  }, [update, resetSb, go]);
+  const applyAd = useCallback(() => update({ trendPopup: true }), [update]);
+
+  const trendYes = useCallback(async () => {
+    const s = stateRef.current;
+    try {
+      await AdAPI.update({ ad_type: s.adType, ad_concept: s.adConcept });
+      const updated = await AdAPI.trendYes();
+      const sb = await StoryboardAPI.get();
+      update({ ...updated, ...sb, trendPopup: false });
+      go('sb');
+    } catch (e) { fail(e); }
+  }, [update, fail, go]);
+
+  const trendNo = useCallback(async () => {
+    const s = stateRef.current;
+    try {
+      await AdAPI.update({ ad_type: s.adType, ad_concept: s.adConcept });
+      const updated = await AdAPI.trendNo();
+      const sb = await StoryboardAPI.get();
+      update({ ...updated, ...sb, trendPopup: false });
+      go('sb');
+    } catch (e) { fail(e); }
+  }, [update, fail, go]);
+
   const goTrendFromAd = useCallback(() => { update({ fromAd: true, trendPopup: false }); go('trend'); }, [update, go]);
-  const backToAd = useCallback(() => { update({ fromAd: false, screen: 'ad', trendPopup: true }); }, [update]);
+  const backToAd = useCallback(() => update({ fromAd: false, screen: 'ad', trendPopup: true }), [update]);
 
   // ---------- trend ----------
   const toggleTrendAccordion = useCallback((name) => {
-    update(s => ({ openTrend: s.openTrend === name ? '' : name }));
+    update((s) => ({ openTrend: s.openTrend === name ? '' : name }));
   }, [update]);
-  const useTrend = useCallback((name) => {
-    if (!state.charConfirmed) { toast('캐릭터를 먼저 확정해주세요'); return; }
-    update({ trendPick: name, trendApplied: true, fromAd: false });
-    resetSb(true);
-    go('sb');
-  }, [state.charConfirmed, toast, update, resetSb, go]);
+
+  const useTrend = useCallback(async (name) => {
+    if (!stateRef.current.charConfirmed) { toast('캐릭터를 먼저 확정해주세요'); return; }
+    try {
+      const updated = await TrendAPI.use(name);
+      const sb = await StoryboardAPI.get();
+      update({ ...updated, ...sb, fromAd: false });
+      go('sb');
+    } catch (e) { fail(e); }
+  }, [toast, update, fail, go]);
 
   // ---------- storyboard ----------
-  const toggleSbSet = useCallback(() => update(s => ({ sbSetOpen: !s.sbSetOpen })), [update]);
-  const toggleSbProd = useCallback(() => update(s => ({ sbProdOpen: !s.sbProdOpen })), [update]);
+  const toggleSbSet = useCallback(() => update((s) => ({ sbSetOpen: !s.sbSetOpen })), [update]);
+  const toggleSbProd = useCallback(() => update((s) => ({ sbProdOpen: !s.sbProdOpen })), [update]);
 
-  function aiSb(userText) {
-    update({ sbThinking: true });
-    setTimeout(() => {
-      update(s => {
-        if (!s.sbProdLogged) {
-          if (/안\s?했|없어|없습니다|안했|건너|아니/.test(userText || '')) {
-            return {
-              sbThinking: false, sbProdLogged: true,
-              sbMsgs: [...s.sbMsgs, { role: 'ai', kind: 'text', text: '알겠어요, 생산 기록은 넘어갈게요. 그럼 어떤 이야기로 광고를 만들까요?' }]
-            };
-          }
-          const name = itemFrom(userText);
-          const qty = qtyFrom(userText);
-          const day = dayFrom(userText);
-          const isToday = day === isoDay(0);
-          const id = Date.now();
-          return {
-            sbThinking: false, sbProdLogged: true,
-            items: s.items.includes(name) ? s.items : [...s.items, name],
-            prods: [{ id, name, qty, date: day, time: timeFrom(userText), soldOut: '' }, ...s.prods],
-            sbMsgs: [...s.sbMsgs,
-              { role: 'ai', kind: 'text', text: `'${name}' 생산 기록을 ${fmtDay(day)}${isToday ? '(오늘)' : ''}로 남겼어요. 다르면 아래에서 바로 고쳐주세요. 매진 시각을 비워두면 알림으로 다시 물어볼게요.` },
-              { role: 'ai', kind: 'prod', prodId: id },
-              { role: 'ai', kind: 'text', text: `그럼 ${name} 이야기로 광고를 만들어볼까요? 알리고 싶은 걸 말해주세요.` }]
-          };
-        }
-
-        let kind, diffs, payload;
-        if (!s.plan.length) {
-          const plan = BASE_PLAN.map(c => ({ ...c }));
-          if (s.trendApplied) plan[2] = { ...plan[2], line: `'${s.trendPick}' 밈을 그대로 따라 하는 손님 리액션 컷.` };
-          kind = 'plan';
-          diffs = plan.map(c => ({ label: `${c.n}컷`, from: '아직 없음', to: c.line }));
-          payload = { plan };
-        } else if (!s.comicCuts.length) {
-          const nextLine = '손님이 소금빵을 들고 과장되게 놀라는 컷 — 효과선 추가.';
-          const plan = s.plan.map(c => c.n === 3 ? { ...c, line: nextLine } : c);
-          kind = 'plan';
-          diffs = [{ label: '3컷', from: (s.plan[2] && s.plan[2].line) || '없음', to: nextLine }];
-          payload = { plan };
-        } else {
-          const cuts = s.comicCuts.map(c => c.n === 2 ? { ...c, hue: randomHue() } : c);
-          kind = 'comic';
-          diffs = [{ label: '2컷 그림', from: '지금 그림', to: '새로 뽑은 그림' }];
-          payload = { cuts };
-        }
-        const pid = 'p' + Date.now() + Math.random().toString(36).slice(2, 6);
-        return {
-          sbThinking: false,
-          pending: { ...s.pending, [pid]: { which: 'sb', kind, diffs, payload, status: 'open' } },
-          sbMsgs: [...s.sbMsgs, { role: 'ai', kind: 'confirm', pid }]
-        };
-      });
-    }, 700);
-  }
-
-  const sendSb = useCallback(() => {
-    const text = state.sbInput.trim();
+  const sendSb = useCallback(async () => {
+    const s = stateRef.current;
+    const text = s.sbInput.trim();
     if (!text) return;
-    update(s => ({ sbInput: '', sbMsgs: [...s.sbMsgs, { role: 'me', kind: 'text', text }] }));
-    aiSb(text);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.sbInput, update]);
+    update((st) => ({ sbInput: '', sbThinking: true, sbMsgs: [...st.sbMsgs, { role: 'me', kind: 'text', text }] }));
+    try {
+      const updated = await StoryboardAPI.chat(text, { adType: s.adType, trendApplied: s.trendApplied, trendPick: s.trendPick });
+      update({ ...updated, sbThinking: false });
+    } catch (e) { update({ sbThinking: false }); fail(e); }
+  }, [update, fail]);
 
-  const makeComic = useCallback(() => {
-    if (!state.plan.length) { toast('먼저 대화로 플랜을 만들어주세요'); return; }
+  const confirmPending = useCallback(async (pid) => {
+    try { update(await StoryboardAPI.confirm(pid)); toast('반영했어요'); } catch (e) { fail(e); }
+  }, [update, toast, fail]);
+
+  const declinePending = useCallback(async (pid) => {
+    try { update(await StoryboardAPI.decline(pid)); } catch (e) { fail(e); }
+  }, [update, fail]);
+
+  const makeComic = useCallback(async () => {
+    if (!stateRef.current.plan.length) { toast('먼저 대화로 플랜을 만들어주세요'); return; }
     update({ sbThinking: true });
-    setTimeout(() => {
-      update(s => {
-        const base = randomHue();
-        const cuts = s.plan.map((c, i) => ({ n: c.n, short: c.short, line: c.line, hue: (base + i * 26) % 360 }));
-        const existed = s.comicCuts.length > 0;
-        const pid = 'p' + Date.now() + Math.random().toString(36).slice(2, 6);
-        return {
-          sbThinking: false,
-          pending: {
-            ...s.pending,
-            [pid]: {
-              which: 'sb', kind: 'comic', status: 'open',
-              diffs: cuts.map(c => ({ label: `${c.n}컷`, from: existed ? '지금 그림' : '아직 없음', to: c.line })),
-              payload: { cuts }
-            }
-          },
-          sbMsgs: [...s.sbMsgs, { role: 'ai', kind: 'confirm', pid }]
-        };
-      });
-    }, 900);
-  }, [state.plan, toast, update]);
+    try {
+      const updated = await StoryboardAPI.makeComic();
+      update({ ...updated, sbThinking: false });
+    } catch (e) { update({ sbThinking: false }); fail(e); }
+  }, [toast, update, fail]);
 
-  const rerollCut = useCallback((n) => {
-    update(s => ({ comicCuts: s.comicCuts.map(c => c.n === n ? { ...c, hue: randomHue() } : c) }));
-    toast(`${n}컷만 다시 그렸어요`);
-  }, [update, toast]);
+  const rerollCut = useCallback(async (n) => {
+    try { update(await StoryboardAPI.rerollCut(n)); toast(`${n}컷만 다시 그렸어요`); } catch (e) { fail(e); }
+  }, [update, toast, fail]);
 
   // ---------- result / save ----------
   const openResult = useCallback(() => go('result'), [go]);
-  const backToSb = useCallback(() => update(s => ({ screen: 'sb', stack: s.stack.filter(x => x !== 'result') })), [update]);
+  const backToSb = useCallback(() => update((s) => ({ screen: 'sb', stack: s.stack.filter((x) => x !== 'result') })), [update]);
   const confirmResult = useCallback(() => go('save'), [go]);
-  const download = useCallback(() => {
-    update(s => {
-      const item = {
-        id: Date.now(),
+
+  const download = useCallback(async () => {
+    const s = stateRef.current;
+    try {
+      const entry = await HistoryAPI.add({
         title: `${s.adType} · ${s.adConcept}`,
         meta: `${s.trendApplied ? s.trendPick + ' · ' : ''}네컷만화 · 방금 저장`,
-        cuts: s.comicCuts.map(c => ({ hue: c.hue }))
-      };
-      return { history: [item, ...s.history] };
-    });
-    toast('이미지와 문구를 내려받았어요');
-  }, [update, toast]);
+        cuts: s.comicCuts.map((c) => ({ hue: c.hue })),
+      });
+      update((st) => ({ history: [entry, ...st.history] }));
+      toast('이미지와 문구를 내려받았어요');
+    } catch (e) { fail(e); }
+  }, [update, toast, fail]);
 
   // ---------- my / production ----------
   const myHistory = useCallback(() => update({ myTab: 'history', notifOpen: false }), [update]);
   const myStoreTab = useCallback(() => go('myStore'), [go]);
   const myChar = useCallback(() => {
-    if (!state.charConfirmed) { toast('아직 확정된 캐릭터가 없어요'); return; }
+    if (!stateRef.current.charConfirmed) { toast('아직 확정된 캐릭터가 없어요'); return; }
     go('charInfo');
-  }, [state.charConfirmed, toast, go]);
+  }, [toast, go]);
   const editStoreFromMy = useCallback(() => { update({ storeReadOnly: false }); go('store'); }, [update, go]);
   const openHistoryItem = useCallback((h) => {
-    update({ comicCuts: h.cuts.map((c, i) => ({ n: i + 1, short: BASE_PLAN[i].short, hue: c.hue })) });
+    update({ comicCuts: h.cuts.map((c, i) => ({ n: i + 1, short: '', hue: c.hue })) });
     go('result');
   }, [update, go]);
 
-  const addItem = useCallback(() => {
-    const name = state.newItem.trim();
+  const addItem = useCallback(async () => {
+    const name = stateRef.current.newItem.trim();
     if (!name) return;
-    update(s => ({ newItem: '', items: s.items.includes(name) ? s.items : [...s.items, name] }));
-  }, [state.newItem, update]);
-  const delItem = useCallback((name) => {
-    update(s => ({ items: s.items.filter(n => n !== name) }));
-  }, [update]);
-  const renameItem = useCallback((oldName, newName) => {
-    update(s => ({
-      items: s.items.map(n => n === oldName ? newName : n),
-      prods: s.prods.map(p => p.name === oldName ? { ...p, name: newName } : p)
-    }));
-  }, [update]);
+    try {
+      await ProductionAPI.addItem(name);
+      update((s) => ({ newItem: '', items: s.items.includes(name) ? s.items : [...s.items, name] }));
+    } catch (e) { fail(e); }
+  }, [update, fail]);
 
-  const addProd = useCallback(() => {
-    if (!state.draftItem) { toast('품목을 먼저 골라주세요'); return; }
-    const id = Date.now();
-    update(s => ({
-      prods: [{ id, name: s.draftItem, qty: s.draftQty, date: s.draftDate, time: s.draftTime, soldOut: s.draftSold }, ...s.prods],
-      draftQty: '', draftTime: '', draftSold: ''
-    }));
-    toast('생산 기록을 저장했어요');
-  }, [state.draftItem, update, toast]);
-  const patchProd = useCallback((id, patch) => {
-    update(s => ({ prods: s.prods.map(p => p.id === id ? { ...p, ...patch } : p) }));
-  }, [update]);
-  const setSoldOut = useCallback((id, value) => {
-    patchProd(id, { soldOut: value });
+  const delItem = useCallback(async (name) => {
+    try {
+      await ProductionAPI.deleteItem(name);
+      update((s) => ({ items: s.items.filter((n) => n !== name) }));
+    } catch (e) { fail(e); }
+  }, [update, fail]);
+
+  const renameItem = useCallback(async (oldName, newName) => {
+    try {
+      await ProductionAPI.renameItem(oldName, newName);
+      update((s) => ({
+        items: s.items.map((n) => (n === oldName ? newName : n)),
+        prods: s.prods.map((p) => (p.name === oldName ? { ...p, name: newName } : p)),
+      }));
+    } catch (e) { fail(e); }
+  }, [update, fail]);
+
+  const addProd = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.draftItem) { toast('품목을 먼저 골라주세요'); return; }
+    try {
+      const record = await ProductionAPI.addRecord({
+        name: s.draftItem, qty: s.draftQty, date: s.draftDate, time: s.draftTime, sold_out: s.draftSold,
+      });
+      update((st) => ({ prods: [record, ...st.prods], draftQty: '', draftTime: '', draftSold: '' }));
+      toast('생산 기록을 저장했어요');
+    } catch (e) { fail(e); }
+  }, [update, toast, fail]);
+
+  const patchProd = useCallback(async (id, patchBody) => {
+    const apiBody = {};
+    if ('name' in patchBody) apiBody.name = patchBody.name;
+    if ('qty' in patchBody) apiBody.qty = patchBody.qty;
+    if ('date' in patchBody) apiBody.date = patchBody.date;
+    if ('time' in patchBody) apiBody.time = patchBody.time;
+    if ('soldOut' in patchBody) apiBody.sold_out = patchBody.soldOut;
+    try {
+      const record = await ProductionAPI.patchRecord(id, apiBody);
+      update((s) => ({ prods: s.prods.map((p) => (p.id === id ? record : p)) }));
+    } catch (e) { fail(e); }
+  }, [update, fail]);
+
+  const setSoldOut = useCallback(async (id, value) => {
+    await patchProd(id, { soldOut: value });
     if (value) toast('매진 시각을 기록했어요');
   }, [patchProd, toast]);
-  const delProd = useCallback((id) => {
-    update(s => ({ prods: s.prods.filter(p => p.id !== id) }));
+
+  const delProd = useCallback(async (id) => {
+    try {
+      await ProductionAPI.deleteRecord(id);
+      update((s) => ({ prods: s.prods.filter((p) => p.id !== id) }));
+    } catch (e) { fail(e); }
+  }, [update, fail]);
+
+  const exportData = useCallback(async () => {
+    try {
+      const res = await fetch('/api/history/export');
+      if (!res.ok) throw new Error('내보내기에 실패했어요');
+      await res.json();
+      update({ backupNote: '백업 파일을 만들었어요 (프로토타입 — 실제 다운로드는 준비 중).', backupErr: false });
+    } catch (e) {
+      update({ backupNote: e.message, backupErr: true });
+    }
   }, [update]);
 
-  const exportData = useCallback(() => {
-    update({ backupNote: '백업 파일을 만들었어요 (프로토타입 — 실제 다운로드는 준비 중).', backupErr: false });
-  }, [update]);
   const importFile = useCallback(() => {
     update({ backupNote: '이 프로토타입에서는 불러오기가 아직 준비 중이에요.', backupErr: true });
   }, [update]);
@@ -483,7 +406,7 @@ export function useAdMakerState() {
       openResult, backToSb, confirmResult, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,
-      exportData, importFile
-    }
+      exportData, importFile,
+    },
   };
 }

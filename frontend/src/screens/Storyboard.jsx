@@ -2,7 +2,6 @@ import { colors } from '../theme.js';
 import { Select } from '../components/ui/Field.jsx';
 import { PrimaryButton } from '../components/ui/Button.jsx';
 import ChatPanel from '../components/ChatPanel.jsx';
-import { TRENDS } from '../mock/aiResponses.js';
 
 const AD_TYPES = ['인스타 게시물', '포스터', '메뉴판'];
 const AD_CONCEPTS = ['유쾌함', '감성', '정보형', '담백함'];
@@ -28,7 +27,7 @@ export default function Storyboard({ state, actions }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: colors.textFaint }}>트렌드 선택</span>
                   <Select value={state.trendPick} onChange={e => actions.set('trendPick', e.target.value)}>
-                    {TRENDS.map(t => <option key={t}>{t}</option>)}
+                    {state.trendDetail.map(t => <option key={t.name}>{t.name}</option>)}
                   </Select>
                 </div>
               )}

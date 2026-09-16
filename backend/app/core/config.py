@@ -5,15 +5,19 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./app.db"
     cors_origins: str = "http://localhost:5173"
 
-    # ComfyUI 이미지 생성 서버 — 비워두면 캐릭터 이미지는 hue 그라디언트로 폴백한다.
+    # ComfyUI 이미지 생성 서버. 비어 있으면 캐릭터 이미지는 만들어지지 않고
+    # 해당 칸이 status="failed"로 남는다 — 가짜 그림으로 대신 채우지 않는다.
     comfy_base_url: str = ""
     comfy_user: str = ""
     comfy_password: str = ""
     # app/services/workflows/ 밑의 파일명 (또는 절대경로). ComfyUI에서 Export(API format)한
     # 그래프를 그대로 이 파일에 덮어쓰면 워크플로우를 바꿀 수 있다 (image_gen.py가 positive/negative
     # 연결을 따라가 프롬프트를 자동으로 채워 넣는다).
-    comfy_workflow_file: str = "character_default.json"
+    comfy_workflow_file: str = "character_practice.json"
     comfy_timeout_seconds: int = 150
+
+    # 생성된 캐릭터 PNG를 저장할 폴더. /api/media/<파일명>으로 서빙된다.
+    media_dir: str = "media"
 
     @property
     def cors_origin_list(self) -> list[str]:

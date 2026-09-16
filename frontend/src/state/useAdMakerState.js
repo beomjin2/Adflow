@@ -248,6 +248,16 @@ export function useAdMakerState() {
     await runGenerating(() => CharacterAPI.loadPrevious());
   }, [runGenerating]);
 
+  /** 대화가 꼬였을 때 캐릭터만 처음 상태로. 가게 정보나 생산 기록은 건드리지 않는다. */
+  const resetChar = useCallback(async () => {
+    try {
+      stopPolling();
+      const cleared = await CharacterAPI.reset();
+      update({ ...cleared, charInput: '', charThinking: false, charInfoReadOnly: true });
+      toast('캐릭터를 처음 상태로 되돌렸어요');
+    } catch (e) { fail(e); }
+  }, [update, toast, fail, stopPolling]);
+
   const confirmChar = useCallback(async () => {
     const s = stateRef.current;
     if (s.charSelected < 0) { toast('마음에 드는 그림을 먼저 골라주세요'); return; }
@@ -442,7 +452,7 @@ export function useAdMakerState() {
       set, toast, go, back, goHome, reload,
       goStore, goChar, goAd, goMy, openProdTab, goData,
       editStore, saveStore, toggleClosedDay, uploadStoreImage, deleteStoreImage,
-      genCandidates, sendChar, selectCand, rerollCand, rerollView, loadChar, confirmChar, toggleCharEdit,
+      genCandidates, sendChar, selectCand, rerollCand, rerollView, loadChar, resetChar, confirmChar, toggleCharEdit,
       confirmPending, declinePending,
       applyAd,
       toggleSbSet, toggleSbProd, sendSb,

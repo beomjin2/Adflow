@@ -117,6 +117,7 @@ export const CharacterAPI = {
   select: (i) => post(`/api/character/select/${i}`).then(mapCharacterProgress),
   rerollView: (i) => post(`/api/character/views/${i}/reroll`).then(mapCharacterProgress),
   loadPrevious: () => post('/api/character/load-previous').then(mapCharacterProgress),
+  reset: () => post('/api/character/reset').then(mapCharacter),
   confirm: () => post('/api/character/confirm').then(mapCharacter),
 };
 

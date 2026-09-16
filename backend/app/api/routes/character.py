@@ -201,6 +201,25 @@ def load_previous(db: Session = Depends(get_db)):
     return schemas.character_out(char, queue_depth=jobs.queue_depth())
 
 
+@router.post("/reset", response_model=schemas.CharacterOut)
+def reset_character(db: Session = Depends(get_db)):
+    """캐릭터를 처음부터 다시 만든다. 대화가 길어져 꼬였을 때 빠져나갈 길이 필요하다.
+
+    그려둔 그림 파일(media/)은 지우지 않는다 — 참조만 끊는다. 되살릴 일이 있을 수 있고,
+    지우는 건 언제든 나중에 할 수 있지만 되돌리는 건 못 한다.
+    """
+    char = _get(db)
+    char.name = char.age = char.gender = char.hobby = char.look = ""
+    char.confirmed = False
+    char.candidates = []
+    char.selected_index = -1
+    char.views = []
+    char.messages = []
+    db.commit()
+    db.refresh(char)
+    return schemas.character_out(char, queue_depth=jobs.queue_depth())
+
+
 @router.post("/confirm", response_model=schemas.CharacterOut)
 def confirm_character(db: Session = Depends(get_db)):
     char = _get(db)

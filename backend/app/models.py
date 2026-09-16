@@ -1,5 +1,6 @@
 from sqlalchemy import JSON, Boolean, Column, Integer, String
 
+from app.core.config import STORE_MAX_IMAGES
 from app.core.database import Base
 
 
@@ -12,11 +13,15 @@ class Store(Base):
     category = Column(String, default="베이커리")
     address = Column(String, default="")
     hours = Column(String, default="")  # open_time/close_time/closed_days로 자동 계산되는 표시용 문자열
-    open_time = Column(String, default="10:00")
-    close_time = Column(String, default="21:00")
+    open_time = Column(String, default="")
+    close_time = Column(String, default="")
     closed_days = Column(JSON, default=list)  # ["월", "화", ...]
     desc = Column(String, default="")
     images = Column(JSON, default=list)  # [{label, hue, image}] — image: 업로드된 파일 URL
+
+    @property
+    def max_images(self) -> int:
+        return STORE_MAX_IMAGES
 
 
 class Character(Base):
@@ -34,6 +39,7 @@ class Character(Base):
     selected_index = Column(Integer, default=-1)
     messages = Column(JSON, default=list)  # [{role, kind, ...}] 채팅 히스토리
     pending = Column(JSON, default=dict)   # {pid: {kind, diffs, payload, status}}
+    snapshot = Column(JSON, default=None)  # 마지막으로 확정했을 때의 {name, age, gender, hobby, look, candidates, selected_index}
 
 
 class AdSettings(Base):

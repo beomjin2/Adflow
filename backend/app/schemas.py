@@ -24,6 +24,7 @@ class StoreOut(BaseModel):
     closed_days: list[str]
     desc: str
     images: list[ImageItem]
+    max_images: int
 
 
 class StoreUpdate(BaseModel):

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { colors } from '../../theme.js';
 import { Select } from '../../components/ui/Field.jsx';
 import { PrimaryButton } from '../../components/ui/Button.jsx';
@@ -11,7 +12,7 @@ export default function ProductionTab({ state, actions }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
       <div style={{ background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: 16, padding: '15px 16px', display: 'flex', flexDirection: 'column', gap: 11 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>품목 — 생산 기록에 쓸 목록</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>품목 (생산 기록에서 선택할 목록)</span>
         <div style={{ border: `1px solid ${colors.cardBorder}`, borderRadius: 12, overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: colors.bg, borderBottom: `1px solid ${colors.cardBorder}`, padding: '9px 14px' }}>
             <span style={{ flex: '2 1 150px', fontSize: 11.5, fontWeight: 700, color: colors.textFaint }}>품목명</span>
@@ -20,13 +21,13 @@ export default function ProductionTab({ state, actions }) {
             <span style={{ width: 52, flex: 'none' }} />
           </div>
           {state.items.length === 0 ? (
-            <div style={{ padding: 20, textAlign: 'center', fontSize: 12.5, color: colors.textFaint }}>등록된 품목이 없어요. 아래에서 추가해주세요.</div>
+            <div style={{ padding: 20, textAlign: 'center', fontSize: 12.5, color: colors.textFaint }}>등록된 품목이 없습니다. 아래에서 추가해 주세요.</div>
           ) : state.items.map((n, i) => {
             const mine = state.prods.filter(p => p.name === n);
             const last = mine[0];
             return (
               <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', background: '#fff', borderBottom: i < state.items.length - 1 ? `1px solid #F1F3F4` : 'none' }}>
-                <input value={n} onChange={e => actions.renameItem(n, e.target.value)} style={{ flex: '2 1 150px', minWidth: 0, height: 34, borderRadius: 8, border: '1px solid transparent', background: 'transparent', color: colors.text, fontSize: 13.5, fontWeight: 600, padding: '0 8px' }} />
+                <ItemNameInput name={n} onRename={actions.renameItem} />
                 <span style={{ flex: '1 1 90px', fontSize: 13, color: colors.textSub }}>{mine.length}건</span>
                 <span style={{ flex: '1 1 110px', fontSize: 13, color: colors.textSub }}>{last ? `${last.date} ${last.time}` : '—'}</span>
                 <button onClick={() => actions.delItem(n)} title="품목 삭제" style={{ width: 52, flex: 'none', height: 30, borderRadius: 8, border: 0, background: colors.softBg, color: colors.textSub, fontSize: 11.5, fontWeight: 700, cursor: 'pointer' }}>삭제</button>
@@ -37,7 +38,7 @@ export default function ProductionTab({ state, actions }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input value={state.newItem} onChange={e => actions.set('newItem', e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') actions.addItem(); }}
-            placeholder="품목 이름 — 예) 소금빵" style={fieldStyle} />
+            placeholder="품목 이름 (예: 소금빵)" style={fieldStyle} />
           <button onClick={actions.addItem} style={{ height: 44, padding: '0 18px', borderRadius: 12, border: 0, background: colors.primarySoft, color: colors.primarySoftText, fontSize: 14, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>품목 추가</button>
         </div>
       </div>
@@ -68,11 +69,11 @@ export default function ProductionTab({ state, actions }) {
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, padding: '2px 2px 0', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>생산 히스토리</span>
-        <span style={{ fontSize: 11.5, color: colors.textFaint, lineHeight: '17px' }}>매진 시각이 빈 줄은 노란색으로 표시돼요 — 그 자리에서 입력하면 됩니다</span>
+        <span style={{ fontSize: 11.5, color: colors.textFaint, lineHeight: '17px' }}>매진 시각이 빈 줄은 노란색으로 표시됩니다 (그 자리에서 입력하시면 됩니다)</span>
       </div>
       {state.prods.length === 0 ? (
         <div style={{ border: `1px dashed ${colors.inputBorder}`, borderRadius: 16, padding: 32, textAlign: 'center', fontSize: 13.5, color: colors.textFaint, lineHeight: '21px' }}>
-          아직 생산 기록이 없어요.<br />위에서 추가하거나, 광고 생성 대화에서 말하면 자동으로 남아요.
+          아직 생산 기록이 없습니다.<br />위에서 추가하거나, 광고 생성 대화에서 말씀하시면 자동으로 남습니다.
         </div>
       ) : state.prods.map(p => {
         const missing = !p.soldOut;
@@ -95,6 +96,27 @@ export default function ProductionTab({ state, actions }) {
         );
       })}
     </div>
+  );
+}
+
+function ItemNameInput({ name, onRename }) {
+  const [draft, setDraft] = useState(name);
+
+  const commit = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed || trimmed === name) { setDraft(name); return; }
+    const ok = await onRename(name, trimmed);
+    if (!ok) return; // 실패하면(중복 이름 등) 입력값을 그대로 두고 다시 고칠 수 있게 함
+  };
+
+  return (
+    <input
+      value={draft}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+      style={{ flex: '2 1 150px', minWidth: 0, height: 34, borderRadius: 8, border: '1px solid transparent', background: 'transparent', color: colors.text, fontSize: 13.5, fontWeight: 600, padding: '0 8px' }}
+    />
   );
 }
 

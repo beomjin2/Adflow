@@ -169,13 +169,19 @@ def select_candidate(index: int, db: Session = Depends(get_db)):
 @router.post("/load-previous", response_model=schemas.CharacterOut)
 def load_previous(db: Session = Depends(get_db)):
     char = _get(db)
-    char.name, char.age, char.gender, char.hobby = "동글이", "3살", "남성", "빵 굽기"
-    char.look = "앞치마를 두른 통통한 곰. 둥근 눈, 밀색 털, 밀가루 묻은 베이지 앞치마."
-    if not char.candidates:
-        char.candidates = generate_candidates(3)
-    char.selected_index = 0
+    if not char.snapshot:
+        raise HTTPException(404, "이전에 확정한 캐릭터가 없어요")
+    snap = char.snapshot
+    char.name = snap.get("name", "")
+    char.age = snap.get("age", "")
+    char.gender = snap.get("gender", "")
+    char.hobby = snap.get("hobby", "")
+    char.look = snap.get("look", "")
+    char.candidates = snap.get("candidates", [])
+    char.selected_index = snap.get("selected_index", -1)
+    char.confirmed = False
     messages = list(char.messages or [])
-    messages.append({"role": "ai", "kind": "text", "text": "지난번에 만든 캐릭터를 불러왔습니다."})
+    messages.append({"role": "ai", "kind": "text", "text": "이전에 확정했던 캐릭터를 불러왔습니다."})
     messages.append({"role": "ai", "kind": "cands", "ref": "cands"})
     char.messages = messages
     db.commit()
@@ -203,6 +209,10 @@ def confirm_character(db: Session = Depends(get_db)):
     if char.selected_index < 0:
         raise HTTPException(400, "후보를 먼저 선택해주세요")
     char.confirmed = True
+    char.snapshot = {
+        "name": char.name, "age": char.age, "gender": char.gender, "hobby": char.hobby, "look": char.look,
+        "candidates": char.candidates, "selected_index": char.selected_index,
+    }
     db.commit()
     db.refresh(char)
     return char

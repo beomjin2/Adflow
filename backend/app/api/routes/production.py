@@ -33,7 +33,12 @@ def rename_item(name: str, body: schemas.ProductionItemCreate, db: Session = Dep
     item = db.query(models.ProductionItem).filter_by(name=name).first()
     if not item:
         raise HTTPException(404, "item not found")
-    item.name = body.name.strip()
+    new_name = body.name.strip()
+    if not new_name:
+        raise HTTPException(400, "품목 이름을 입력해주세요")
+    if new_name != name and db.query(models.ProductionItem).filter_by(name=new_name).first():
+        raise HTTPException(400, "이미 있는 품목 이름이에요")
+    item.name = new_name
     db.query(models.ProductionRecord).filter_by(name=name).update({"name": item.name})
     db.commit()
     db.refresh(item)

@@ -14,8 +14,8 @@ function initialState() {
 
     storeSaved: false, storeReadOnly: false,
     storeCategory: '', storeAddress: '', storeHours: '',
-    storeOpenTime: '10:00', storeCloseTime: '21:00', storeClosedDays: [],
-    storeDesc: '', storeImages: [],
+    storeOpenTime: '', storeCloseTime: '', storeClosedDays: [],
+    storeDesc: '', storeImages: [], storeMaxImages: 5,
 
     charName: '', charAge: '', charGender: '', charHobby: '', charLook: '',
     charMsgs: [], charInput: '', charThinking: false, charPending: {},
@@ -355,7 +355,8 @@ export function useAdMakerState() {
         items: s.items.map((n) => (n === oldName ? newName : n)),
         prods: s.prods.map((p) => (p.name === oldName ? { ...p, name: newName } : p)),
       }));
-    } catch (e) { fail(e); }
+      return true;
+    } catch (e) { fail(e); return false; }
   }, [update, fail]);
 
   const addProd = useCallback(async () => {
@@ -366,7 +367,7 @@ export function useAdMakerState() {
         name: s.draftItem, qty: s.draftQty, date: s.draftDate, time: s.draftTime, sold_out: s.draftSold,
       });
       update((st) => ({ prods: [record, ...st.prods], draftQty: '', draftTime: '', draftSold: '' }));
-      toast('생산 기록을 저장했어요');
+      toast('생산 기록을 저장했습니다');
     } catch (e) { fail(e); }
   }, [update, toast, fail]);
 
@@ -385,7 +386,7 @@ export function useAdMakerState() {
 
   const setSoldOut = useCallback(async (id, value) => {
     await patchProd(id, { soldOut: value });
-    if (value) toast('매진 시각을 기록했어요');
+    if (value) toast('매진 시각을 기록했습니다');
   }, [patchProd, toast]);
 
   const delProd = useCallback(async (id) => {

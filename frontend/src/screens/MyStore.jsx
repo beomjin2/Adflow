@@ -3,6 +3,9 @@ import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
 
 export default function MyStore({ state, actions }) {
   const closedDaysText = state.storeClosedDays?.length ? state.storeClosedDays.join(', ') + ' 휴무' : '연중무휴';
+  const hoursText = state.storeOpenTime && state.storeCloseTime
+    ? `${state.storeOpenTime} – ${state.storeCloseTime}`
+    : '미설정';
 
   return (
     <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -26,7 +29,7 @@ export default function MyStore({ state, actions }) {
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <Info label="가게 주소" value={state.storeAddress} />
-        <Info label="영업시간" value={`${state.storeOpenTime} – ${state.storeCloseTime}`} />
+        <Info label="영업시간" value={hoursText} />
         <Info label="휴무일" value={closedDaysText} />
       </div>
 

@@ -7,6 +7,9 @@ const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
 
 export default function Store({ state, actions }) {
   const ro = state.storeReadOnly;
+  const imageCount = state.storeImages.length;
+  const maxImages = state.storeMaxImages;
+  const atLimit = imageCount >= maxImages;
 
   const handleFile = (e) => {
     const file = e.target.files?.[0];
@@ -24,7 +27,10 @@ export default function Store({ state, actions }) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-        <Label>대표 상품 이미지 — ＋로 사진 업로드</Label>
+        <Label>대표 상품 이미지 (＋ 버튼으로 업로드)</Label>
+        <span style={{ fontSize: 11.5, color: colors.textFaint }}>
+          최대 {maxImages}장 · 장당 5MB 이하 · jpg · png · webp · {imageCount}/{maxImages}장
+        </span>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {state.storeImages.map((im, i) => (
             <div key={i} style={{
@@ -42,14 +48,16 @@ export default function Store({ state, actions }) {
               )}
             </div>
           ))}
-          <label style={{
-            width: 112, height: 88, borderRadius: 12, border: `1.5px dashed ${colors.inputBorder}`, background: '#fff', color: colors.textSub,
-            fontSize: 24, cursor: ro ? 'not-allowed' : 'pointer', opacity: ro ? .45 : 1,
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-            ＋
-            <input type="file" accept="image/*" disabled={ro} onChange={handleFile} style={{ display: 'none' }} />
-          </label>
+          {!atLimit && (
+            <label style={{
+              width: 112, height: 88, borderRadius: 12, border: `1.5px dashed ${colors.inputBorder}`, background: '#fff', color: colors.textSub,
+              fontSize: 24, cursor: ro ? 'not-allowed' : 'pointer', opacity: ro ? .45 : 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}>
+              ＋
+              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={ro} onChange={handleFile} style={{ display: 'none' }} />
+            </label>
+          )}
         </div>
       </div>
 
@@ -69,7 +77,7 @@ export default function Store({ state, actions }) {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-        <Label>휴무일 — 없으면 비워두세요 (연중무휴)</Label>
+        <Label>휴무일 (미선택 시 연중무휴)</Label>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {DAYS.map(day => {
             const active = state.storeClosedDays.includes(day);
@@ -94,7 +102,7 @@ export default function Store({ state, actions }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
         <Label>가게 소개</Label>
-        <TextArea value={state.storeDesc} onChange={e => actions.set('storeDesc', e.target.value)} readOnly={ro} placeholder="우리 가게를 한두 문장으로" />
+        <TextArea value={state.storeDesc} onChange={e => actions.set('storeDesc', e.target.value)} readOnly={ro} placeholder="예: 매일 아침 직접 구운 빵을 파는 동네 빵집이에요. 소금빵과 크루아상이 인기 메뉴예요." />
       </div>
 
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 4 }}>

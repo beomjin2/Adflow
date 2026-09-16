@@ -1,5 +1,8 @@
 from pydantic_settings import BaseSettings
 
+# 가게 대표 상품 이미지 최대 개수 — models.py(Store.max_images)와 store.py 라우트가 같이 참조한다.
+STORE_MAX_IMAGES = 5
+
 
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./app.db"

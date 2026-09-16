@@ -14,7 +14,7 @@ export default function Character({ state, actions }) {
   return (
     <div style={{ padding: '18px 20px 20px', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'stretch' }}>
       <div style={{ flex: '1 1 250px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <Label>캐릭터 정보 — 대화로 채워지고, 직접 고칠 수도 있어요</Label>
+        <Label>캐릭터 정보 (대화로 채워지며, 직접 수정하실 수도 있습니다)</Label>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <FieldLabel>이름</FieldLabel>

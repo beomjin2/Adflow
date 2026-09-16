@@ -36,6 +36,7 @@ const mapStore = (s) => ({
   storeSaved: s.saved, storeCategory: s.category, storeAddress: s.address,
   storeHours: s.hours, storeOpenTime: s.open_time, storeCloseTime: s.close_time,
   storeClosedDays: s.closed_days, storeDesc: s.desc, storeImages: s.images,
+  storeMaxImages: s.max_images,
 });
 
 const mapCharacter = (c) => ({

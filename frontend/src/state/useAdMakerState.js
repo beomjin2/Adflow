@@ -225,19 +225,27 @@ export function useAdMakerState() {
     update({ charThinking: false });
   }, [update, runGenerating]);
 
+  // 왼쪽 폼(이름·나이·성별·취미·외형)은 타이핑해도 브라우저 상태에만 있다 — 생성 전에 서버로 먼저 보낸다.
+  // 안 그러면 서버의 옛 look(초기화 직후엔 빈 문자열)으로 그려지거나 "먼저 말해주세요" 400이 난다.
+  // runGenerating 안에서 부르므로 PUT이 실패해도 같은 경로(fail)로 토스트가 뜬다.
+  const syncCharForm = useCallback(() => {
+    const s = stateRef.current;
+    return CharacterAPI.update({ name: s.charName, age: s.charAge, gender: s.charGender, hobby: s.charHobby, look: s.charLook });
+  }, []);
+
   const genCandidates = useCallback(async () => {
     update({ charThinking: true });
-    await runGenerating(() => CharacterAPI.genCandidates());
+    await runGenerating(async () => { await syncCharForm(); return CharacterAPI.genCandidates(); });
     update({ charThinking: false });
-  }, [update, runGenerating]);
+  }, [update, runGenerating, syncCharForm]);
 
   const selectCand = useCallback(async (i) => {
     await runGenerating(() => CharacterAPI.select(i));
   }, [runGenerating]);
 
   const rerollCand = useCallback(async (i) => {
-    await runGenerating(() => CharacterAPI.rerollCandidate(i));
-  }, [runGenerating]);
+    await runGenerating(async () => { await syncCharForm(); return CharacterAPI.rerollCandidate(i); });
+  }, [runGenerating, syncCharForm]);
 
   const rerollView = useCallback(async (i) => {
     await runGenerating(() => CharacterAPI.rerollView(i));

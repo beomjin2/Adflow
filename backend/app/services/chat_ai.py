@@ -8,6 +8,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from app.services.danbooru_tags import tags_for_look
+
 # 서버는 UTC로 돈다. 그대로 쓰면 새벽 5시에 구운 빵이 '어제' 생산으로 기록된다 —
 # 새벽에 굽는 가게가 많으니 여기서 한국 시간으로 고정한다.
 KST = ZoneInfo("Asia/Seoul")
@@ -17,7 +19,14 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).astimezone(KST)
 
 VIEW_LABELS = ["정면", "좌측면", "우측면", "뒷면"]
-VIEW_HINTS = {"정면": "front view", "좌측면": "left side view", "우측면": "right side view", "뒷면": "back view"}
+# 실존 Danbooru 구도 태그만 쓴다(CLAUDE.md 5-1). "front view"류는 Danbooru에 없는 표현이다.
+# Danbooru엔 좌/우를 가르는 태그가 없어 양 측면은 같은 태그다 — 좌우는 IP-Adapter 참조와 시드에 맡긴다.
+VIEW_HINTS = {
+    "정면": "straight-on, looking_at_viewer",
+    "좌측면": "from_side, profile",
+    "우측면": "from_side, profile",
+    "뒷면": "from_behind",
+}
 
 # '연습용' 워크플로우가 이 태그 조합에 맞춰 조정돼 있다. 사장님이 쓴 설명 앞에 붙여
 # 화풍을 고정한다 — 이걸 빼면 같은 모델에서도 그림 톤이 매번 달라진다.
@@ -25,13 +34,21 @@ STYLE_TAGS = "masterpiece, best quality, score_7, safe, solo, (chibi:1.3), full 
 
 
 def character_prompt(char, hint: str = "") -> str:
-    """사장님이 입력한 캐릭터 설명을 '연습용' 워크플로우의 프롬프트로 조립한다."""
+    """사장님이 입력한 캐릭터 설명을 '연습용' 워크플로우의 프롬프트로 조립한다.
+
+    Anima는 Danbooru 태그로 학습된 모델이라 한국어 문장을 그대로 넣으면 얼버무린다
+    (CLAUDE.md 5-1, v4 12컷 실험). 설명을 실존 Danbooru 태그로 바꿔 넣고, 태그를
+    하나도 못 뽑았을 때만 원문으로 폴백한다. STYLE_TAGS 접두어는 그대로 둔다.
+    """
     described = (char.look or "").strip()
     if not described:
         described = ", ".join(p for p in [char.name, char.age, char.gender, char.hobby] if p)
 
     pieces = [STYLE_TAGS]
-    if described:
+    tags = tags_for_look(described) if described else []
+    if tags:
+        pieces.append(", ".join(tags))
+    elif described:
         pieces.append(described)
     else:
         pieces.append("cute animal mascot character")

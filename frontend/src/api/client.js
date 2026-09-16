@@ -1,8 +1,9 @@
 /** 얇은 fetch 래퍼. 상대경로(/api/...)로 호출 — 배포 환경(nginx 같은 origin)과
  * 로컬 dev(vite proxy, vite.config.js의 server.proxy) 양쪽에서 그대로 동작한다. */
 async function request(path, options = {}) {
+  const isFormData = options.body instanceof FormData;
   const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: isFormData ? undefined : { 'Content-Type': 'application/json' },
     ...options,
   });
   if (!res.ok) {
@@ -24,11 +25,17 @@ const post = (path, body) => request(path, { method: 'POST', body: body !== unde
 const put = (path, body) => request(path, { method: 'PUT', body: JSON.stringify(body) });
 const patch = (path, body) => request(path, { method: 'PATCH', body: JSON.stringify(body) });
 const del = (path) => request(path, { method: 'DELETE' });
+const upload = (path, file) => {
+  const form = new FormData();
+  form.append('file', file);
+  return request(path, { method: 'POST', body: form });
+};
 
 // ---------- mappers: snake_case API -> camelCase 프론트 상태 ----------
 const mapStore = (s) => ({
   storeSaved: s.saved, storeCategory: s.category, storeAddress: s.address,
-  storeHours: s.hours, storeDesc: s.desc, storeImages: s.images,
+  storeHours: s.hours, storeOpenTime: s.open_time, storeCloseTime: s.close_time,
+  storeClosedDays: s.closed_days, storeDesc: s.desc, storeImages: s.images,
 });
 
 const mapCharacter = (c) => ({
@@ -57,8 +64,8 @@ export const StoreAPI = {
   get: () => get('/api/store').then(mapStore),
   update: (fields) => put('/api/store', fields).then(mapStore),
   save: () => post('/api/store/save').then(mapStore),
-  addImage: () => post('/api/store/images').then(mapStore),
-  rerollImage: (i) => post(`/api/store/images/${i}/reroll`).then(mapStore),
+  uploadImage: (file) => upload('/api/store/images/upload', file).then(mapStore),
+  deleteImage: (i) => del(`/api/store/images/${i}`).then(mapStore),
 };
 
 // ---------- character ----------

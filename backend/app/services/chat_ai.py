@@ -8,6 +8,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from app.services.danbooru_tags import tags_for_look
+
 # 서버는 UTC로 돈다. 그대로 쓰면 새벽 5시에 구운 빵이 '어제' 생산으로 기록된다 —
 # 새벽에 굽는 가게가 많으니 여기서 한국 시간으로 고정한다.
 KST = ZoneInfo("Asia/Seoul")
@@ -16,20 +18,34 @@ KST = ZoneInfo("Asia/Seoul")
 def _now() -> datetime:
     return datetime.now(timezone.utc).astimezone(KST)
 
+# 4방향 뽑기는 지금 UI에서 빠져 있다(화이트보드: "당장 캐릭터 4방향 뽑기는 x").
+# 태그는 실측해서 넣어둔 것이라 지우지 않는다 — 다시 붙일 때 그대로 쓴다.
+VIEW_LABELS = ["정면", "좌측면", "우측면", "뒷면"]
+# 실존 Danbooru 구도 태그만 쓴다(CLAUDE.md 5-1). "front view"류는 Danbooru에 없는 표현이다.
+# Danbooru엔 좌/우를 가르는 태그가 없어 양 측면은 같은 태그다 — 좌우는 IP-Adapter 참조와 시드에 맡긴다.
+VIEW_HINTS = {
+    "정면": "straight-on, looking_at_viewer",
+    "좌측면": "from_side, profile",
+    "우측면": "from_side, profile",
+    "뒷면": "from_behind",
+}
+
 # '연습용' 워크플로우가 이 태그 조합에 맞춰 조정돼 있다. 사장님이 쓴 설명 앞에 붙여
 # 화풍을 고정한다 — 이걸 빼면 같은 모델에서도 그림 톤이 매번 달라진다.
 STYLE_TAGS = "masterpiece, best quality, score_7, safe, solo, (chibi:1.3), full body, simple background"
 
 
 def character_prompt(char, hint: str = "") -> str:
-    """시트의 IMAGE_FIELDS(외형·아웃핏·설명·나이·이름)를 이어 붙인 임시 프롬프트.
+    """캐릭터 시트를 '연습용' 워크플로우의 프롬프트로 조립한다.
 
-    **여기는 자리만 잡아둔 것이다.** 한국어를 그림 모델이 읽는 태그로 바꾸는 태깅은
-    따로 만들어 붙일 예정이고, 그게 들어오면 이 함수 본문을 갈아끼우면 된다.
-    무엇을 읽을지는 character_sheet.IMAGE_FIELDS 한 곳에서만 정한다.
+    Anima는 Danbooru 태그로 학습된 모델이라 한국어 문장을 그대로 넣으면 얼버무린다
+    (CLAUDE.md 5-1, v4 12컷 실험). 설명을 실존 Danbooru 태그로 바꿔 넣고, 태그를
+    하나도 못 뽑았을 때만 원문으로 폴백한다. STYLE_TAGS 접두어는 그대로 둔다.
 
-    지금 상태로는 한국어가 그대로 CLIP에 들어간다 — 스타일 태그와 네거티브는 전부
-    영어라, 사장님이 쓴 한국어는 거의 반영되지 않는다고 봐야 한다.
+    시트에서 무엇을 읽을지는 character_sheet.IMAGE_FIELDS 한 곳에서만 정한다 —
+    외형·아웃핏·설명·나이·이름 다섯 칸. 능력·성별·퍼스널 키워드는 시트에만 남고
+    그림 쪽으로 넘어가지 않는다. 라우터가 시트가 다 찬 뒤에만 여기까지 오게 막으므로
+    described가 비는 경우는 없다(비면 태그도 프롬프트도 STYLE_TAGS뿐이다).
     """
     from app.services.character_sheet import IMAGE_FIELDS
 
@@ -38,7 +54,10 @@ def character_prompt(char, hint: str = "") -> str:
     )
 
     pieces = [STYLE_TAGS]
-    if described:
+    tags = tags_for_look(described) if described else []
+    if tags:
+        pieces.append(", ".join(tags))
+    elif described:
         pieces.append(described)
     if hint:
         pieces.append(hint)

@@ -26,13 +26,19 @@ class Settings(BaseSettings):
     # 생성된 캐릭터 PNG를 저장할 폴더. /api/media/<파일명>으로 서빙된다.
     media_dir: str = "media"
 
-    # 캐릭터 시트 대화에 쓰는 LLM. 비어 있으면 붙이지 않고 규칙 기반으로 돈다
-    # (한 번에 한 칸씩 묻고 답을 그 칸에 그대로 넣는다) — 서비스는 그대로 동작한다.
-    # 키는 .env에만 두고 저장소에 넣지 않는다.
+    # 키 하나를 두 군데서 쓴다 — 캐릭터 시트 대화(sheet_llm)와 Danbooru 태그
+    # 조립(danbooru_tags). 둘 다 키가 없으면 각자 규칙 기반으로 폴백하므로
+    # 비워둬도 서비스는 그대로 돈다. 키는 .env에만 두고 저장소에 넣지 않는다.
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    # sheet_llm이 쓴다. danbooru_tags는 openai SDK를 쓰므로 base_url을 보지 않는다.
     openai_base_url: str = "https://api.openai.com/v1"
     openai_timeout_seconds: int = 20
+
+    # deepghs/site_tags(HF, CC-BY-4.0)의 danbooru.donmai.us/tags.parquet 미러 경로.
+    # backend/ 기준 상대경로(또는 절대경로) — GPT가 뽑은 태그 후보의 실존·게시물수를 검증한다.
+    # 저장소에 없다(gitignore). 없으면 태그 검증을 건너뛰고 화이트리스트로 폴백한다.
+    danbooru_tags_path: str = "data/danbooru_tags/danbooru.donmai.us/tags.parquet"
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -266,6 +266,11 @@ export function useAdMakerState() {
     } catch (e) { fail(e); }
   }, [update, fail]);
 
+  // 시트에 타이핑한 내용은 브라우저 상태에만 있다 — 생성 전에 서버로 먼저 보낸다.
+  // 안 그러면 서버의 옛 값으로 그려지거나 "아직 안 채운 칸이 있어요" 400이 난다.
+  // runGenerating 안에서 부르므로 PUT이 실패해도 같은 경로(fail)로 토스트가 뜬다.
+  const syncCharSheet = useCallback(() => CharacterAPI.update(sheetFields(stateRef.current)), []);
+
   /** 후보 3장 뽑기. 시트가 덜 찼으면 백엔드가 400 + 남은 칸 이름을 돌려준다. */
   const genCandidates = useCallback(async () => {
     const s = stateRef.current;
@@ -275,17 +280,17 @@ export function useAdMakerState() {
       return;
     }
     update({ charThinking: true });
-    await runGenerating(() => CharacterAPI.genCandidates());
+    await runGenerating(async () => { await syncCharSheet(); return CharacterAPI.genCandidates(); });
     update({ charThinking: false });
-  }, [update, runGenerating, toast]);
+  }, [update, runGenerating, toast, syncCharSheet]);
 
   const selectCand = useCallback(async (i) => {
     await runGenerating(() => CharacterAPI.select(i));
   }, [runGenerating]);
 
   const rerollCand = useCallback(async (i) => {
-    await runGenerating(() => CharacterAPI.rerollCandidate(i));
-  }, [runGenerating]);
+    await runGenerating(async () => { await syncCharSheet(); return CharacterAPI.rerollCandidate(i); });
+  }, [runGenerating, syncCharSheet]);
 
   const loadChar = useCallback(async () => {
     // 확정된 캐릭터가 없으면 400 — 예전처럼 없는 캐릭터를 지어내지 않는다.

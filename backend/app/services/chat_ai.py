@@ -6,8 +6,10 @@ from datetime import datetime, timedelta
 
 from app.services.image_gen import random_hue
 
-VIEW_LABELS = ["정면", "좌측면", "우측면", "뒷면"]
-VIEW_HINTS = {"정면": "front view", "좌측면": "left side view", "우측면": "right side view", "뒷면": "back view"}
+CHARACTER_INTRO_MESSAGE = (
+    "어떤 마스코트를 원하시나요? 가게 분위기나 느낌을 편하게 말씀해 주세요.\n"
+    "예: \"아기자기한 동네 베이커리예요. 통통한 곰돌이가 하얀 앞치마를 두른 모습으로 만들어주세요\""
+)
 
 
 def character_prompt(char, hint: str = "") -> str:
@@ -22,10 +24,6 @@ def character_prompt(char, hint: str = "") -> str:
 
 def generate_candidates(count: int = 3) -> list[dict]:
     return [{"label": f"후보{i + 1}", "hue": random_hue()} for i in range(count)]
-
-
-def generate_views() -> list[dict]:
-    return [{"label": label, "hue": random_hue()} for label in VIEW_LABELS]
 
 
 def iso_day(day_offset: int = 0) -> str:

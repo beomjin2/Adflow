@@ -5,15 +5,15 @@ export function TextBubble({ role, text }) {
   return (
     <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
       <div style={mine
-        ? { maxWidth: '80%', background: colors.chatMeBg, color: '#fff', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 13.5, lineHeight: '20px', fontWeight: 500 }
-        : { maxWidth: '86%', background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: '14px 14px 14px 4px', padding: '10px 14px', fontSize: 13.5, lineHeight: '20px' }}>
+        ? { maxWidth: '80%', background: colors.chatMeBg, color: '#fff', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 13.5, lineHeight: '20px', fontWeight: 500, whiteSpace: 'pre-line' }
+        : { maxWidth: '86%', background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: '14px 14px 14px 4px', padding: '10px 14px', fontSize: 13.5, lineHeight: '20px', whiteSpace: 'pre-line' }}>
         {text}
       </div>
     </div>
   );
 }
 
-export function CandidatesBubble({ items, selected, onSelect, onReroll }) {
+export function CandidatesBubble({ items, selected, onSelect, onReroll, busy }) {
   return (
     <div style={bubbleCardStyle}>
       <span style={bubbleTitleStyle}>후보가 나왔어요 — 하나 골라주세요</span>
@@ -29,33 +29,13 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll }) {
               color: colors.primarySoftText, fontSize: 11.5, fontWeight: 700,
               display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 8
             }}>{!c.image && c.label}</button>
-            <button onClick={() => onReroll(i)} title="같은 설정으로 다시 생성" style={rerollButtonStyle}>↻</button>
+            <button onClick={() => onReroll(i)} disabled={busy} title={busy ? '생성 중이에요' : '같은 설정으로 다시 생성'} style={{
+              ...rerollButtonStyle, cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.4 : 1,
+            }}>↻</button>
           </div>
         ))}
       </div>
       <span style={hintStyle}>↻ 는 설정을 그대로 두고 그림만 다시 뽑아요. 고치고 싶은 점은 그냥 말해주세요.</span>
-    </div>
-  );
-}
-
-export function ViewsBubble({ items, onReroll }) {
-  return (
-    <div style={bubbleCardStyle}>
-      <span style={bubbleTitleStyle}>4방향으로 뽑았어요</span>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {items.map((v, i) => (
-          <div key={i} style={{
-            position: 'relative', width: 86, height: 86, borderRadius: 12, border: `1px solid ${colors.cardBorder}`,
-            overflow: 'hidden', background: v.image ? undefined : bgGradient(v.hue),
-            backgroundImage: v.image ? `url(${v.image})` : undefined,
-            backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
-            display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 6
-          }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: colors.primarySoftText, background: 'rgba(255,255,255,.85)', borderRadius: 6, padding: '2px 6px' }}>{v.label}</span>
-            <button onClick={() => onReroll(i)} style={rerollButtonStyle}>↻</button>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -118,7 +98,10 @@ export function ProdBubble({ prod, onChange }) {
 export function ConfirmBubble({ pending, onConfirm, onDecline }) {
   if (!pending) return null;
   const open = pending.status === 'open';
-  const title = pending.kind === 'comic' ? '네컷만화 변경 제안' : pending.kind === 'char' ? '캐릭터 변경 제안' : '스토리 변경 제안';
+  const title = pending.kind === 'comic' ? '네컷만화 변경 제안'
+    : pending.kind === 'char_intro' ? '캐릭터 변경 제안'
+    : pending.kind === 'char_look' ? '외형 변경 제안'
+    : '스토리 변경 제안';
   return (
     <div style={{ maxWidth: '96%', background: '#fff', border: `1.5px solid ${colors.onboardBorder}`, borderRadius: 14, padding: 13, display: 'flex', flexDirection: 'column', gap: 10, animation: 'pop .22s ease' }}>
       <span style={bubbleTitleStyle}>{title}</span>

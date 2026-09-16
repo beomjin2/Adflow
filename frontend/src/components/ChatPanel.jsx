@@ -1,12 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { colors, inputStyle } from '../theme.js';
-import { TextBubble, CandidatesBubble, ViewsBubble, PlanBubble, ComicBubble, ProdBubble, ConfirmBubble } from './bubbles/Bubbles.jsx';
+import { TextBubble, CandidatesBubble, PlanBubble, ComicBubble, ProdBubble, ConfirmBubble } from './bubbles/Bubbles.jsx';
 
 export default function ChatPanel({
   messages, thinking, thinkingLabel = '생각하는 중…',
   input, onInputChange, onSend,
   cands, charSelected, onSelectCand, onRerollCand,
-  views, onRerollView,
   plan, comicCuts, onOpenComic, onRerollCut,
   prods, onPatchProd,
   pending, onConfirm, onDecline,
@@ -32,9 +31,8 @@ export default function ChatPanel({
           if (m.kind === 'text') return <TextBubble key={i} role={m.role} text={m.text} />;
           if (m.kind === 'cands') return (
             <CandidatesBubble key={i} items={cands || []} selected={charSelected}
-              onSelect={onSelectCand} onReroll={onRerollCand} />
+              onSelect={onSelectCand} onReroll={onRerollCand} busy={thinking} />
           );
-          if (m.kind === 'views') return <ViewsBubble key={i} items={views || []} onReroll={onRerollView} />;
           if (m.kind === 'plan') return <PlanBubble key={i} items={(plan || []).map(c => ({ n: c.n, line: c.line }))} />;
           if (m.kind === 'comic') return (
             <ComicBubble key={i} items={comicCuts || []} onOpen={onOpenComic} onReroll={onRerollCut} />

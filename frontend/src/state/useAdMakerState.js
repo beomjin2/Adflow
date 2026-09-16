@@ -18,8 +18,8 @@ function initialState() {
     storeDesc: '', storeImages: [],
 
     charName: '', charAge: '', charGender: '', charHobby: '', charLook: '',
-    charMsgs: [], charInput: '', charThinking: false,
-    charCands: [], charSelected: -1, charViews: [],
+    charMsgs: [], charInput: '', charThinking: false, charPending: {},
+    charCands: [], charSelected: -1,
     charConfirmed: false, charInfoReadOnly: true,
 
     adType: '인스타 게시물', adConcept: '유쾌함',
@@ -95,7 +95,6 @@ export function useAdMakerState() {
   }, [update]);
 
   const goHome = useCallback(() => update({ screen: 'home', stack: [], trendPopup: false }), [update]);
-  const resetDemo = useCallback(() => window.location.reload(), []);
 
   const charLocked = !state.storeSaved;
   const adLocked = !state.charConfirmed;
@@ -161,34 +160,41 @@ export function useAdMakerState() {
     update({ charThinking: true });
     try {
       const updated = await CharacterAPI.genCandidates();
-      update({ ...updated, charThinking: false });
+      update(updated);
       // 항목만 먼저 반환됨 — 실제 이미지는 하나씩 순차로 채운다 (요청당 이미지 1장, 타임아웃 방지)
+      // charThinking은 이 루프가 끝날 때까지 켜둬서 생성 중 리롤 버튼을 못 누르게 막는다.
       for (let i = 0; i < (updated.charCands || []).length; i++) {
         try { update(await CharacterAPI.rerollCandidate(i)); } catch (e) { fail(e); }
       }
-    } catch (e) { update({ charThinking: false }); fail(e); }
+    } catch (e) { fail(e); } finally { update({ charThinking: false }); }
   }, [update, fail]);
 
   const selectCand = useCallback(async (i) => {
-    try {
-      const updated = await CharacterAPI.select(i);
-      update(updated);
-      for (let v = 0; v < (updated.charViews || []).length; v++) {
-        try { update(await CharacterAPI.rerollView(v)); } catch (e) { fail(e); }
-      }
-    } catch (e) { fail(e); }
+    try { update(await CharacterAPI.select(i)); } catch (e) { fail(e); }
   }, [update, fail]);
 
   const rerollCand = useCallback(async (i) => {
-    try { update(await CharacterAPI.rerollCandidate(i)); toast('다시 그렸어요'); } catch (e) { fail(e); }
-  }, [update, toast, fail]);
-
-  const rerollView = useCallback(async (i) => {
-    try { update(await CharacterAPI.rerollView(i)); toast('다시 그렸어요'); } catch (e) { fail(e); }
+    update({ charThinking: true });
+    try { update(await CharacterAPI.rerollCandidate(i)); toast('다시 그렸어요'); }
+    catch (e) { fail(e); }
+    finally { update({ charThinking: false }); }
   }, [update, toast, fail]);
 
   const loadChar = useCallback(async () => {
     try { update(await CharacterAPI.loadPrevious()); } catch (e) { fail(e); }
+  }, [update, fail]);
+
+  const resetChar = useCallback(async () => {
+    if (!window.confirm('캐릭터 대화와 후보를 전부 지우고 처음부터 다시 시작할까요?')) return;
+    try { update(await CharacterAPI.reset()); } catch (e) { fail(e); }
+  }, [update, fail]);
+
+  const confirmCharPending = useCallback(async (pid) => {
+    try { update(await CharacterAPI.confirmPending(pid)); } catch (e) { fail(e); }
+  }, [update, fail]);
+
+  const declineCharPending = useCallback(async (pid) => {
+    try { update(await CharacterAPI.declinePending(pid)); } catch (e) { fail(e); }
   }, [update, fail]);
 
   const confirmChar = useCallback(async () => {
@@ -408,10 +414,11 @@ export function useAdMakerState() {
     state,
     charLocked, adLocked,
     actions: {
-      set, toast, go, back, goHome, resetDemo,
+      set, toast, go, back, goHome,
       goStore, goChar, goAd, goTrendHome, goMy, openProdTab, goData,
       editStore, saveStore, toggleClosedDay, uploadStoreImage, deleteStoreImage,
-      genCandidates, sendChar, selectCand, rerollCand, rerollView, loadChar, confirmChar, toggleCharEdit,
+      genCandidates, sendChar, selectCand, rerollCand, loadChar, resetChar, confirmChar, toggleCharEdit,
+      confirmCharPending, declineCharPending,
       confirmPending, declinePending,
       applyAd, trendYes, trendNo, goTrendFromAd, backToAd,
       toggleTrendAccordion, useTrend,

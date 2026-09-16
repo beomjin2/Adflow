@@ -46,8 +46,8 @@ class CharacterOut(BaseModel):
     confirmed: bool
     candidates: list[ImageItem]
     selected_index: int
-    views: list[ImageItem]
     messages: list[dict[str, Any]]
+    pending: dict[str, Any]
 
 
 class CharacterUpdate(BaseModel):

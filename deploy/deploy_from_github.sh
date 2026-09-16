@@ -65,6 +65,17 @@ mkdir -p media uploads/store
 echo "   라우터: $(ls app/api/routes | tr '\n' ' ')"
 echo "   워크플로우: $(ls app/services/workflows | tr '\n' ' ')"
 
+# requirements.txt를 복사만 하고 설치하지 않으면, 새 의존성이 들어온 날 재시작이
+# ModuleNotFoundError로 죽는다. 서비스는 이미 멈춘 뒤라 원인을 찾기도 늦다.
+# 바뀐 게 없으면 pip가 알아서 건너뛰므로 매번 돌려도 싸다.
+if [ -x .venv/bin/pip ]; then
+  echo "   의존성 맞추는 중"
+  .venv/bin/pip install --quiet --disable-pip-version-check -r requirements.txt 2>&1 | tail -3
+  echo "   완료"
+else
+  echo "   [!] .venv 를 못 찾았다 — 의존성 설치를 건너뛴다. 재시작 전에 직접 확인할 것"
+fi
+
 say "4/4  프론트 교체 (이전 것은 frontend.bak-${STAMP} 로 남긴다)"
 cd "$BASE"
 [ -d frontend ] && mv frontend "frontend.bak-${STAMP}"

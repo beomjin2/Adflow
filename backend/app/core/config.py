@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     # 생성된 캐릭터 PNG를 저장할 폴더. /api/media/<파일명>으로 서빙된다.
     media_dir: str = "media"
 
+    # 캐릭터 프롬프트를 Danbooru 태그로 조립할 때 씀 — 비워두면 하드코딩 화이트리스트로 폴백한다.
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    # deepghs/site_tags(HF, CC-BY-4.0)의 danbooru.donmai.us/tags.parquet 미러 경로.
+    # backend/ 기준 상대경로(또는 절대경로) — GPT가 뽑은 태그 후보의 실존·게시물수를 검증한다.
+    danbooru_tags_path: str = "data/danbooru_tags/danbooru.donmai.us/tags.parquet"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

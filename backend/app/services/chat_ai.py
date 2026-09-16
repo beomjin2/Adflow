@@ -8,6 +8,8 @@ import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from app.services.danbooru_tags import tags_for_look
+
 # 서버는 UTC로 돈다. 그대로 쓰면 새벽 5시에 구운 빵이 '어제' 생산으로 기록된다 —
 # 새벽에 굽는 가게가 많으니 여기서 한국 시간으로 고정한다.
 KST = ZoneInfo("Asia/Seoul")
@@ -25,13 +27,21 @@ STYLE_TAGS = "masterpiece, best quality, score_7, safe, solo, (chibi:1.3), full 
 
 
 def character_prompt(char, hint: str = "") -> str:
-    """사장님이 입력한 캐릭터 설명을 '연습용' 워크플로우의 프롬프트로 조립한다."""
+    """사장님이 입력한 캐릭터 설명을 '연습용' 워크플로우의 프롬프트로 조립한다.
+
+    Anima는 Danbooru 태그로 학습된 모델이라 한국어 문장을 그대로 넣으면 얼버무린다
+    (CLAUDE.md 5-1, v4 12컷 실험). 설명을 실존 Danbooru 태그로 바꿔 넣고, 태그를
+    하나도 못 뽑았을 때만 원문으로 폴백한다. STYLE_TAGS 접두어는 그대로 둔다.
+    """
     described = (char.look or "").strip()
     if not described:
         described = ", ".join(p for p in [char.name, char.age, char.gender, char.hobby] if p)
 
     pieces = [STYLE_TAGS]
-    if described:
+    tags = tags_for_look(described) if described else []
+    if tags:
+        pieces.append(", ".join(tags))
+    elif described:
         pieces.append(described)
     else:
         pieces.append("cute animal mascot character")

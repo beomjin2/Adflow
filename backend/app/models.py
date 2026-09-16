@@ -32,8 +32,8 @@ class Character(Base):
     confirmed = Column(Boolean, default=False)
     candidates = Column(JSON, default=list)  # [{label, hue}]
     selected_index = Column(Integer, default=-1)
-    views = Column(JSON, default=list)  # [{label, hue}]
     messages = Column(JSON, default=list)  # [{role, kind, ...}] 채팅 히스토리
+    pending = Column(JSON, default=dict)   # {pid: {kind, diffs, payload, status}}
 
 
 class AdSettings(Base):

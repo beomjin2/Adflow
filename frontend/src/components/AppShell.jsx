@@ -79,9 +79,6 @@ export default function AppShell({ state, actions, missingProdsCount, children }
             </div>
           )}
         </div>
-        <button onClick={actions.resetDemo} style={{ height: 32, borderRadius: 999, padding: '0 14px', fontSize: 12.5, fontWeight: 600, background: colors.softBg, color: colors.textSub, border: 0, cursor: 'pointer' }}>
-          데모 초기화
-        </button>
       </div>
 
       <div style={{ width: '100%', maxWidth: 1020, background: '#fff', borderRadius: 20, boxShadow: '0 2px 6px rgba(20,28,36,.05)', overflow: 'hidden', border: `1px solid ${colors.cardBorder}` }}>

@@ -3,7 +3,7 @@
 from sqlalchemy.orm import Session
 
 from app import models
-from app.services.chat_ai import iso_day
+from app.services.chat_ai import CHARACTER_INTRO_MESSAGE, iso_day
 
 
 def seed_if_empty(db: Session) -> None:
@@ -20,7 +20,7 @@ def seed_if_empty(db: Session) -> None:
     if not db.get(models.Character, 1):
         db.add(models.Character(
             id=1,
-            messages=[{"role": "ai", "kind": "text", "text": "어떤 마스코트를 원하세요? 가게 분위기나 느낌을 편하게 말해주세요."}],
+            messages=[{"role": "ai", "kind": "text", "text": CHARACTER_INTRO_MESSAGE}],
         ))
 
     if not db.get(models.AdSettings, 1):

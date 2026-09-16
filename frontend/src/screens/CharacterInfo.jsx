@@ -4,24 +4,17 @@ import { PrimaryButton, SecondaryButton, SoftButton } from '../components/ui/But
 
 export default function CharacterInfo({ state, actions }) {
   const ro = state.charInfoReadOnly;
+  const selected = state.charCands?.[state.charSelected];
   return (
     <div style={{ padding: 22, display: 'flex', gap: 18, flexWrap: 'wrap' }}>
       <div style={{ flex: '1 1 280px', display: 'flex', flexDirection: 'column', gap: 9 }}>
-        <Label>확정된 캐릭터 — 4방향</Label>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 9 }}>
-          {state.charViews.map((v, i) => (
-            <div key={i} style={{
-              position: 'relative', height: 120, borderRadius: 14, border: `1px solid ${colors.cardBorder}`,
-              overflow: 'hidden', background: v.image ? undefined : bgGradient(v.hue),
-              backgroundImage: v.image ? `url(${v.image})` : undefined,
-              backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
-              display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 8
-            }}>
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: colors.primarySoftText, background: 'rgba(255,255,255,.85)', borderRadius: 6, padding: '2px 7px' }}>{v.label}</span>
-              <button onClick={() => actions.rerollView(i)} style={{ position: 'absolute', top: 7, right: 7, width: 24, height: 24, borderRadius: 8, border: 0, background: 'rgba(255,255,255,.94)', fontSize: 13, cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.12)' }}>↻</button>
-            </div>
-          ))}
-        </div>
+        <Label>확정된 캐릭터</Label>
+        <div style={{
+          width: '100%', maxWidth: 320, aspectRatio: '1 / 1', borderRadius: 16, border: `1px solid ${colors.cardBorder}`,
+          overflow: 'hidden', background: selected?.image ? undefined : bgGradient(selected?.hue ?? 0),
+          backgroundImage: selected?.image ? `url(${selected.image})` : undefined,
+          backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
+        }} />
       </div>
       <div style={{ flex: '1 1 300px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <TextInput value={state.charName} onChange={e => actions.set('charName', e.target.value)} readOnly={ro} placeholder="이름" />

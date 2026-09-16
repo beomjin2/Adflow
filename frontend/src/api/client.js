@@ -41,7 +41,7 @@ const mapStore = (s) => ({
 const mapCharacter = (c) => ({
   charName: c.name, charAge: c.age, charGender: c.gender, charHobby: c.hobby, charLook: c.look,
   charConfirmed: c.confirmed, charCands: c.candidates, charSelected: c.selected_index,
-  charViews: c.views, charMsgs: c.messages,
+  charMsgs: c.messages, charPending: c.pending,
 });
 
 const mapAd = (a) => ({
@@ -76,9 +76,11 @@ export const CharacterAPI = {
   genCandidates: () => post('/api/character/candidates').then(mapCharacter),
   rerollCandidate: (i) => post(`/api/character/candidates/${i}/reroll`).then(mapCharacter),
   select: (i) => post(`/api/character/select/${i}`).then(mapCharacter),
-  rerollView: (i) => post(`/api/character/views/${i}/reroll`).then(mapCharacter),
   loadPrevious: () => post('/api/character/load-previous').then(mapCharacter),
+  reset: () => post('/api/character/reset').then(mapCharacter),
   confirm: () => post('/api/character/confirm').then(mapCharacter),
+  confirmPending: (pid) => post(`/api/character/confirm/${pid}`).then(mapCharacter),
+  declinePending: (pid) => post(`/api/character/decline/${pid}`).then(mapCharacter),
 };
 
 // ---------- ad ----------

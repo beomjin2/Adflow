@@ -1,4 +1,11 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
+
+# backend/ 디렉터리. media_dir 같은 상대경로의 기준점이다 — 프로세스의 CWD에 기대면
+# systemd로 띄웠을 때와 셸에서 띄웠을 때 그림이 서로 다른 곳에 쌓이고,
+# 쓰는 쪽과 내려주는 쪽이 갈라지면 파일은 생겼는데 404가 난다.
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -22,6 +29,29 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def uploads_path(self) -> Path:
+        """사장님이 올린 사진을 두는 절대경로. 없으면 만든다.
+
+        media_path와 같은 이유로 절대경로다 — 쓰는 쪽(store 라우터)과 내려주는 쪽
+        (main의 마운트)이 CWD에 따라 갈리면 업로드는 됐는데 404가 난다.
+        """
+        path = BACKEND_ROOT / "uploads" / "store"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    @property
+    def media_path(self) -> Path:
+        """미디어 디렉터리의 절대경로. 없으면 만든다.
+
+        쓰는 쪽(image_gen)과 내려주는 쪽(main의 마운트)이 반드시 이걸 같이 써야 한다.
+        """
+        path = Path(self.media_dir).expanduser()
+        if not path.is_absolute():
+            path = BACKEND_ROOT / path
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     class Config:
         env_file = ".env"

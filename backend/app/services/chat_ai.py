@@ -73,23 +73,42 @@ def now_hm() -> str:
 
 # 품목은 업종마다 다르다 — 빵집이든 반찬가게든 꽃집이든 같은 규칙으로 읽어야 한다.
 # 그래서 품목 사전을 두지 않고, 문장에서 수량·날짜·시각·동사를 걷어낸 나머지를 품목으로 본다.
-_UNIT = r"개|봉지|봉|판|장|잔|병|팩|박스|세트|인분|마리|송이|kg|g|ml|L|리터"
+_UNIT = (
+    r"개|봉지|봉|판|장|잔|병|팩|박스|상자|세트|인분|마리|송이|다발|묶음|단|줄|통|포기"
+    r"|근|컵|조각|그릇|접시|바구니|켤레|kg|g|ml|L|리터"
+)
 _QTY_RE = re.compile(rf"(\d+)\s*({_UNIT})?", re.IGNORECASE)
 _DAY_RE = re.compile(r"(\d{1,2})\s*[/\-월.]\s*(\d{1,2})")
 _TIME_RE = re.compile(r"(\d{1,2})\s*(?::|시)\s*(\d{1,2})?")
 _SKIP_RE = re.compile(r"안\s?했|없어|없습니다|안했|건너|아니")
 
-# 품목 이름에서 걷어낼 것들: 수량, 시각, 날짜말, 그리고 '만들었어요' 같은 서술어.
-_NOISE_RE = re.compile(
-    rf"\d+\s*(?:{_UNIT})"
-    r"|\d{1,2}\s*[:시]\s*\d{0,2}\s*분?"
+# 날짜·시각 표현. 품목을 찾기 전에 먼저 걷어낸다 — 안 그러면 '9/16에'의 9를 수량으로 읽는다.
+_WHEN_RE = re.compile(
+    r"\d{1,2}\s*[:시]\s*\d{0,2}\s*분?"
     r"|\d{1,2}\s*[/\-월.]\s*\d{1,2}\s*일?"
-    r"|오늘|어제|그저께|그제|아침|점심|저녁|오전|오후|새벽"
-    r"|만들었\S*|만들어\S*|만듦|구웠\S*|구움|굽고\S*|생산\S*|준비\S*|나왔\S*|뽑았\S*"
-    r"|했어\S*|했습니다|했다|해서\S*|팔았\S*|판매\S*|\d+",
+    r"|오늘|어제|그저께|그제|아침|점심|저녁|오전|오후|새벽",
     re.IGNORECASE,
 )
-_PARTICLE_RE = re.compile(r"(?:은|는|이|가|을|를|도|만|랑|하고|와|과)$")
+
+# '만들었어요' 같은 서술어. 품목 이름이 아니다.
+_VERB_RE = re.compile(
+    r"만들었\S*|만들어\S*|만듦|구웠\S*|구움|굽고\S*|생산\S*|준비\S*|나왔\S*|뽑았\S*"
+    r"|했어\S*|했습니다|했다|해서\S*|팔았\S*|판매\S*",
+    re.IGNORECASE,
+)
+
+_PARTICLE_RE = re.compile(r"(?:은|는|이|가|을|를|도|만|랑|하고|와|과|에서|에|부터|까지|으로|로)$")
+
+# '반찬가게인데', '날이 더워서' 처럼 배경을 설명하는 마디. 품목이 아니라 맥락이므로
+# 어미만 떼지 말고 단어를 통째로 버린다 — 안 그러면 품목이 '반찬가게 멸치볶음'이 된다.
+# '서'로 끝나는 말(더워서·바빠서·해서·가게에서)은 한국어에서 거의 다 이런 연결 어미다.
+_CLAUSE_RE = re.compile(r"(?:인데요?|는데요?|한데|이고|이며|서)$")
+
+# 뜻 없는 말버릇. 이게 남으면 '음 그냥 뭐'가 품목 이름으로 저장된다.
+_FILLER = {
+    "음", "어", "아", "응", "네", "예", "그냥", "뭐", "좀", "저기", "일단", "막",
+    "그", "이", "저", "것", "거", "등", "및", "제가", "저희", "우리",
+}
 
 
 def item_from(text: str) -> str:
@@ -98,16 +117,51 @@ def item_from(text: str) -> str:
     '소금빵 20개 만들었어요' → '소금빵'. 라우터는 빈 값이면 기록을 만들지 않고
     사장님에게 다시 물어본다. 못 알아들은 걸 '신메뉴' 같은 이름으로 저장하면
     그건 사장님이 만든 적 없는 생산 기록이 된다.
+
+    품목은 업종마다 다르다(빵·반찬·꽃…). 그래서 품목 사전을 두지 않고 **수량을
+    기준점으로** 삼는다 — 한국어에서 품목은 수량 바로 앞에 온다("소금빵 20개",
+    "국화 30송이", "멸치볶음 15팩"). 수량이 아예 없으면 생산 기록으로 볼 수 없으니
+    빈 문자열을 돌려주고 라우터가 되묻게 한다.
     """
-    cleaned = _NOISE_RE.sub(" ", text or "")
-    cleaned = re.sub(r"[^\w가-힣\s]", " ", cleaned)
-    words = [_PARTICLE_RE.sub("", w) for w in cleaned.split()]
-    words = [w for w in words if w]
-    return " ".join(words[:3])
+    without_when = _WHEN_RE.sub(" ", text or "")
+    qty = _QTY_RE.search(without_when)
+    if not qty:
+        # 수량이 없는 문장은 생산 기록이 아니다. '음 그냥 뭐 좀' 같은 말이
+        # 품목으로 저장되는 걸 여기서 막는다.
+        return ""
+
+    def runs(segment: str) -> list[list[str]]:
+        """살아남은 낱말을 '끊기지 않고 붙어 있는 덩어리' 단위로 묶어 돌려준다.
+
+        덩어리로 묶는 이유 — '초코 소금빵'은 두 낱말이 붙어 있으니 한 품목이지만,
+        '날이 더워서 팥빙수'는 사이에 버려진 말이 있으니 '날'과 '팥빙수'를 붙이면 안 된다.
+        """
+        segment = _VERB_RE.sub(" @ ", segment)
+        segment = re.sub(r"[^\w가-힣\s@]", " @ ", segment)
+        grouped: list[list[str]] = [[]]
+        for word in segment.split():
+            if word == "@" or _CLAUSE_RE.search(word):
+                grouped.append([])
+                continue
+            word = _PARTICLE_RE.sub("", word)
+            if not word or word in _FILLER or word.isdigit():
+                grouped.append([])
+                continue
+            grouped[-1].append(word)
+        return [g for g in grouped if g]
+
+    # 수량 앞쪽을 먼저 본다 — 한국어는 품목이 수량 바로 앞에 온다.
+    # 거기가 비면(수량을 먼저 말한 경우) 뒤쪽을 본다.
+    before = runs(without_when[:qty.start()])
+    if before:
+        return " ".join(before[-1][-2:])
+    after = runs(without_when[qty.end():])
+    return " ".join(after[0][:2]) if after else ""
 
 
 def qty_from(text: str) -> str:
-    m = _QTY_RE.search(text or "")
+    """수량. 날짜·시각을 먼저 걷어낸다 — '9/16에 김치 5통'에서 9를 수량으로 읽으면 안 된다."""
+    m = _QTY_RE.search(_WHEN_RE.sub(" ", text or ""))
     if not m:
         return ""
     return f"{m.group(1)}{m.group(2) or '개'}"

@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 """가게 정보. 값은 전부 사장님이 직접 입력하거나 올린 것만 들어간다."""
 
 from app import models, schemas
+from app.core.config import settings
 from app.core.database import get_db
 
 router = APIRouter(prefix="/api/store", tags=["store"])
@@ -14,7 +15,6 @@ router = APIRouter(prefix="/api/store", tags=["store"])
 # 저장하려면 이 네 가지는 있어야 한다. 뒤 단계(캐릭터·광고)가 이걸 근거로 돈다.
 REQUIRED = {"category": "업종", "address": "주소", "desc": "가게 소개"}
 
-UPLOAD_DIR = "uploads/store"
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 
@@ -75,13 +75,11 @@ async def upload_image(file: UploadFile = File(...), db: Session = Depends(get_d
         raise HTTPException(400, "파일이 너무 커요 (최대 8MB)")
 
     store = _get(db)
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
     ext = os.path.splitext(os.path.basename(file.filename or ""))[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         ext = ".jpg"
     filename = f"{uuid.uuid4().hex}{ext}"
-    with open(os.path.join(UPLOAD_DIR, filename), "wb") as out:
-        out.write(content)
+    (settings.uploads_path / filename).write_bytes(content)
 
     # 라벨은 사장님이 올린 파일 이름 그대로 — 나중에 목록에서 어떤 사진인지 알아본다.
     original = os.path.splitext(os.path.basename(file.filename or ""))[0][:30]
@@ -104,12 +102,14 @@ def delete_image(index: int, db: Session = Depends(get_db)):
     if not 0 <= index < len(images):
         raise HTTPException(404, "image index out of range")
 
+    # 파일도 같이 지운다. 경로는 URL에서 파일명만 떼어내 settings 기준으로 다시 만든다 —
+    # URL을 그대로 상대경로로 쓰면 프로세스의 CWD에 따라 엉뚱한 곳을 지우려 든다.
     removed = images.pop(index)
     image_url = removed.get("image") or ""
     if image_url.startswith("/api/uploads/store/"):
-        path = image_url.removeprefix("/api/")
-        if os.path.exists(path):
-            os.remove(path)
+        target = settings.uploads_path / os.path.basename(image_url)
+        if target.exists():
+            target.unlink()
 
     store.images = images
     db.commit()

@@ -9,7 +9,6 @@
 app/services/jobs.py의 백그라운드 워커가 이 함수를 대신 호출한다.
 """
 
-import base64
 import json
 import logging
 import random
@@ -23,6 +22,13 @@ from requests.auth import HTTPBasicAuth
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# 그림을 내려주는 경로. nginx가 /api/ 만 백엔드로 넘기므로 반드시 /api/ 로 시작해야 한다.
+MEDIA_URL_PREFIX = "/api/media"
+
+# PNG 매직 넘버. ComfyUI가 그림 대신 에러 페이지를 돌려주는 일이 있는데, 그걸 그대로
+# 저장하면 화면엔 깨진 이미지 아이콘만 뜨고 로그엔 아무것도 안 남는다.
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 # '연습용' 워크플로우의 네거티브 프롬프트를 그대로 쓴다. 사람·실사·글자를 배제하는 쪽으로
 # 이미 조정돼 있어서, 마스코트를 뽑을 때 이걸 바꾸면 결과가 나빠진다.
@@ -94,8 +100,26 @@ def _comfy_request(method: str, path: str, **kwargs) -> requests.Response:
     return requests.request(method, f"{settings.comfy_base_url}{path}", auth=auth, timeout=30, **kwargs)
 
 
-def generate_images(prompt: str, count: int = 1, seed: int | None = None) -> list[str]:
-    """ComfyUI로 이미지 count장을 생성해 data URI(base64 PNG) 목록으로 반환한다.
+def _save_png(content: bytes) -> str | None:
+    """PNG 바이트를 media 디렉터리에 저장하고 내려받을 URL을 돌려준다.
+
+    PNG가 아니면 저장하지 않고 None — 호출부가 그 칸을 'failed'로 표시한다.
+    깨진 파일을 URL로 돌려주면 사장님 화면엔 이유 없는 빈 칸만 남는다.
+    """
+    if not content.startswith(_PNG_MAGIC):
+        logger.warning("ComfyUI가 PNG가 아닌 응답을 돌려줬습니다 (%d bytes)", len(content))
+        return None
+    filename = f"{uuid.uuid4().hex}.png"
+    (settings.media_path / filename).write_bytes(content)
+    return f"{MEDIA_URL_PREFIX}/{filename}"
+
+
+def generate_images(prompt: str, count: int = 1, seed: int | None = None) -> list[str | None]:
+    """ComfyUI로 이미지 count장을 생성해 **URL 목록**을 반환한다 (`/api/media/<uuid>.png`).
+
+    PNG는 디스크(settings.media_path)에 저장하고 응답엔 경로만 담는다 — 예전처럼
+    base64를 DB에 넣으면 /api/character 한 번이 1.9MB가 되어 3초마다 도는 폴링에
+    그대로 실려 나간다.
     설정이 비어있거나 생성에 실패하면 빈 목록을 반환 — 호출부가 실패 상태로 표시한다."""
     if not settings.comfy_base_url:
         logger.warning("COMFY_BASE_URL이 비어 있어 이미지를 생성할 수 없습니다")
@@ -144,8 +168,9 @@ def generate_images(prompt: str, count: int = 1, seed: int | None = None) -> lis
                 "type": image.get("type", "output"),
             })
             view.raise_for_status()
-            encoded = base64.b64encode(view.content).decode("ascii")
-            out.append(f"data:image/png;base64,{encoded}")
+            # 저장에 실패해도 자리를 비워 둔 채로 넣는다. 건너뛰면 뒤 그림이 앞 칸으로
+            # 당겨져 '후보2' 자리에 후보3 그림이 걸린다.
+            out.append(_save_png(view.content))
         return out
     except requests.RequestException:
         logger.exception("ComfyUI request failed")

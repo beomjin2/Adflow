@@ -69,3 +69,38 @@ def with_session(fn):
         return fn(db)
     finally:
         db.close()
+
+
+def recover_interrupted(db) -> int:
+    """부팅 시, 끊긴 생성 작업을 실패로 정리한다.
+
+    생성은 daemon 스레드에서 돈다(1장 약 56초). 그 사이에 서버가 재시작되면
+    스레드는 죽는데 DB의 칸은 `status="generating"`인 채로 남는다. 아무도 그 칸을
+    다시 채워주지 않으므로 **화면은 영원히 "그리는 중"을 돌고**, 사장님은 고장인지
+    기다리는 건지 알 방법이 없다. 배포할 때마다 이게 생긴다.
+
+    그래서 부팅 직후 한 번, 살아 있을 리 없는 `generating` 칸을 `failed`로 돌린다.
+    사장님은 "다시 뽑기"를 누르면 된다 — 영원히 도는 스피너보다 낫다.
+    """
+    from app import models
+
+    fixed = 0
+    char = db.get(models.Character, 1)
+    if not char:
+        return 0
+
+    for field in ("candidates", "views"):
+        slots = list(getattr(char, field) or [])
+        changed = False
+        for i, slot in enumerate(slots):
+            if isinstance(slot, dict) and slot.get("status") == "generating":
+                slots[i] = {**slot, "status": "failed", "image": None}
+                changed = True
+                fixed += 1
+        if changed:
+            setattr(char, field, slots)
+
+    if fixed:
+        db.commit()
+        logger.warning("재시작으로 끊긴 생성 %d칸을 failed로 정리했습니다", fixed)
+    return fixed

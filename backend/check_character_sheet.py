@@ -69,7 +69,16 @@ with TestClient(app) as client:
     check("400으로 막힘", r.status_code == 400, r.status_code)
     check("남은 칸을 알려줌", "외형" in r.json()["detail"])
 
-    section("[3] 대화로 한 칸씩 채운다 — 대화는 GPU를 건드리지 않는다")
+    section("[3] 말을 거는 첫 마디는 답이 아니다 — 넣지 말고 물어봐야 한다")
+    # 실제로 났던 사고: 첫 인사가 외형에 들어가면서 그 뒤 답이 전부 한 칸씩 밀렸다.
+    # 외형 칸에 '캐릭터 만들래요', 아웃핏 칸에 생김새, 설명 칸에 옷이 들어갔다.
+    c = client.post("/api/character/chat", json={"text": "캐릭터 만들래요"}).json()
+    check("시트는 그대로 비어 있음", all(not r["value"] for r in c["sheet"]),
+          [r["value"] for r in c["sheet"]])
+    check("외형부터 묻기 시작함", c["editing"] == "look", c["editing"])
+    check("질문을 건넴", "어떻게 생긴" in c["messages"][-1]["text"], c["messages"][-1]["text"])
+
+    section("[4] 대화로 한 칸씩 채운다 — 대화는 GPU를 건드리지 않는다")
     for text, expect_next in [
         ("통통한 갈색 곰, 동그란 눈", "아웃핏"),
         ("하얀 앞치마와 빵모자", "설명"),
@@ -83,7 +92,7 @@ with TestClient(app) as client:
         check(f"'{text[:12]}' 뒤 → {expect_next}", label == expect_next, f"실제={label}")
         check("  그림이 돌지 않음", not c["generating"] and not c["candidates"])
 
-    section("[4] 마지막 칸 → 퍼스널 키워드 자동 제안")
+    section("[5] 마지막 칸 → 퍼스널 키워드 자동 제안")
     c = client.post("/api/character/chat", json={"text": "구름이"}).json()
     pids = [p for p, v in c["pending"].items() if v["status"] == "open"]
     check("제안 1건", len(pids) == 1, c["pending"])
@@ -94,13 +103,13 @@ with TestClient(app) as client:
           proposal["payload"]["keywords"])
     check("키워드 승인 전까지 생성 잠김", c["sheet_complete"] is False)
 
-    section("[5] 키워드 승인 → 시트 완성, 생성이 열린다")
+    section("[6] 키워드 승인 → 시트 완성, 생성이 열린다")
     c = client.post(f"/api/character/suggestions/{pids[0]}/accept").json()
     check("시트 완성", c["sheet_complete"] is True, c["missing"])
     check("완성을 알려줌", any("완성" in m.get("text", "") for m in c["messages"]))
     check("그래도 그림은 안 돌았음", not c["candidates"])
 
-    section("[6] 다 찬 뒤의 수정은 승인 전까지 반영되지 않는다")
+    section("[7] 다 찬 뒤의 수정은 승인 전까지 반영되지 않는다")
     client.post("/api/character/focus/outfit")
     c = client.post("/api/character/chat", json={"text": "파란 앞치마와 밀짚모자"}).json()
     check("아웃핏 그대로", c["outfit"] == "하얀 앞치마와 빵모자", c["outfit"])
@@ -109,25 +118,25 @@ with TestClient(app) as client:
     check("전/후가 보임",
           diff["from"] == "하얀 앞치마와 빵모자" and diff["to"] == "파란 앞치마와 밀짚모자", diff)
 
-    section("[7] 승인 → 반영하고 가이드 순서상 다음 칸을 제안한다")
+    section("[8] 승인 → 반영하고 가이드 순서상 다음 칸을 제안한다")
     c = client.post(f"/api/character/suggestions/{edit_pid}/accept").json()
     check("아웃핏 바뀜", c["outfit"] == "파란 앞치마와 밀짚모자", c["outfit"])
     check("다음은 '설명'", "설명" in c["messages"][-1]["text"], c["messages"][-1]["text"])
     check("편집 대상이 desc로", c["editing"] == "desc", c["editing"])
 
-    section("[8] 태깅에 넘어가는 칸은 다섯뿐")
+    section("[9] 태깅에 넘어가는 칸은 다섯뿐")
     check("목록", IMAGE_FIELDS == ["look", "outfit", "desc", "age", "name"], IMAGE_FIELDS)
     check("능력·성별·키워드는 제외",
           not ({"abilities", "gender", "keywords"} & set(IMAGE_FIELDS)))
 
-    section("[9] 거절 → 반영하지 않는다")
+    section("[10] 거절 → 반영하지 않는다")
     client.post("/api/character/focus/name")
     c = client.post("/api/character/chat", json={"text": "먹구름이"}).json()
     pid = next(p for p, v in c["pending"].items() if v["status"] == "open")
     c = client.post(f"/api/character/suggestions/{pid}/decline").json()
     check("이름 그대로", c["name"] == "구름이", c["name"])
 
-    section("[10] 처음부터 다시 → 전부 빈다")
+    section("[11] 처음부터 다시 → 전부 빈다")
     c = client.post("/api/character/reset").json()
     check("시트 비었음", all(not r["value"] for r in c["sheet"]))
     check("생성 다시 잠김", c["sheet_complete"] is False)
@@ -136,7 +145,7 @@ with TestClient(app) as client:
 
 # ------------------------------------------------------------------- LLM 경로
 # 진짜 OpenAI를 부르지 않는다. 붙었을 때 어떻게 도는지만 확인한다.
-section("[11] LLM이 붙었을 때")
+section("[12] LLM이 붙었을 때")
 
 from app.core.config import settings  # noqa: E402
 from app.services import sheet_llm  # noqa: E402
@@ -204,7 +213,7 @@ settings.openai_api_key = ""
 
 
 # ------------------------------------------------------- 예전 스키마 마이그레이션
-section("[12] 예전 스키마 DB도 살아남는다")
+section("[13] 예전 스키마 DB도 살아남는다")
 
 OLD = WORK / "old.db"
 con = sqlite3.connect(OLD)

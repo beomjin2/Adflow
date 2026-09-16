@@ -142,35 +142,48 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     messages.append({"role": "me", "kind": "text", "text": text})
 
     complete_before = sheet.is_complete(char)
-    target = char.editing or sheet.next_field(char)
+    # 우리가 **실제로 물어본** 칸. 비어 있으면 아직 아무것도 묻지 않았다는 뜻이다.
+    asked = char.editing
 
     # LLM이 붙어 있으면 한 문장에서 여러 칸을 한 번에 읽는다
     # ("앞치마 두른 3살 곰이요" → 외형·아웃핏·나이). 못 읽으면 빈 dict가 온다.
-    read = sheet_llm.read_fields(char, text, target)
+    read = sheet_llm.read_fields(char, text, asked or sheet.next_field(char))
 
     if not complete_before:
         # ---- 빈 칸 채우기 ----
-        if not target:
-            target = sheet.next_field(char)
-        # LLM이 아무것도 못 읽었으면 물어본 칸에 답을 그대로 넣는다.
-        filling = read or {target: text}
-        for field, value in filling.items():
-            sheet.absorb(char, field, value)
-        labels = ", ".join(f"'{sheet.LABELS[f]}'" for f in filling if f in sheet.LABELS)
+        # 답으로 치는 건 두 경우뿐이다: LLM이 칸을 읽어냈거나, 우리가 물어본 칸이 있거나.
+        # 둘 다 아니면 이건 답이 아니라 말을 거는 첫 마디다("캐릭터 만들래요", "안녕하세요").
+        # 그걸 외형에 넣어버리면 그 뒤 답이 전부 한 칸씩 밀린다 — 외형에 인사말이 들어가고
+        # 아웃핏 칸에 생김새가, 설명 칸에 옷이 들어간다.
+        filling = dict(read) or ({asked: text} if asked else {})
 
-        following = sheet.next_field(char)
-        if following:
+        if not filling:
+            following = sheet.next_field(char)
             char.editing = following
-            _say(messages, f"{labels} 적어뒀어요. {sheet.QUESTIONS[following]}")
+            _say(
+                messages,
+                f"캐릭터를 같이 만들어볼게요. {sheet.QUESTIONS[following]}",
+            )
         else:
-            # 묻는 칸이 다 찼다 — 키워드를 뽑아 제안한다.
-            char.editing = ""
-            _say(messages, f"{labels}까지 적어뒀어요. 시트가 다 채워졌어요.")
-            _propose_keywords(char, messages)
+            for field, value in filling.items():
+                sheet.absorb(char, field, value)
+            labels = ", ".join(f"'{sheet.LABELS[f]}'" for f in filling if f in sheet.LABELS)
+
+            following = sheet.next_field(char)
+            if following:
+                char.editing = following
+                _say(messages, f"{labels} 적어뒀어요. {sheet.QUESTIONS[following]}")
+            else:
+                # 묻는 칸이 다 찼다 — 키워드를 뽑아 제안한다.
+                char.editing = ""
+                _say(messages, f"{labels}까지 적어뒀어요. 시트가 다 채워졌어요.")
+                _propose_keywords(char, messages)
     else:
         # ---- 다 찬 뒤의 수정 — 승인받고 반영한다 ----
         # 고칠 칸을 고르지 않았어도 LLM이 어느 칸 얘기인지 읽어낼 수 있다.
-        changes = read or ({target: text} if target else {})
+        # 여기서도 같다 — 시트에서 칸을 눌러 '이 칸을 고치겠다'고 한 게 asked다.
+        # 그게 없으면 무엇을 고치라는 말인지 알 수 없으니 되묻는다.
+        changes = read or ({asked: text} if asked else {})
         if not changes:
             _say(
                 messages,

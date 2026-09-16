@@ -1,32 +1,85 @@
-import { colors, bgGradient } from '../theme.js';
-import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
+import { colors } from '../theme.js';
+import { PrimaryButton, SecondaryButton, SoftButton } from '../components/ui/Button.jsx';
+import { buildAdText, adTextForClipboard, characterImage } from '../lib/adText.js';
 
 export default function Result({ state, actions }) {
-  const resultHeadline = state.trendApplied ? '눈이 번쩍! 소금빵 갓 나왔습니다' : '오늘 아침 갓 구운 소금빵';
-  const resultBody = `${state.storeCategory} · ${state.storeAddress || '연남동'} · ${state.storeHours || '11:00 – 22:00'}\n새벽에 반죽해 오븐에서 바로 꺼냈어요. ${state.charName || '마스코트'}가 기다릴게요.`;
-  const resultTags = state.trendApplied ? `#${state.trendPick.replace(/ /g, '')} #소금빵 #연남동빵집` : '#소금빵 #연남동빵집 #갓구운빵';
+  const { headline, lines, info, tags, empty } = buildAdText(state);
+  const charImg = characterImage(state);
+
+  const copy = async () => {
+    const text = adTextForClipboard(state);
+    if (!text) { actions.toast('복사할 문구가 없어요'); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+      actions.toast('문구를 복사했어요 — 인스타에 붙여 넣으세요');
+    } catch {
+      // https가 아니거나 브라우저가 막으면 클립보드를 못 쓴다. 그럴 땐 직접 고르시게 안내한다.
+      actions.toast('복사가 안 돼요 — 아래 문구를 길게 눌러 직접 복사해주세요');
+    }
+  };
+
+  if (empty) {
+    return (
+      <div style={{ padding: 40, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+        <span style={{ fontSize: 15, color: colors.textFaint, textAlign: 'center', lineHeight: '23px' }}>
+          아직 정해진 내용이 없어요.<br />대화로 알리고 싶은 내용을 먼저 정해주세요.
+        </span>
+        <SecondaryButton onClick={actions.backToSb} style={{ minWidth: 200 }}>대화로 돌아가기</SecondaryButton>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 22, display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-      <div style={{ flex: '1 1 340px', minWidth: 0, border: `1px solid ${colors.cardBorder}`, borderRadius: 18, overflow: 'hidden', background: '#fff' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, background: colors.cardBorder }}>
-          {state.comicCuts.map(c => (
-            <div key={c.n} style={{ position: 'relative', aspectRatio: '1/1', background: bgGradient(c.hue), display: 'flex', alignItems: 'flex-end', padding: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: colors.primarySoftText, background: 'rgba(255,255,255,.85)', borderRadius: 6, padding: '3px 8px' }}>{c.n}컷 · {c.short}</span>
-              <button onClick={() => actions.rerollCut(c.n)} style={{ position: 'absolute', top: 8, right: 8, width: 26, height: 26, borderRadius: 8, border: 0, background: 'rgba(255,255,255,.94)', fontSize: 13, cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,.12)' }}>↻</button>
+      {/* 컷 구성 — 사장님이 정한 문장 그대로. 그림은 캐릭터만 있고, 컷 그림은 만들지 않는다. */}
+      <div style={{ flex: '1 1 340px', minWidth: 0, border: `1px solid ${colors.cardBorder}`, borderRadius: 18, background: '#fff', overflow: 'hidden' }}>
+        <div style={{ padding: '14px 16px', borderBottom: `1px solid ${colors.cardBorder}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+          {charImg && (
+            <img src={charImg} alt={state.charName || '가게 캐릭터'} style={{
+              width: 44, height: 44, borderRadius: 11, objectFit: 'cover', flex: 'none',
+              border: `1px solid ${colors.cardBorder}`,
+            }} />
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>{state.charName || '우리 가게'}</span>
+            <span style={{ fontSize: 12, color: colors.textFaint, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {state.adType || '광고'}{state.adConcept ? ` · ${state.adConcept}` : ''}
+            </span>
+          </div>
+        </div>
+        <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {state.plan.map((c) => (
+            <div key={c.n} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{
+                fontSize: 12, fontWeight: 800, color: colors.primarySoftText, background: colors.primarySoft,
+                borderRadius: 7, padding: '4px 8px', flex: 'none',
+              }}>{c.n}컷</span>
+              <span style={{ fontSize: 15, lineHeight: '23px', color: colors.text }}>{c.line}</span>
             </div>
           ))}
         </div>
       </div>
+
       <div style={{ flex: '1 1 280px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div style={{ background: colors.bg, borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: colors.textFaint, letterSpacing: .4 }}>광고 문구</span>
-          <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: -.3, lineHeight: '25px' }}>{resultHeadline}</span>
-          <span style={{ fontSize: 13.5, lineHeight: '21px', color: colors.textSub, whiteSpace: 'pre-line' }}>{resultBody}</span>
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: colors.primarySoftText }}>{resultTags}</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: colors.textFaint, letterSpacing: .4 }}>올릴 문구</span>
+          {headline && (
+            <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: -.3, lineHeight: '27px' }}>{headline}</span>
+          )}
+          {lines.length > 1 && (
+            <span style={{ fontSize: 15, lineHeight: '23px', color: colors.textSub, whiteSpace: 'pre-line' }}>
+              {lines.slice(1).join('\n')}
+            </span>
+          )}
+          {info && <span style={{ fontSize: 14, lineHeight: '21px', color: colors.textSub }}>{info}</span>}
+          {tags.length > 0 && (
+            <span style={{ fontSize: 14, fontWeight: 600, color: colors.primarySoftText }}>{tags.join(' ')}</span>
+          )}
         </div>
-        <SecondaryButton onClick={actions.backToSb} style={{ height: 48, fontSize: 15 }}>대화로 돌아가 수정</SecondaryButton>
-        <PrimaryButton onClick={actions.confirmResult}>확정</PrimaryButton>
+
+        <SoftButton onClick={copy} style={{ height: 48, fontSize: 15 }}>문구 복사하기</SoftButton>
+        <SecondaryButton onClick={actions.backToSb} style={{ height: 52, fontSize: 16 }}>대화로 돌아가 고치기</SecondaryButton>
+        <PrimaryButton onClick={actions.confirmResult}>이대로 저장</PrimaryButton>
       </div>
     </div>
   );

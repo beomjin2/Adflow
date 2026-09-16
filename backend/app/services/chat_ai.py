@@ -19,7 +19,14 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).astimezone(KST)
 
 VIEW_LABELS = ["정면", "좌측면", "우측면", "뒷면"]
-VIEW_HINTS = {"정면": "front view", "좌측면": "left side view", "우측면": "right side view", "뒷면": "back view"}
+# 실존 Danbooru 구도 태그만 쓴다(CLAUDE.md 5-1). "front view"류는 Danbooru에 없는 표현이다.
+# Danbooru엔 좌/우를 가르는 태그가 없어 양 측면은 같은 태그다 — 좌우는 IP-Adapter 참조와 시드에 맡긴다.
+VIEW_HINTS = {
+    "정면": "straight-on, looking_at_viewer",
+    "좌측면": "from_side, profile",
+    "우측면": "from_side, profile",
+    "뒷면": "from_behind",
+}
 
 # '연습용' 워크플로우가 이 태그 조합에 맞춰 조정돼 있다. 사장님이 쓴 설명 앞에 붙여
 # 화풍을 고정한다 — 이걸 빼면 같은 모델에서도 그림 톤이 매번 달라진다.

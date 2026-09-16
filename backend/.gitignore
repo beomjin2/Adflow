@@ -5,3 +5,4 @@ __pycache__/
 .env
 uploads/
 data/danbooru_tags/
+media/

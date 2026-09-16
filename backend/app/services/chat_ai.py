@@ -16,25 +16,27 @@ KST = ZoneInfo("Asia/Seoul")
 def _now() -> datetime:
     return datetime.now(timezone.utc).astimezone(KST)
 
-VIEW_LABELS = ["정면", "좌측면", "우측면", "뒷면"]
-VIEW_HINTS = {"정면": "front view", "좌측면": "left side view", "우측면": "right side view", "뒷면": "back view"}
-
 # '연습용' 워크플로우가 이 태그 조합에 맞춰 조정돼 있다. 사장님이 쓴 설명 앞에 붙여
 # 화풍을 고정한다 — 이걸 빼면 같은 모델에서도 그림 톤이 매번 달라진다.
 STYLE_TAGS = "masterpiece, best quality, score_7, safe, solo, (chibi:1.3), full body, simple background"
 
 
 def character_prompt(char, hint: str = "") -> str:
-    """사장님이 입력한 캐릭터 설명을 '연습용' 워크플로우의 프롬프트로 조립한다."""
-    described = (char.look or "").strip()
-    if not described:
-        described = ", ".join(p for p in [char.name, char.age, char.gender, char.hobby] if p)
+    """시트에서 **외형 · 아웃핏 · 나이** 세 칸만 뽑아 프롬프트로 조립한다.
+
+    설명·능력·성격 키워드는 일부러 넣지 않는다. 그림 모델이 읽는 건 눈에 보이는
+    특징이고, '빵을 좋아하는 다정한 성격' 같은 문장은 화면에 나타나지 않으면서
+    태그 비중만 흐린다. 그 칸들은 광고 문구 쪽에서 쓰인다.
+    """
+    from app.services.character_sheet import IMAGE_FIELDS
+
+    described = ", ".join(
+        value for value in ((getattr(char, f, "") or "").strip() for f in IMAGE_FIELDS) if value
+    )
 
     pieces = [STYLE_TAGS]
     if described:
         pieces.append(described)
-    else:
-        pieces.append("cute animal mascot character")
     if hint:
         pieces.append(hint)
     return ", ".join(pieces)
@@ -45,14 +47,6 @@ def pending_candidates(count: int = 3) -> list[dict]:
     return [
         {"label": f"후보{i + 1}", "image": None, "status": "generating"}
         for i in range(count)
-    ]
-
-
-def pending_views() -> list[dict]:
-    """4방향 생성 대기 칸."""
-    return [
-        {"label": label, "image": None, "status": "generating"}
-        for label in VIEW_LABELS
     ]
 
 

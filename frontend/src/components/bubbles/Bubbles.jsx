@@ -52,23 +52,6 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 
   );
 }
 
-export function ViewsBubble({ items, onReroll, eta = 0 }) {
-  const drawing = items.filter((v) => v.status === 'generating').length;
-  return (
-    <div style={bubbleCardStyle}>
-      <span style={bubbleTitleStyle}>
-        {drawing > 0 ? `4방향으로 그리는 중 — ${drawing}장 남았어요` : '4방향으로 뽑았어요'}
-      </span>
-      {drawing > 0 && eta > 0 && <span style={hintStyle}>약 {formatEta(eta)}</span>}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {items.map((v, i) => (
-          <ImageSlot key={i} slot={v} size={90} eta={eta} onReroll={() => onReroll(i)} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export function PlanBubble({ items }) {
   if (!items.length) return null;
   return (
@@ -106,10 +89,18 @@ export function ProdBubble({ prod, onChange }) {
   );
 }
 
+// 제안 종류마다 제목과 버튼 문구가 다르다. 키워드는 AI가 먼저 정해서 내놓는 것이라
+// '바꾸기'가 아니라 '이대로 할게요'가 맞는 말이다.
+const CONFIRM_COPY = {
+  keywords: { title: '퍼스널 키워드 제안', yes: '이 키워드로 할게요', no: '직접 적을게요' },
+  field: { title: '캐릭터 시트 수정', yes: '이대로 바꾸기', no: '그대로 두기' },
+  plan: { title: '스토리 변경 제안', yes: '이대로 바꾸기', no: '그대로 두기' },
+};
+
 export function ConfirmBubble({ pending, onConfirm, onDecline }) {
   if (!pending) return null;
   const open = pending.status === 'open';
-  const title = pending.kind === 'char' ? '캐릭터 변경 제안' : '스토리 변경 제안';
+  const { title, yes, no } = CONFIRM_COPY[pending.kind] || CONFIRM_COPY.plan;
   return (
     <div style={{ maxWidth: '96%', background: '#fff', border: `1.5px solid ${colors.onboardBorder}`, borderRadius: 14, padding: 13, display: 'flex', flexDirection: 'column', gap: 10, animation: 'pop .22s ease' }}>
       <span style={bubbleTitleStyle}>{title}</span>
@@ -122,8 +113,8 @@ export function ConfirmBubble({ pending, onConfirm, onDecline }) {
       ))}
       {open ? (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={onConfirm} style={{ flex: '1 1 160px', height: 48, borderRadius: 11, border: 0, background: colors.primary, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', boxShadow: '0 5px 10px rgba(22,160,107,.28)' }}>이대로 바꾸기</button>
-          <button onClick={onDecline} style={{ flex: '0 1 auto', height: 48, padding: '0 18px', borderRadius: 11, border: `1.5px solid ${colors.inputBorder}`, background: '#fff', color: colors.text, fontSize: 15, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>그대로 두기</button>
+          <button onClick={onConfirm} style={{ flex: '1 1 160px', height: 48, borderRadius: 11, border: 0, background: colors.primary, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', boxShadow: '0 5px 10px rgba(22,160,107,.28)' }}>{yes}</button>
+          <button onClick={onDecline} style={{ flex: '0 1 auto', height: 48, padding: '0 18px', borderRadius: 11, border: `1.5px solid ${colors.inputBorder}`, background: '#fff', color: colors.text, fontSize: 15, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>{no}</button>
         </div>
       ) : (
         <span style={{ fontSize: 12.5, fontWeight: 700, color: pending.status === 'applied' ? colors.primary : colors.textFaint }}>

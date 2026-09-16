@@ -49,10 +49,14 @@ BLANK = {
         "open_time": "", "close_time": "", "closed_days": "[]",
         "desc": "", "images": "[]",
     },
+    # 캐릭터 시트 8칸 + 진행 상태. 없는 컬럼은 아래 columns()가 걸러내므로
+    # 예전 스키마(hobby·views)가 남은 DB에도 그대로 돌아간다.
     "character": {
-        "name": "", "age": "", "gender": "", "hobby": "", "look": "",
+        "name": "", "age": "", "gender": "", "look": "", "outfit": "",
+        "abilities": "", "keywords": "[]", "desc": "",
+        "editing": "", "pending": "{}",
         "confirmed": 0, "candidates": "[]", "selected_index": -1,
-        "views": "[]", "messages": "[]",
+        "hobby": "", "views": "[]", "messages": "[]",
     },
     "ad_settings": {"ad_type": "", "ad_concept": ""},
     "storyboard": {

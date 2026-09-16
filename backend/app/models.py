@@ -11,9 +11,12 @@ class Store(Base):
     saved = Column(Boolean, default=False)
     category = Column(String, default="베이커리")
     address = Column(String, default="")
-    hours = Column(String, default="")
+    hours = Column(String, default="")  # open_time/close_time/closed_days로 자동 계산되는 표시용 문자열
+    open_time = Column(String, default="10:00")
+    close_time = Column(String, default="21:00")
+    closed_days = Column(JSON, default=list)  # ["월", "화", ...]
     desc = Column(String, default="")
-    images = Column(JSON, default=list)  # [{label, hue}]
+    images = Column(JSON, default=list)  # [{label, hue, image}] — image: 업로드된 파일 URL
 
 
 class Character(Base):

@@ -19,6 +19,9 @@ class StoreOut(BaseModel):
     category: str
     address: str
     hours: str
+    open_time: str
+    close_time: str
+    closed_days: list[str]
     desc: str
     images: list[ImageItem]
 
@@ -26,7 +29,9 @@ class StoreOut(BaseModel):
 class StoreUpdate(BaseModel):
     category: str | None = None
     address: str | None = None
-    hours: str | None = None
+    open_time: str | None = None
+    close_time: str | None = None
+    closed_days: list[str] | None = None
     desc: str | None = None
 
 

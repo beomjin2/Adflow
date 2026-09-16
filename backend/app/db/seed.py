@@ -11,6 +11,7 @@ def seed_if_empty(db: Session) -> None:
         db.add(models.Store(
             id=1, saved=True, category="베이커리",
             address="서울 마포구 연남로 21",
+            open_time="08:00", close_time="20:00", closed_days=["월"],
             hours="08:00 – 20:00, 월 휴무",
             desc="매일 새벽 반죽해 오븐에서 바로 꺼내는 동네 빵집. 소금빵과 통밀 캄파뉴가 간판이에요.",
             images=[{"label": "소금빵", "hue": 38}, {"label": "오늘 구운 빵 진열대", "hue": 26}],

@@ -13,7 +13,9 @@ function initialState() {
     loadError: '',
 
     storeSaved: false, storeReadOnly: false,
-    storeCategory: '', storeAddress: '', storeHours: '', storeDesc: '', storeImages: [],
+    storeCategory: '', storeAddress: '', storeHours: '',
+    storeOpenTime: '10:00', storeCloseTime: '21:00', storeClosedDays: [],
+    storeDesc: '', storeImages: [],
 
     charName: '', charAge: '', charGender: '', charHobby: '', charLook: '',
     charMsgs: [], charInput: '', charThinking: false,
@@ -118,20 +120,31 @@ export function useAdMakerState() {
   const saveStore = useCallback(async () => {
     const s = stateRef.current;
     try {
-      await StoreAPI.update({ category: s.storeCategory, address: s.storeAddress, hours: s.storeHours, desc: s.storeDesc });
+      await StoreAPI.update({
+        category: s.storeCategory, address: s.storeAddress, desc: s.storeDesc,
+        open_time: s.storeOpenTime, close_time: s.storeCloseTime, closed_days: s.storeClosedDays,
+      });
       const updated = await StoreAPI.save();
       update({ ...updated, storeReadOnly: true });
       toast('가게 정보를 저장했어요');
     } catch (e) { fail(e); }
   }, [update, toast, fail]);
 
-  const addImage = useCallback(async () => {
-    try { update(await StoreAPI.addImage()); } catch (e) { fail(e); }
-  }, [update, fail]);
+  const toggleClosedDay = useCallback((day) => {
+    update((s) => ({
+      storeClosedDays: s.storeClosedDays.includes(day)
+        ? s.storeClosedDays.filter((d) => d !== day)
+        : [...s.storeClosedDays, day],
+    }));
+  }, [update]);
 
-  const rerollStoreImage = useCallback(async (i) => {
-    try { update(await StoreAPI.rerollImage(i)); toast('다시 생성했어요'); } catch (e) { fail(e); }
+  const uploadStoreImage = useCallback(async (file) => {
+    try { update(await StoreAPI.uploadImage(file)); toast('이미지를 업로드했어요'); } catch (e) { fail(e); }
   }, [update, toast, fail]);
+
+  const deleteStoreImage = useCallback(async (i) => {
+    try { update(await StoreAPI.deleteImage(i)); } catch (e) { fail(e); }
+  }, [update, fail]);
 
   // ---------- character ----------
   const sendChar = useCallback(async () => {
@@ -397,7 +410,7 @@ export function useAdMakerState() {
     actions: {
       set, toast, go, back, goHome, resetDemo,
       goStore, goChar, goAd, goTrendHome, goMy, openProdTab, goData,
-      editStore, saveStore, addImage, rerollStoreImage,
+      editStore, saveStore, toggleClosedDay, uploadStoreImage, deleteStoreImage,
       genCandidates, sendChar, selectCand, rerollCand, rerollView, loadChar, confirmChar, toggleCharEdit,
       confirmPending, declinePending,
       applyAd, trendYes, trendNo, goTrendFromAd, backToAd,

@@ -22,11 +22,14 @@ STYLE_TAGS = "masterpiece, best quality, score_7, safe, solo, (chibi:1.3), full 
 
 
 def character_prompt(char, hint: str = "") -> str:
-    """시트에서 **외형 · 아웃핏 · 나이** 세 칸만 뽑아 프롬프트로 조립한다.
+    """시트의 IMAGE_FIELDS(외형·아웃핏·설명·나이·이름)를 이어 붙인 임시 프롬프트.
 
-    설명·능력·성격 키워드는 일부러 넣지 않는다. 그림 모델이 읽는 건 눈에 보이는
-    특징이고, '빵을 좋아하는 다정한 성격' 같은 문장은 화면에 나타나지 않으면서
-    태그 비중만 흐린다. 그 칸들은 광고 문구 쪽에서 쓰인다.
+    **여기는 자리만 잡아둔 것이다.** 한국어를 그림 모델이 읽는 태그로 바꾸는 태깅은
+    따로 만들어 붙일 예정이고, 그게 들어오면 이 함수 본문을 갈아끼우면 된다.
+    무엇을 읽을지는 character_sheet.IMAGE_FIELDS 한 곳에서만 정한다.
+
+    지금 상태로는 한국어가 그대로 CLIP에 들어간다 — 스타일 태그와 네거티브는 전부
+    영어라, 사장님이 쓴 한국어는 거의 반영되지 않는다고 봐야 한다.
     """
     from app.services.character_sheet import IMAGE_FIELDS
 

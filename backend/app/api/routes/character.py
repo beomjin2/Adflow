@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.core.database import get_db
 from app.services import character_sheet as sheet
-from app.services import jobs
+from app.services import jobs, sheet_llm
 from app.services.chat_ai import character_prompt, new_pid, pending_candidates
 from app.services.image_gen import eta_seconds, generate_images
 
@@ -144,31 +144,40 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     complete_before = sheet.is_complete(char)
     target = char.editing or sheet.next_field(char)
 
+    # LLM이 붙어 있으면 한 문장에서 여러 칸을 한 번에 읽는다
+    # ("앞치마 두른 3살 곰이요" → 외형·아웃핏·나이). 못 읽으면 빈 dict가 온다.
+    read = sheet_llm.read_fields(char, text, target)
+
     if not complete_before:
         # ---- 빈 칸 채우기 ----
         if not target:
             target = sheet.next_field(char)
-        sheet.absorb(char, target, text)
-        label = sheet.LABELS.get(target, sheet.KEYWORDS_LABEL)
+        # LLM이 아무것도 못 읽었으면 물어본 칸에 답을 그대로 넣는다.
+        filling = read or {target: text}
+        for field, value in filling.items():
+            sheet.absorb(char, field, value)
+        labels = ", ".join(f"'{sheet.LABELS[f]}'" for f in filling if f in sheet.LABELS)
 
         following = sheet.next_field(char)
         if following:
             char.editing = following
-            _say(messages, f"'{label}' 적어뒀어요. {sheet.QUESTIONS[following]}")
+            _say(messages, f"{labels} 적어뒀어요. {sheet.QUESTIONS[following]}")
         else:
-            # 7칸이 다 찼다 — 키워드를 뽑아 제안한다.
+            # 묻는 칸이 다 찼다 — 키워드를 뽑아 제안한다.
             char.editing = ""
-            _say(messages, f"'{label}'까지 적어뒀어요. 시트가 다 채워졌어요.")
+            _say(messages, f"{labels}까지 적어뒀어요. 시트가 다 채워졌어요.")
             _propose_keywords(char, messages)
     else:
         # ---- 다 찬 뒤의 수정 — 승인받고 반영한다 ----
-        if not target:
+        # 고칠 칸을 고르지 않았어도 LLM이 어느 칸 얘기인지 읽어낼 수 있다.
+        changes = read or ({target: text} if target else {})
+        if not changes:
             _say(
                 messages,
                 "시트는 다 채워져 있어요. 고치고 싶은 칸을 시트에서 눌러주시면 거기부터 바꿀게요.",
             )
         else:
-            _open_suggestion(char, messages, target, text)
+            _open_suggestion(char, messages, changes)
 
     char.messages = messages
     return _out(char, db)
@@ -180,7 +189,8 @@ def _propose_keywords(char, messages: list) -> None:
     뽑을 말이 없으면 지어내지 않고 사장님에게 직접 묻는다. 그럴듯한 형용사를 채워
     넣으면 그건 사장님이 정한 적 없는 성격이 된다.
     """
-    guessed = sheet.derive_keywords(char)
+    # LLM이 붙어 있으면 문장의 뜻을 보고 고른다. 없으면 사장님이 쓴 형용사를 집어낸다.
+    guessed = sheet_llm.suggest_keywords(char) or sheet.derive_keywords(char)
     if not guessed:
         char.editing = sheet.KEYWORDS_FIELD
         _say(
@@ -209,24 +219,31 @@ def _propose_keywords(char, messages: list) -> None:
     messages.append({"role": "ai", "kind": "confirm", "pid": pid})
 
 
-def _open_suggestion(char, messages: list, field: str, text: str) -> None:
-    """수정 제안 하나를 승인 대기로 올린다."""
-    label = sheet.LABELS.get(field, sheet.KEYWORDS_LABEL)
-    if sheet.value_of(char, field) == text:
-        _say(messages, f"'{label}'은(는) 지금과 같아요. 그대로 둘게요.")
+def _open_suggestion(char, messages: list, changes: dict) -> None:
+    """수정 제안을 승인 대기로 올린다. 한 문장이 여러 칸을 건드리면 한 카드에 모아 보여준다."""
+    # 지금과 같은 값은 뺀다 — "바꿀까요?"라고 물으면서 같은 걸 보여주면 안 된다.
+    real = {f: v for f, v in changes.items() if f in sheet.ORDER and sheet.value_of(char, f) != v}
+    if not real:
+        _say(messages, "지금 시트와 같은 내용이에요. 그대로 둘게요.")
         return
+
+    diffs = []
+    for field, value in real.items():
+        diffs.extend(sheet.diff_for(char, field, value))
 
     pending = dict(char.pending or {})
     pid = new_pid()
     pending[pid] = {
         "kind": "field",
-        "field": field,
-        "diffs": sheet.diff_for(char, field, text),
-        "payload": {"field": field, "value": text},
+        # 승인 뒤 가이드 제안의 기준점. 여러 칸이면 가이드 순서상 가장 뒤쪽을 기준으로 삼는다.
+        "field": max(real, key=sheet.ORDER.index),
+        "diffs": diffs,
+        "payload": {"changes": real},
         "status": "open",
     }
     char.pending = pending
-    _say(messages, f"'{label}'을(를) 이렇게 바꿀까요?")
+    labels = ", ".join(f"'{sheet.LABELS[f]}'" for f in real)
+    _say(messages, f"{labels}을(를) 이렇게 바꿀까요?")
     messages.append({"role": "ai", "kind": "confirm", "pid": pid})
 
 
@@ -251,21 +268,23 @@ def accept_suggestion(pid: str, db: Session = Depends(get_db)):
         _say(messages, "키워드를 그렇게 정했어요.")
         _announce_ready(char, messages)
     else:
-        field = proposal["payload"]["field"]
-        sheet.absorb(char, field, proposal["payload"]["value"])
-        label = sheet.LABELS.get(field, sheet.KEYWORDS_LABEL)
+        changes = proposal["payload"]["changes"]
+        for field, value in changes.items():
+            sheet.absorb(char, field, value)
+        label = ", ".join(sheet.LABELS[f] for f in changes)
 
-        following = sheet.next_in_guide(field)
+        # 가이드 순서상 다음 칸. 여러 칸을 한 번에 바꿨으면 가장 뒤쪽 칸 기준이다.
+        following = sheet.next_in_guide(proposal["field"])
         if following:
             char.editing = following
             _say(
                 messages,
-                f"'{label}' 바꿨어요. 가이드 순서대로면 다음은 '{sheet.LABELS[following]}'이에요 — "
+                f"{label} 바꿨어요. 가이드 순서대로면 다음은 '{sheet.LABELS[following]}'이에요 — "
                 f"여기도 고칠까요? 다른 칸을 고치고 싶으시면 시트에서 그 칸을 눌러주세요.",
             )
         else:
             char.editing = ""
-            _say(messages, f"'{label}' 바꿨어요. 더 고칠 칸이 있으면 시트에서 눌러주세요.")
+            _say(messages, f"{label} 바꿨어요. 더 고칠 칸이 있으면 시트에서 눌러주세요.")
 
     char.messages = messages
     return _out(char, db)

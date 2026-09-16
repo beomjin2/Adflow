@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     # 생성된 캐릭터 PNG를 저장할 폴더. /api/media/<파일명>으로 서빙된다.
     media_dir: str = "media"
 
+    # 캐릭터 시트 대화에 쓰는 LLM. 비어 있으면 붙이지 않고 규칙 기반으로 돈다
+    # (한 번에 한 칸씩 묻고 답을 그 칸에 그대로 넣는다) — 서비스는 그대로 동작한다.
+    # 키는 .env에만 두고 저장소에 넣지 않는다.
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    openai_base_url: str = "https://api.openai.com/v1"
+    openai_timeout_seconds: int = 20
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

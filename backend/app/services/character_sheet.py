@@ -46,8 +46,12 @@ QUESTIONS = {f: q for f, _, q in FIELDS}
 KEYWORDS_FIELD = "keywords"
 KEYWORDS_LABEL = "퍼스널 키워드"
 
-# 그림에 들어가는 칸. 화이트보드: "외형정보 + 아웃핏 + 나이 만으로만 태깅".
-IMAGE_FIELDS = ["look", "outfit", "age"]
+# 이미지 태깅에 들어가는 칸. 시트에서 **이 다섯 칸만** 태깅 모듈로 넘어간다.
+# 설명·능력·성별·퍼스널 키워드는 넘기지 않는다 — 능력·성별·키워드는 광고 문구 쪽에서 쓴다.
+#
+# 태깅 자체(한국어를 그림 모델이 읽는 태그로 바꾸는 일)는 여기서 하지 않는다. 별도로
+# 만들어 붙일 예정이고, 그때 읽어야 할 칸이 무엇인지를 이 목록이 정한다.
+IMAGE_FIELDS = ["look", "outfit", "desc", "age", "name"]
 
 MAX_KEYWORDS = 5
 

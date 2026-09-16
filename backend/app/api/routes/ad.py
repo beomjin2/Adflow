@@ -1,3 +1,9 @@
+"""광고 설정 — 종류와 컨셉만 고른다.
+
+트렌드 조사는 제거됐다. 이미지 생성도 이 경로에는 없다 — 그림은 캐릭터 단계에서만
+만들고, 광고 단계는 그 캐릭터로 무엇을 말할지(구성·대사)를 정하는 곳이다.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -7,11 +13,13 @@ from app.core.database import get_db
 
 router = APIRouter(prefix="/api/ad", tags=["ad"])
 
+AD_TYPES = ["인스타 게시물", "포스터", "메뉴판"]
+
 
 def _get(db: Session) -> models.AdSettings:
     ad = db.get(models.AdSettings, 1)
     if not ad:
-        raise HTTPException(404, "ad settings not seeded")
+        raise HTTPException(404, "ad settings row missing")
     return ad
 
 
@@ -23,7 +31,10 @@ def get_ad(db: Session = Depends(get_db)):
 @router.put("", response_model=schemas.AdOut)
 def update_ad(body: schemas.AdUpdate, db: Session = Depends(get_db)):
     ad = _get(db)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    values = body.model_dump(exclude_unset=True)
+    if values.get("ad_type") and values["ad_type"] not in AD_TYPES:
+        raise HTTPException(422, f"광고 종류는 {', '.join(AD_TYPES)} 중에서 골라주세요")
+    for field, value in values.items():
         setattr(ad, field, value)
     db.commit()
     db.refresh(ad)
@@ -32,27 +43,26 @@ def update_ad(body: schemas.AdUpdate, db: Session = Depends(get_db)):
 
 @router.post("/apply", response_model=schemas.ApplyAdOut)
 def apply_ad(db: Session = Depends(get_db)):
+    """광고 설정을 확정하고 스토리보드 대화를 처음부터 시작한다.
+
+    앞 단계가 안 끝났으면 무엇이 비었는지 한 문장으로 알려준다 — 그냥 막히면
+    사장님은 어디가 문제인지 알 방법이 없다.
+    """
     ad = _get(db)
-    menu = ad.ad_type == "메뉴판"
-    hint = "메뉴판은 트렌드를 붙이기 어려워 '예'가 꺼져 있어요." if menu else "요즘 뜨는 밈을 얹으면 반응이 빨라요."
-    return schemas.ApplyAdOut(trend_popup=True, trend_yes_disabled=menu, trend_hint=hint)
 
+    missing = []
+    store = db.get(models.Store, 1)
+    if not store or not store.saved:
+        missing.append("가게 정보 저장")
+    char = db.get(models.Character, 1)
+    if not char or not char.confirmed:
+        missing.append("캐릭터 확정")
+    if not ad.ad_type:
+        missing.append("광고 종류 선택")
+    if not ad.ad_concept:
+        missing.append("광고 컨셉 선택")
+    if missing:
+        raise HTTPException(400, f"{' · '.join(missing)}이(가) 먼저 필요해요")
 
-@router.post("/trend-yes", response_model=schemas.AdOut)
-def trend_yes(db: Session = Depends(get_db)):
-    ad = _get(db)
-    ad.trend_applied = True
-    db.commit()
-    db.refresh(ad)
-    reset_storyboard(db, with_trend=True, trend_pick=ad.trend_pick)
-    return ad
-
-
-@router.post("/trend-no", response_model=schemas.AdOut)
-def trend_no(db: Session = Depends(get_db)):
-    ad = _get(db)
-    ad.trend_applied = False
-    db.commit()
-    db.refresh(ad)
-    reset_storyboard(db, with_trend=False)
-    return ad
+    reset_storyboard(db)
+    return schemas.ApplyAdOut(ok=True, message=f"{ad.ad_type} · {ad.ad_concept}로 만들어볼게요.")

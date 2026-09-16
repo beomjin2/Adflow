@@ -16,7 +16,7 @@ export default function MyShell({ state, actions }) {
   return (
     <div style={{ padding: 20, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
       <div style={{ flex: '1 1 190px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <button onClick={actions.myHistory} style={tabButton('history')}>히스토리</button>
+        <button onClick={actions.myHistory} style={tabButton('history')}>보관함</button>
         <button onClick={actions.openProdTab} style={tabButton('prod')}>
           생산 기록
           {missingProds.length > 0 && (
@@ -25,7 +25,7 @@ export default function MyShell({ state, actions }) {
         </button>
         <button onClick={actions.myStoreTab} style={{ height: 48, borderRadius: 12, border: 0, fontSize: 15, fontWeight: 700, cursor: 'pointer', textAlign: 'left', padding: '0 16px', background: colors.softBg, color: colors.text }}>내 가게 정보</button>
         <button onClick={actions.myChar} style={{ height: 48, borderRadius: 12, border: 0, fontSize: 15, fontWeight: 700, cursor: 'pointer', textAlign: 'left', padding: '0 16px', background: colors.softBg, color: colors.text }}>내 캐릭터 정보</button>
-        <button onClick={actions.goData} style={tabButton('data')}>내보내기 · 불러오기</button>
+        <button onClick={actions.goData} style={tabButton('data')}>백업 내려받기</button>
       </div>
       <div style={{ flex: '3 1 430px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {state.myTab === 'history' && <HistoryTab state={state} actions={actions} />}

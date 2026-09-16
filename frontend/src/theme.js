@@ -22,21 +22,25 @@ export const colors = {
   dark: '#2B2F36'
 };
 
-export function bgGradient(hue) {
-  return `linear-gradient(135deg,hsl(${hue} 58% 92%),hsl(${(hue + 42) % 360} 52% 84%))`;
-}
+// 가짜 이미지를 만들던 hue 그라디언트(bgGradient/randomHue)는 제거했다. 그림이 없으면
+// 없다고 보여준다 — 색깔 사각형을 대신 놓으면 사장님은 그게 자기 그림인 줄 안다.
 
-export function randomHue() {
-  return Math.floor(Math.random() * 360);
-}
+/** 손가락으로 누르는 최소 크기. 사장님은 가게에서 폰으로 쓴다. */
+export const TAP = 48;
+
+export const font = {
+  body: 16,      // 본문은 16 아래로 내리지 않는다 (iOS에서 입력 시 화면이 확대된다)
+  caption: 14,
+  label: 13,
+};
 
 export const inputStyle = {
-  height: 44,
+  height: TAP,
   borderRadius: 12,
   border: `1.5px solid ${colors.inputBorder}`,
   background: '#fff',
   color: colors.text,
-  fontSize: 14.5,
+  fontSize: font.body,
   padding: '0 14px',
   width: '100%',
   minWidth: 0
@@ -54,7 +58,7 @@ export const textareaStyle = {
   border: `1.5px solid ${colors.inputBorder}`,
   background: '#fff',
   color: colors.text,
-  fontSize: 14.5,
+  fontSize: font.body,
   padding: '11px 14px',
   width: '100%',
   resize: 'vertical',
@@ -116,15 +120,17 @@ export const cardBase = {
 
 export const rerollButtonStyle = {
   position: 'absolute',
-  top: 6,
-  right: 6,
-  width: 24,
-  height: 24,
-  borderRadius: 8,
+  top: 5,
+  right: 5,
+  width: 28,        // 24px는 손가락으로 못 누른다
+  height: 28,
+  borderRadius: 9,
   border: 0,
-  background: 'rgba(255,255,255,.92)',
+  background: 'rgba(255,255,255,.95)',
   color: colors.text,
-  fontSize: 13,
+  fontSize: 15,
+  lineHeight: '28px',
+  textAlign: 'center',
   cursor: 'pointer',
-  boxShadow: '0 1px 3px rgba(0,0,0,.12)'
+  boxShadow: '0 1px 4px rgba(0,0,0,.16)'
 };

@@ -45,5 +45,5 @@ def export_backup(db: Session = Depends(get_db)):
 
 @router.post("/import")
 def import_backup():
-    """지금은 준비 중 — frontend의 mock note와 동일하게 아직 실제 복원은 하지 않는다."""
-    raise HTTPException(501, "이 프로토타입에서는 불러오기가 아직 준비 중이에요.")
+    """백업 복원은 아직 없다. 반쯤 복원해서 데이터를 섞느니 막아두는 편이 낫다."""
+    raise HTTPException(501, "백업 불러오기는 아직 준비 중이에요. 내보내기는 지금도 됩니다.")

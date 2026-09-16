@@ -1,8 +1,14 @@
-"""이미지 생성. ComfyUI(Anima 모델)에 연결되어 있으면 실제 이미지를 생성해서
-data URI로 돌려주고, 설정이 없거나 서버 연결에 실패하면 hue 그라디언트로 폴백한다
-(frontend/src/theme.js의 bgGradient와 동일한 규칙)."""
+"""이미지 생성 — ComfyUI의 '연습용' 워크플로우를 그대로 호출한다.
 
-import base64
+워크플로우는 app/services/workflows/character_practice.json 이고, ComfyUI에 저장된
+`연습용.json`(UI 포맷)을 API 포맷으로 변환한 것이다. 노드 구성·모델·샘플러·스텝을
+바꾸지 않았으므로 ComfyUI 화면에서 돌린 결과와 같은 그림이 나온다.
+
+호출부는 이 모듈을 **동기로 쓰지 않는다.** 1024px 30스텝 기준 실측이 1장 56초,
+3장 86초인데 nginx proxy_read_timeout이 60초라 요청 스레드에서 기다리면 502가 난다.
+app/services/jobs.py의 백그라운드 워커가 이 함수를 대신 호출한다.
+"""
+
 import json
 import logging
 import random
@@ -17,7 +23,20 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-NEGATIVE_PROMPT = "worst quality, low quality, blurry, jpeg artifacts, text, watermark, extra limbs, deformed"
+# 그림을 내려주는 경로. nginx가 /api/ 만 백엔드로 넘기므로 반드시 /api/ 로 시작해야 한다.
+MEDIA_URL_PREFIX = "/api/media"
+
+# PNG 매직 넘버. ComfyUI가 그림 대신 에러 페이지를 돌려주는 일이 있는데, 그걸 그대로
+# 저장하면 화면엔 깨진 이미지 아이콘만 뜨고 로그엔 아무것도 안 남는다.
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+# '연습용' 워크플로우의 네거티브 프롬프트를 그대로 쓴다. 사람·실사·글자를 배제하는 쪽으로
+# 이미 조정돼 있어서, 마스코트를 뽑을 때 이걸 바꾸면 결과가 나빠진다.
+NEGATIVE_PROMPT = (
+    "worst quality, low quality, score_1, score_2, score_3, artist name, blurry, "
+    "jpeg artifacts, chromatic aberration, realistic, human, human hands, "
+    "text, watermark, multiple views, nsfw"
+)
 
 # ComfyUI에서 Export(API format)한 그래프를 그대로 이 폴더에 넣어두면 코드 수정 없이 워크플로우를
 # 교체할 수 있다 — 샘플러 노드의 positive/negative가 가리키는 CLIPTextEncode 노드를 찾아 자동으로
@@ -26,9 +45,14 @@ WORKFLOWS_DIR = Path(__file__).parent / "workflows"
 
 _POLL_INTERVAL_SECONDS = 2
 
+# 실측값 (L4 24GB, 모델 로드된 상태). 화면에서 "약 N초 남았어요"를 보여주는 근거.
+SECONDS_PER_IMAGE = 30
+SECONDS_BASE = 26
 
-def random_hue() -> int:
-    return random.randint(0, 359)
+
+def eta_seconds(count: int = 1) -> int:
+    """count장을 뽑는 데 걸리는 예상 시간(초). 대기 중 화면에 남은 시간을 보여주는 데 쓴다."""
+    return SECONDS_BASE + SECONDS_PER_IMAGE * max(count, 1)
 
 
 def _load_workflow() -> dict:
@@ -39,7 +63,7 @@ def _load_workflow() -> dict:
         return json.load(f)
 
 
-def _build_prompt_graph(text: str, seed: int) -> dict:
+def _build_prompt_graph(text: str, seed: int, batch_size: int = 1) -> dict:
     graph = _load_workflow()
 
     # 샘플러 노드의 positive/negative가 가리키는 노드를 따라가 그 노드의 text를 치환한다.
@@ -60,6 +84,14 @@ def _build_prompt_graph(text: str, seed: int) -> dict:
         if isinstance(inputs.get("noise_seed"), int):
             inputs["noise_seed"] = seed
 
+    # 후보 3장을 한 번에 뽑을 때는 batch_size를 올린다. 3번 따로 돌리면 168초인데
+    # 배치로 돌리면 86초다 (모델 로드·VAE 디코드가 한 번이라서).
+    if batch_size > 1:
+        for node in graph.values():
+            inputs = node.get("inputs", {})
+            if isinstance(inputs.get("batch_size"), int):
+                inputs["batch_size"] = batch_size
+
     return graph
 
 
@@ -68,11 +100,30 @@ def _comfy_request(method: str, path: str, **kwargs) -> requests.Response:
     return requests.request(method, f"{settings.comfy_base_url}{path}", auth=auth, timeout=30, **kwargs)
 
 
-def generate_image(prompt: str, seed: int | None = None) -> str | None:
-    """ComfyUI로 이미지 한 장을 생성해 data URI(base64 PNG)로 반환한다.
-    설정이 비어있거나 생성에 실패하면 None을 반환 — 호출부는 hue 폴백을 유지한다."""
-    if not settings.comfy_base_url:
+def _save_png(content: bytes) -> str | None:
+    """PNG 바이트를 media 디렉터리에 저장하고 내려받을 URL을 돌려준다.
+
+    PNG가 아니면 저장하지 않고 None — 호출부가 그 칸을 'failed'로 표시한다.
+    깨진 파일을 URL로 돌려주면 사장님 화면엔 이유 없는 빈 칸만 남는다.
+    """
+    if not content.startswith(_PNG_MAGIC):
+        logger.warning("ComfyUI가 PNG가 아닌 응답을 돌려줬습니다 (%d bytes)", len(content))
         return None
+    filename = f"{uuid.uuid4().hex}.png"
+    (settings.media_path / filename).write_bytes(content)
+    return f"{MEDIA_URL_PREFIX}/{filename}"
+
+
+def generate_images(prompt: str, count: int = 1, seed: int | None = None) -> list[str | None]:
+    """ComfyUI로 이미지 count장을 생성해 **URL 목록**을 반환한다 (`/api/media/<uuid>.png`).
+
+    PNG는 디스크(settings.media_path)에 저장하고 응답엔 경로만 담는다 — 예전처럼
+    base64를 DB에 넣으면 /api/character 한 번이 1.9MB가 되어 3초마다 도는 폴링에
+    그대로 실려 나간다.
+    설정이 비어있거나 생성에 실패하면 빈 목록을 반환 — 호출부가 실패 상태로 표시한다."""
+    if not settings.comfy_base_url:
+        logger.warning("COMFY_BASE_URL이 비어 있어 이미지를 생성할 수 없습니다")
+        return []
 
     seed = seed if seed is not None else random.randint(0, 2**32 - 1)
     client_id = str(uuid.uuid4())
@@ -80,7 +131,7 @@ def generate_image(prompt: str, seed: int | None = None) -> str | None:
     try:
         submit = _comfy_request("POST", "/prompt", json={
             "client_id": client_id,
-            "prompt": _build_prompt_graph(prompt, seed),
+            "prompt": _build_prompt_graph(prompt, seed, count),
         })
         submit.raise_for_status()
         prompt_id = submit.json()["prompt_id"]
@@ -97,25 +148,36 @@ def generate_image(prompt: str, seed: int | None = None) -> str | None:
                 break
         if history is None:
             logger.warning("ComfyUI generation timed out for prompt_id=%s", prompt_id)
-            return None
+            return []
 
         if history.get("status", {}).get("status_str") != "success":
             logger.warning("ComfyUI generation failed for prompt_id=%s: %s", prompt_id, history.get("status"))
-            return None
+            return []
 
         images = []
         for output in history.get("outputs", {}).values():
             images.extend(output.get("images", []))
         if not images:
-            return None
+            return []
 
-        image = images[0]
-        view = _comfy_request("GET", "/view", params={
-            "filename": image["filename"], "subfolder": image.get("subfolder", ""), "type": image.get("type", "output"),
-        })
-        view.raise_for_status()
-        encoded = base64.b64encode(view.content).decode("ascii")
-        return f"data:image/png;base64,{encoded}"
+        out = []
+        for image in images[:count]:
+            view = _comfy_request("GET", "/view", params={
+                "filename": image["filename"],
+                "subfolder": image.get("subfolder", ""),
+                "type": image.get("type", "output"),
+            })
+            view.raise_for_status()
+            # 저장에 실패해도 자리를 비워 둔 채로 넣는다. 건너뛰면 뒤 그림이 앞 칸으로
+            # 당겨져 '후보2' 자리에 후보3 그림이 걸린다.
+            out.append(_save_png(view.content))
+        return out
     except requests.RequestException:
         logger.exception("ComfyUI request failed")
-        return None
+        return []
+
+
+def generate_image(prompt: str, seed: int | None = None) -> str | None:
+    """이미지 한 장. 실패하면 None."""
+    images = generate_images(prompt, 1, seed)
+    return images[0] if images else None

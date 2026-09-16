@@ -1,33 +1,63 @@
-"""채팅 응답 mock — 지금은 규칙 기반, 나중에 실제 LLM 연동으로 교체할 지점.
-frontend/src/mock/aiResponses.js와 동일한 규칙을 그대로 포팅."""
+"""대화 입력에서 값을 뽑아내는 규칙(생산 품목·수량·날짜·시각)과 캐릭터 프롬프트 조립.
+
+채팅 응답은 아직 규칙 기반이다 — LLM을 붙이는 자리는 storyboard 쪽이고, 여기는
+사장님이 한국어로 쓴 문장에서 숫자·품목·시각을 읽어내는 파서다.
+"""
 
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
-from app.services.image_gen import random_hue
+# 서버는 UTC로 돈다. 그대로 쓰면 새벽 5시에 구운 빵이 '어제' 생산으로 기록된다 —
+# 새벽에 굽는 가게가 많으니 여기서 한국 시간으로 고정한다.
+KST = ZoneInfo("Asia/Seoul")
 
-CHARACTER_INTRO_MESSAGE = (
-    "어떤 마스코트를 원하시나요? 가게 분위기나 느낌을 편하게 말씀해 주세요.\n"
-    "예: \"아기자기한 동네 베이커리예요. 통통한 곰돌이가 하얀 앞치마를 두른 모습으로 만들어주세요\""
-)
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc).astimezone(KST)
+
+VIEW_LABELS = ["정면", "좌측면", "우측면", "뒷면"]
+VIEW_HINTS = {"정면": "front view", "좌측면": "left side view", "우측면": "right side view", "뒷면": "back view"}
+
+# '연습용' 워크플로우가 이 태그 조합에 맞춰 조정돼 있다. 사장님이 쓴 설명 앞에 붙여
+# 화풍을 고정한다 — 이걸 빼면 같은 모델에서도 그림 톤이 매번 달라진다.
+STYLE_TAGS = "masterpiece, best quality, score_7, safe, solo, (chibi:1.3), full body, simple background"
 
 
 def character_prompt(char, hint: str = "") -> str:
-    base = (char.look or "").strip()
-    if not base:
-        base = ", ".join(p for p in [char.name, char.age, char.gender, char.hobby] if p) or "cute mascot character"
-    pieces = [base, "mascot character illustration", "simple white background", "high quality", "anime style"]
+    """사장님이 입력한 캐릭터 설명을 '연습용' 워크플로우의 프롬프트로 조립한다."""
+    described = (char.look or "").strip()
+    if not described:
+        described = ", ".join(p for p in [char.name, char.age, char.gender, char.hobby] if p)
+
+    pieces = [STYLE_TAGS]
+    if described:
+        pieces.append(described)
+    else:
+        pieces.append("cute animal mascot character")
     if hint:
         pieces.append(hint)
     return ", ".join(pieces)
 
 
-def generate_candidates(count: int = 3) -> list[dict]:
-    return [{"label": f"후보{i + 1}", "hue": random_hue()} for i in range(count)]
+def pending_candidates(count: int = 3) -> list[dict]:
+    """생성 대기 칸 count개. 이미지는 백그라운드 워커가 나중에 채운다."""
+    return [
+        {"label": f"후보{i + 1}", "image": None, "status": "generating"}
+        for i in range(count)
+    ]
+
+
+def pending_views() -> list[dict]:
+    """4방향 생성 대기 칸."""
+    return [
+        {"label": label, "image": None, "status": "generating"}
+        for label in VIEW_LABELS
+    ]
 
 
 def iso_day(day_offset: int = 0) -> str:
-    return (datetime.now() + timedelta(days=day_offset)).strftime("%Y-%m-%d")
+    return (_now() + timedelta(days=day_offset)).strftime("%Y-%m-%d")
 
 
 def fmt_day(iso: str) -> str:
@@ -38,24 +68,103 @@ def fmt_day(iso: str) -> str:
 
 
 def now_hm() -> str:
-    return datetime.now().strftime("%H:%M")
+    return _now().strftime("%H:%M")
 
 
-_ITEM_RE = re.compile(r"([가-힣a-zA-Z0-9]+(?:빵|크루아상|캄파뉴|케이크|쿠키|타르트))")
-_QTY_RE = re.compile(r"(\d+)\s*개")
+# 품목은 업종마다 다르다 — 빵집이든 반찬가게든 꽃집이든 같은 규칙으로 읽어야 한다.
+# 그래서 품목 사전을 두지 않고, 문장에서 수량·날짜·시각·동사를 걷어낸 나머지를 품목으로 본다.
+_UNIT = (
+    r"개|봉지|봉|판|장|잔|병|팩|박스|상자|세트|인분|마리|송이|다발|묶음|단|줄|통|포기"
+    r"|근|컵|조각|그릇|접시|바구니|켤레|kg|g|ml|L|리터"
+)
+_QTY_RE = re.compile(rf"(\d+)\s*({_UNIT})?", re.IGNORECASE)
 _DAY_RE = re.compile(r"(\d{1,2})\s*[/\-월.]\s*(\d{1,2})")
 _TIME_RE = re.compile(r"(\d{1,2})\s*(?::|시)\s*(\d{1,2})?")
 _SKIP_RE = re.compile(r"안\s?했|없어|없습니다|안했|건너|아니")
 
+# 날짜·시각 표현. 품목을 찾기 전에 먼저 걷어낸다 — 안 그러면 '9/16에'의 9를 수량으로 읽는다.
+_WHEN_RE = re.compile(
+    r"\d{1,2}\s*[:시]\s*\d{0,2}\s*분?"
+    r"|\d{1,2}\s*[/\-월.]\s*\d{1,2}\s*일?"
+    r"|오늘|어제|그저께|그제|아침|점심|저녁|오전|오후|새벽",
+    re.IGNORECASE,
+)
+
+# '만들었어요' 같은 서술어. 품목 이름이 아니다.
+_VERB_RE = re.compile(
+    r"만들었\S*|만들어\S*|만듦|구웠\S*|구움|굽고\S*|생산\S*|준비\S*|나왔\S*|뽑았\S*"
+    r"|했어\S*|했습니다|했다|해서\S*|팔았\S*|판매\S*",
+    re.IGNORECASE,
+)
+
+_PARTICLE_RE = re.compile(r"(?:은|는|이|가|을|를|도|만|랑|하고|와|과|에서|에|부터|까지|으로|로)$")
+
+# '반찬가게인데', '날이 더워서' 처럼 배경을 설명하는 마디. 품목이 아니라 맥락이므로
+# 어미만 떼지 말고 단어를 통째로 버린다 — 안 그러면 품목이 '반찬가게 멸치볶음'이 된다.
+# '서'로 끝나는 말(더워서·바빠서·해서·가게에서)은 한국어에서 거의 다 이런 연결 어미다.
+_CLAUSE_RE = re.compile(r"(?:인데요?|는데요?|한데|이고|이며|서)$")
+
+# 뜻 없는 말버릇. 이게 남으면 '음 그냥 뭐'가 품목 이름으로 저장된다.
+_FILLER = {
+    "음", "어", "아", "응", "네", "예", "그냥", "뭐", "좀", "저기", "일단", "막",
+    "그", "이", "저", "것", "거", "등", "및", "제가", "저희", "우리",
+}
+
 
 def item_from(text: str) -> str:
-    m = _ITEM_RE.search(text or "")
-    return m.group(1) if m else "신메뉴"
+    """문장에서 품목 이름만 남긴다. 못 알아들으면 빈 문자열 — 지어내지 않는다.
+
+    '소금빵 20개 만들었어요' → '소금빵'. 라우터는 빈 값이면 기록을 만들지 않고
+    사장님에게 다시 물어본다. 못 알아들은 걸 '신메뉴' 같은 이름으로 저장하면
+    그건 사장님이 만든 적 없는 생산 기록이 된다.
+
+    품목은 업종마다 다르다(빵·반찬·꽃…). 그래서 품목 사전을 두지 않고 **수량을
+    기준점으로** 삼는다 — 한국어에서 품목은 수량 바로 앞에 온다("소금빵 20개",
+    "국화 30송이", "멸치볶음 15팩"). 수량이 아예 없으면 생산 기록으로 볼 수 없으니
+    빈 문자열을 돌려주고 라우터가 되묻게 한다.
+    """
+    without_when = _WHEN_RE.sub(" ", text or "")
+    qty = _QTY_RE.search(without_when)
+    if not qty:
+        # 수량이 없는 문장은 생산 기록이 아니다. '음 그냥 뭐 좀' 같은 말이
+        # 품목으로 저장되는 걸 여기서 막는다.
+        return ""
+
+    def runs(segment: str) -> list[list[str]]:
+        """살아남은 낱말을 '끊기지 않고 붙어 있는 덩어리' 단위로 묶어 돌려준다.
+
+        덩어리로 묶는 이유 — '초코 소금빵'은 두 낱말이 붙어 있으니 한 품목이지만,
+        '날이 더워서 팥빙수'는 사이에 버려진 말이 있으니 '날'과 '팥빙수'를 붙이면 안 된다.
+        """
+        segment = _VERB_RE.sub(" @ ", segment)
+        segment = re.sub(r"[^\w가-힣\s@]", " @ ", segment)
+        grouped: list[list[str]] = [[]]
+        for word in segment.split():
+            if word == "@" or _CLAUSE_RE.search(word):
+                grouped.append([])
+                continue
+            word = _PARTICLE_RE.sub("", word)
+            if not word or word in _FILLER or word.isdigit():
+                grouped.append([])
+                continue
+            grouped[-1].append(word)
+        return [g for g in grouped if g]
+
+    # 수량 앞쪽을 먼저 본다 — 한국어는 품목이 수량 바로 앞에 온다.
+    # 거기가 비면(수량을 먼저 말한 경우) 뒤쪽을 본다.
+    before = runs(without_when[:qty.start()])
+    if before:
+        return " ".join(before[-1][-2:])
+    after = runs(without_when[qty.end():])
+    return " ".join(after[0][:2]) if after else ""
 
 
 def qty_from(text: str) -> str:
-    m = _QTY_RE.search(text or "")
-    return f"{m.group(1)}개" if m else ""
+    """수량. 날짜·시각을 먼저 걷어낸다 — '9/16에 김치 5통'에서 9를 수량으로 읽으면 안 된다."""
+    m = _QTY_RE.search(_WHEN_RE.sub(" ", text or ""))
+    if not m:
+        return ""
+    return f"{m.group(1)}{m.group(2) or '개'}"
 
 
 def day_from(text: str) -> str:
@@ -66,7 +175,7 @@ def day_from(text: str) -> str:
         return iso_day(-1)
     m = _DAY_RE.search(t)
     if m:
-        now = datetime.now()
+        now = _now()
         return f"{now.year}-{int(m.group(1)):02d}-{int(m.group(2)):02d}"
     return iso_day(0)
 

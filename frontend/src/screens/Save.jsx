@@ -1,29 +1,56 @@
-import { colors, bgGradient } from '../theme.js';
-import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
+import { colors } from '../theme.js';
+import { PrimaryButton, SecondaryButton, SoftButton } from '../components/ui/Button.jsx';
+import { buildAdText, adTextForClipboard, characterImage } from '../lib/adText.js';
 
 export default function Save({ state, actions }) {
-  const resultHeadline = state.trendApplied ? '눈이 번쩍! 소금빵 갓 나왔습니다' : '오늘 아침 갓 구운 소금빵';
-  const resultTags = state.trendApplied ? `#${state.trendPick.replace(/ /g, '')} #소금빵 #연남동빵집` : '#소금빵 #연남동빵집 #갓구운빵';
+  const { headline, lines, info, tags } = buildAdText(state);
+  const charImg = characterImage(state);
+  const saved = state.history.length > 0;
+
+  const copy = async () => {
+    const text = adTextForClipboard(state);
+    if (!text) { actions.toast('복사할 문구가 없어요'); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+      actions.toast('문구를 복사했어요');
+    } catch {
+      actions.toast('복사가 안 돼요 — 위 문구를 길게 눌러 직접 복사해주세요');
+    }
+  };
 
   return (
     <div style={{ padding: '26px 22px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-      <div style={{ width: 300, maxWidth: '100%', border: `1px solid ${colors.cardBorder}`, borderRadius: 16, overflow: 'hidden' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, background: colors.cardBorder }}>
-          {state.comicCuts.map(c => (
-            <div key={c.n} style={{ aspectRatio: '1/1', background: bgGradient(c.hue) }} />
-          ))}
-        </div>
-        <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 5, background: '#fff' }}>
-          <span style={{ fontSize: 14, fontWeight: 700 }}>{resultHeadline}</span>
-          <span style={{ fontSize: 12, color: colors.textSub, lineHeight: '18px' }}>{resultTags}</span>
+      <div style={{ width: 340, maxWidth: '100%', border: `1px solid ${colors.cardBorder}`, borderRadius: 16, overflow: 'hidden', background: '#fff' }}>
+        {charImg && (
+          <img src={charImg} alt={state.charName || '가게 캐릭터'} style={{
+            width: '100%', aspectRatio: '1/1', objectFit: 'cover', display: 'block',
+            borderBottom: `1px solid ${colors.cardBorder}`,
+          }} />
+        )}
+        <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {headline && <span style={{ fontSize: 15.5, fontWeight: 700, lineHeight: '23px' }}>{headline}</span>}
+          {lines.length > 1 && (
+            <span style={{ fontSize: 13.5, color: colors.textSub, lineHeight: '20px', whiteSpace: 'pre-line' }}>
+              {lines.slice(1).join('\n')}
+            </span>
+          )}
+          {info && <span style={{ fontSize: 13, color: colors.textSub, lineHeight: '20px' }}>{info}</span>}
+          {tags.length > 0 && (
+            <span style={{ fontSize: 13, fontWeight: 600, color: colors.primarySoftText }}>{tags.join(' ')}</span>
+          )}
         </div>
       </div>
-      <span style={{ fontSize: 13.5, color: colors.textSub, textAlign: 'center', maxWidth: 420, lineHeight: '20px' }}>
-        이미지 4컷과 광고 문구가 함께 저장돼요. 인스타에 올릴 땐 문구를 그대로 붙여 넣으면 됩니다.
+
+      <span style={{ fontSize: 14, color: colors.textSub, textAlign: 'center', maxWidth: 440, lineHeight: '22px' }}>
+        {saved
+          ? '보관함에 저장했어요. 내 정보 → 히스토리에서 다시 꺼내 볼 수 있어요.'
+          : '‘보관함에 저장’을 누르면 이 내용이 남아, 나중에 다시 꺼내 쓸 수 있어요.'}
       </span>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', width: 340, maxWidth: '100%' }}>
-        <PrimaryButton onClick={actions.download} style={{ flex: 1 }}>다운로드</PrimaryButton>
-        <SecondaryButton onClick={actions.goHome} style={{ flex: 1 }}>홈으로</SecondaryButton>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 340, maxWidth: '100%' }}>
+        <PrimaryButton onClick={actions.download}>보관함에 저장</PrimaryButton>
+        <SoftButton onClick={copy} style={{ height: 48, fontSize: 15 }}>문구 복사하기</SoftButton>
+        <SecondaryButton onClick={actions.goHome}>홈으로</SecondaryButton>
       </div>
     </div>
   );

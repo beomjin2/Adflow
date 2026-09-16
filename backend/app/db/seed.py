@@ -1,39 +1,42 @@
-"""데모 시드 데이터 — frontend/src/state/useAdMakerState.js의 SEEDED 초기값과 동일."""
+"""싱글턴 행만 만든다. 값은 하나도 채우지 않는다.
+
+이 서비스는 데모가 아니라 실서비스다. 사장님이 처음 접속했을 때 DB에 들어 있어야 하는
+값은 **없다** — 가게 정보도, 캐릭터도, 채팅 인사말도. 화면에 띄울 안내 문구는 화면의
+몫이지 DB의 몫이 아니다. 여기에 문구를 넣으면 그 순간 그건 사장님이 만든 적 없는
+데이터가 되어 히스토리·백업·내보내기에 그대로 섞인다.
+
+라우터가 `db.get(..., 1)`로 찾기 때문에 행 자체는 존재해야 한다. 그래서 행만 만든다.
+"""
 
 from sqlalchemy.orm import Session
 
 from app import models
-from app.services.chat_ai import CHARACTER_INTRO_MESSAGE, iso_day
 
 
-def seed_if_empty(db: Session) -> None:
+def ensure_rows(db: Session) -> None:
+    """싱글턴 행이 없으면 빈 값으로 만든다. 이미 있으면 건드리지 않는다."""
     if not db.get(models.Store, 1):
-        db.add(models.Store(id=1))
+        db.add(models.Store(
+            id=1, saved=False, category="", address="", hours="",
+            open_time="", close_time="", closed_days=[], desc="", images=[],
+        ))
 
     if not db.get(models.Character, 1):
         db.add(models.Character(
-            id=1,
-            messages=[{"role": "ai", "kind": "text", "text": CHARACTER_INTRO_MESSAGE}],
+            id=1, name="", age="", gender="", hobby="", look="",
+            confirmed=False, candidates=[], selected_index=-1, views=[], messages=[],
         ))
 
     if not db.get(models.AdSettings, 1):
-        db.add(models.AdSettings(id=1, trend_pick="눈이 번쩍 챌린지"))
+        db.add(models.AdSettings(id=1, ad_type="", ad_concept=""))
 
     if not db.get(models.Storyboard, 1):
         db.add(models.Storyboard(
-            id=1,
-            messages=[{"role": "ai", "kind": "text", "text": "어떤 이야기로 광고를 만들까요? 알리고 싶은 걸 말해주세요."}],
+            id=1, messages=[], plan=[], comic_cuts=[], prod_logged=False, pending={},
         ))
 
-    if db.query(models.ProductionItem).count() == 0:
-        for name in ["소금빵", "버터 크루아상", "통밀 캄파뉴"]:
-            db.add(models.ProductionItem(name=name))
-
-    if db.query(models.ProductionRecord).count() == 0:
-        db.add_all([
-            models.ProductionRecord(name="소금빵", qty="60개", date=iso_day(0), time="07:40", sold_out=""),
-            models.ProductionRecord(name="버터 크루아상", qty="40개", date=iso_day(-1), time="13:20", sold_out=""),
-            models.ProductionRecord(name="통밀 캄파뉴", qty="12개", date=iso_day(-1), time="06:50", sold_out="16:10"),
-        ])
-
     db.commit()
+
+
+# 이전 이름 호환 — main.py가 부르던 이름.
+seed_if_empty = ensure_rows

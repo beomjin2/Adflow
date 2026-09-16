@@ -1,3 +1,5 @@
+"""가게 정보. 값은 전부 사장님이 직접 입력하거나 올린 것만 들어간다."""
+
 import os
 import uuid
 
@@ -5,13 +7,14 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app import models, schemas
-from app.core.config import STORE_MAX_IMAGES
+from app.core.config import STORE_MAX_IMAGES, settings
 from app.core.database import get_db
-from app.services.image_gen import random_hue
 
 router = APIRouter(prefix="/api/store", tags=["store"])
 
-UPLOAD_DIR = "uploads/store"
+# 저장하려면 이 네 가지는 있어야 한다. 뒤 단계(캐릭터·광고)가 이걸 근거로 돈다.
+REQUIRED = {"category": "업종", "address": "주소", "desc": "가게 소개"}
+
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
@@ -19,14 +22,16 @@ MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 def _get(db: Session) -> models.Store:
     store = db.get(models.Store, 1)
     if not store:
-        raise HTTPException(404, "store not seeded")
+        raise HTTPException(404, "store row missing")
     return store
 
 
 def _format_hours(store: models.Store) -> str:
-    closed = f"{', '.join(store.closed_days)} 휴무" if store.closed_days else "연중무휴"
+    """영업시간 표시 문자열. 시간을 아직 안 고른 상태면 빈 문자열이다 —
+    비어 있는데 '연중무휴'라고 적어두면 사장님이 입력한 적 없는 정보가 된다."""
     if not store.open_time or not store.close_time:
-        return f"영업시간 미정, {closed}"
+        return ""
+    closed = f"{', '.join(store.closed_days)} 휴무" if store.closed_days else "연중무휴"
     return f"{store.open_time} – {store.close_time}, {closed}"
 
 
@@ -48,7 +53,13 @@ def update_store(body: schemas.StoreUpdate, db: Session = Depends(get_db)):
 
 @router.post("/save", response_model=schemas.StoreOut)
 def save_store(db: Session = Depends(get_db)):
+    """저장. 빈 칸이 있으면 무엇이 비었는지 알려주고 저장하지 않는다."""
     store = _get(db)
+    missing = [label for field, label in REQUIRED.items() if not (getattr(store, field) or "").strip()]
+    if not store.open_time or not store.close_time:
+        missing.append("영업시간")
+    if missing:
+        raise HTTPException(400, f"{' · '.join(missing)}을(를) 채워주세요")
     store.saved = True
     db.commit()
     db.refresh(store)
@@ -67,18 +78,22 @@ async def upload_image(file: UploadFile = File(...), db: Session = Depends(get_d
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(400, "파일이 너무 커요 (최대 5MB)")
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
     filename = f"{uuid.uuid4().hex}{ext}"
-    with open(os.path.join(UPLOAD_DIR, filename), "wb") as out:
-        out.write(content)
+    (settings.uploads_path / filename).write_bytes(content)
 
     # 파일 저장 중 다른 요청이 images를 바꿨을 수 있으니, 쓰기 직전에 최신 상태를 다시 읽는다.
     db.refresh(store)
     images = list(store.images or [])
     if len(images) >= STORE_MAX_IMAGES:
-        os.remove(os.path.join(UPLOAD_DIR, filename))
+        (settings.uploads_path / filename).unlink(missing_ok=True)
         raise HTTPException(400, f"이미지는 최대 {STORE_MAX_IMAGES}장까지 올릴 수 있어요")
-    images.append({"label": f"이미지 {len(images) + 1}", "hue": random_hue(), "image": f"/api/uploads/store/{filename}"})
+    # 라벨은 사장님이 올린 파일 이름 그대로 — 나중에 목록에서 어떤 사진인지 알아본다.
+    original = os.path.splitext(os.path.basename(file.filename or ""))[0][:30]
+    images.append({
+        "label": original or f"사진 {len(images) + 1}",
+        "image": f"/api/uploads/store/{filename}",
+        "status": "done",
+    })
     store.images = images
     db.commit()
     db.refresh(store)
@@ -93,12 +108,14 @@ def delete_image(index: int, db: Session = Depends(get_db)):
     if not 0 <= index < len(images):
         raise HTTPException(404, "image index out of range")
 
+    # 파일도 같이 지운다. 경로는 URL에서 파일명만 떼어내 settings 기준으로 다시 만든다 —
+    # URL을 그대로 상대경로로 쓰면 프로세스의 CWD에 따라 엉뚱한 곳을 지우려 든다.
     removed = images.pop(index)
     image_url = removed.get("image") or ""
     if image_url.startswith("/api/uploads/store/"):
-        path = image_url.removeprefix("/api/")
-        if os.path.exists(path):
-            os.remove(path)
+        target = settings.uploads_path / os.path.basename(image_url)
+        if target.exists():
+            target.unlink()
 
     store.images = images
     db.commit()

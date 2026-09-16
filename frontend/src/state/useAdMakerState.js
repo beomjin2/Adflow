@@ -1,10 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AdAPI, CharacterAPI, HistoryAPI, ProductionAPI, StoreAPI, StoryboardAPI, TrendAPI,
+  AdAPI, CharacterAPI, HistoryAPI, ProductionAPI, StoreAPI, StoryboardAPI,
 } from '../api/client.js';
 
+/** 그림 생성 진행을 확인하는 간격. 백엔드가 generating=false를 주면 멈춘다. */
+const POLL_MS = 3000;
+/** 안전장치 — 백엔드가 영영 끝났다고 말해주지 않아도 25분이면 폴링을 멈춘다. */
+const POLL_MAX_TICKS = 500;
+
+/** 오늘 날짜(YYYY-MM-DD). toISOString()은 UTC라서 한국 시간 오전 9시 전에는 어제가 나온다 —
+ *  새벽에 만든 걸 기록하는 가게가 많아서 그대로 쓰면 하루씩 밀린다. */
+function today() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/** 처음 상태는 전부 비어 있다. 화면에 보이는 값은 사장님이 입력했거나 백엔드가 준 것뿐이다.
+ *  여기에 예시 값을 하나라도 넣으면 그건 사장님이 만든 적 없는 데이터가 되어
+ *  히스토리·내보내기에 그대로 섞인다. */
 function initialState() {
-  const today = new Date().toISOString().slice(0, 10);
   return {
     screen: 'home',
     stack: [],
@@ -18,21 +33,21 @@ function initialState() {
     storeDesc: '', storeImages: [], storeMaxImages: 5,
 
     charName: '', charAge: '', charGender: '', charHobby: '', charLook: '',
-    charMsgs: [], charInput: '', charThinking: false, charPending: {},
-    charCands: [], charSelected: -1,
+    charMsgs: [], charInput: '', charThinking: false,
+    charCands: [], charSelected: -1, charViews: [],
     charConfirmed: false, charInfoReadOnly: true,
+    // 그림 생성 진행 상태 — 백엔드가 준 값이다. 화면의 "약 N초 남았어요"가 여기서 나온다.
+    charGenerating: false, charQueue: 0, charEta: 0,
 
-    adType: '인스타 게시물', adConcept: '유쾌함',
-    trendPopup: false, trendApplied: false, trendPick: '', openTrend: '', fromAd: false,
-    trendBars: [], trendDetail: [],
+    adType: '', adConcept: '',
 
     sbMsgs: [], sbInput: '', sbThinking: false,
-    plan: [], comicCuts: [], sbProdLogged: false, sbSetOpen: false, sbProdOpen: false, pending: {},
+    plan: [], sbProdLogged: false, sbSetOpen: false, sbProdOpen: false, pending: {},
 
     myTab: 'history', history: [],
 
     items: [], prods: [],
-    newItem: '', draftItem: '', draftQty: '', draftDate: today, draftTime: '', draftSold: '',
+    newItem: '', draftItem: '', draftQty: '', draftDate: today(), draftTime: '', draftSold: '',
 
     notifOpen: false, backupNote: '', backupErr: false,
   };
@@ -53,35 +68,90 @@ export function useAdMakerState() {
   const toast = useCallback((msg) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     update({ toast: msg });
-    toastTimer.current = setTimeout(() => update({ toast: '' }), 2200);
+    toastTimer.current = setTimeout(() => update({ toast: '' }), 2600);
   }, [update]);
 
   const fail = useCallback((e) => toast(e.message || '요청에 실패했어요'), [toast]);
 
-  // ---------- initial load ----------
+  // ---------- 캐릭터 그림 생성 폴링 ----------
+  // 생성은 백그라운드로 돈다(1장 약 56초). POST는 즉시 돌아오고 칸만 'generating'으로
+  // 생기므로, GET /api/character를 3초마다 불러서 그림이 채워지는지 확인한다.
+  const pollRef = useRef(null);
+  const tickRef = useRef(0);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    tickRef.current = 0;
+  }, []);
+
+  const startPolling = useCallback(() => {
+    if (pollRef.current) return;
+    tickRef.current = 0;
+    pollRef.current = setInterval(async () => {
+      tickRef.current += 1;
+      if (tickRef.current > POLL_MAX_TICKS) {
+        stopPolling();
+        toast('그림 그리기가 너무 오래 걸리고 있어요. 새로고침한 뒤 다시 뽑아주세요.');
+        return;
+      }
+      try {
+        const progress = await CharacterAPI.getProgress();
+        update(progress);
+        // generating=false면 끝났다는 뜻이다. 칸 상태를 하나씩 보고 판단하면
+        // 실패(failed) 칸이 섞였을 때 폴링이 안 멈춘다.
+        if (!progress.charGenerating) stopPolling();
+      } catch {
+        // 한 번 실패했다고 멈추지 않는다 — 잠깐 끊긴 것일 수 있으니 다음 차례에 다시 묻는다.
+      }
+    }, POLL_MS);
+  }, [update, stopPolling, toast]);
+
+  useEffect(() => () => {
+    stopPolling();
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+  }, [stopPolling]);
+
+  /** 생성을 시작시키는 요청들의 공통 처리 — 응답을 반영하고, 그리는 중이면 폴링을 켠다. */
+  const runGenerating = useCallback(async (call) => {
+    try {
+      const progress = await call();
+      update(progress);
+      if (progress.charGenerating) startPolling();
+      return true;
+    } catch (e) {
+      fail(e);
+      return false;
+    }
+  }, [update, startPolling, fail]);
+
+  // ---------- 처음 불러오기 ----------
   useEffect(() => {
     (async () => {
       try {
-        const [store, character, ad, trend, storyboard, items, prods, history] = await Promise.all([
-          StoreAPI.get(), CharacterAPI.get(), AdAPI.get(), TrendAPI.get(), StoryboardAPI.get(),
+        const [store, character, ad, storyboard, items, prods, history] = await Promise.all([
+          StoreAPI.get(), CharacterAPI.get(), AdAPI.get(), StoryboardAPI.get(),
           ProductionAPI.listItems(), ProductionAPI.listRecords(), HistoryAPI.list(),
         ]);
         update({
-          ...store, ...character, ...ad,
-          trendBars: trend.bars, trendDetail: trend.detail,
-          ...storyboard,
+          ...store, ...character, ...ad, ...storyboard,
           items, prods, history,
           storeReadOnly: store.storeSaved,
           draftItem: items[0] || '',
           loading: false,
         });
+        // 화면을 닫았다 다시 열어도 그리던 게 이어져야 한다. 생성은 서버에서 도니까
+        // 폴링만 다시 걸면 된다.
+        if (character.charGenerating) startPolling();
       } catch (e) {
         update({ loading: false, loadError: e.message || '백엔드에 연결할 수 없어요' });
       }
     })();
-  }, [update]);
+  }, [update, startPolling]);
 
-  // ---------- navigation (전부 로컬 UI 상태) ----------
+  // ---------- 화면 이동 (전부 로컬 UI 상태) ----------
   const go = useCallback((screen) => {
     update((s) => ({ screen, stack: [...s.stack, s.screen] }));
   }, [update]);
@@ -94,7 +164,8 @@ export function useAdMakerState() {
     });
   }, [update]);
 
-  const goHome = useCallback(() => update({ screen: 'home', stack: [], trendPopup: false }), [update]);
+  const goHome = useCallback(() => update({ screen: 'home', stack: [] }), [update]);
+  const reload = useCallback(() => window.location.reload(), []);
 
   const charLocked = !state.storeSaved;
   const adLocked = !state.charConfirmed;
@@ -108,12 +179,11 @@ export function useAdMakerState() {
     if (adLocked) { toast('캐릭터를 먼저 확정해주세요'); return; }
     go('ad');
   }, [adLocked, go, toast]);
-  const goTrendHome = useCallback(() => { update({ fromAd: false }); go('trend'); }, [go, update]);
   const goMy = useCallback(() => { update({ myTab: 'history' }); go('my'); }, [go, update]);
   const openProdTab = useCallback(() => { update({ myTab: 'prod', notifOpen: false }); go('my'); }, [go, update]);
   const goData = useCallback(() => { update({ myTab: 'data', notifOpen: false }); go('my'); }, [go, update]);
 
-  // ---------- store ----------
+  // ---------- 가게 정보 ----------
   const editStore = useCallback(() => { update({ storeReadOnly: false }); toast('편집할 수 있어요'); }, [update, toast]);
 
   const saveStore = useCallback(async () => {
@@ -123,6 +193,7 @@ export function useAdMakerState() {
         category: s.storeCategory, address: s.storeAddress, desc: s.storeDesc,
         open_time: s.storeOpenTime, close_time: s.storeCloseTime, closed_days: s.storeClosedDays,
       });
+      // 빈 칸이 있으면 여기서 400 + 무엇이 비었는지가 온다. 그 문장을 그대로 보여준다.
       const updated = await StoreAPI.save();
       update({ ...updated, storeReadOnly: true });
       toast('가게 정보를 저장했어요');
@@ -138,68 +209,58 @@ export function useAdMakerState() {
   }, [update]);
 
   const uploadStoreImage = useCallback(async (file) => {
-    try { update(await StoreAPI.uploadImage(file)); toast('이미지를 업로드했어요'); } catch (e) { fail(e); }
+    try { update(await StoreAPI.uploadImage(file)); toast('사진을 올렸어요'); } catch (e) { fail(e); }
   }, [update, toast, fail]);
 
   const deleteStoreImage = useCallback(async (i) => {
-    try { update(await StoreAPI.deleteImage(i)); } catch (e) { fail(e); }
-  }, [update, fail]);
+    try { update(await StoreAPI.deleteImage(i)); toast('사진을 지웠어요'); } catch (e) { fail(e); }
+  }, [update, toast, fail]);
 
-  // ---------- character ----------
+  // ---------- 캐릭터 ----------
   const sendChar = useCallback(async () => {
     const text = stateRef.current.charInput.trim();
     if (!text) return;
     update((s) => ({ charInput: '', charThinking: true, charMsgs: [...s.charMsgs, { role: 'me', kind: 'text', text }] }));
-    try {
-      const updated = await CharacterAPI.chat(text);
-      update({ ...updated, charThinking: false });
-    } catch (e) { update({ charThinking: false }); fail(e); }
-  }, [update, fail]);
+    await runGenerating(() => CharacterAPI.chat(text));
+    update({ charThinking: false });
+  }, [update, runGenerating]);
 
   const genCandidates = useCallback(async () => {
     update({ charThinking: true });
-    try {
-      const updated = await CharacterAPI.genCandidates();
-      update(updated);
-      // 항목만 먼저 반환됨 — 실제 이미지는 하나씩 순차로 채운다 (요청당 이미지 1장, 타임아웃 방지)
-      // charThinking은 이 루프가 끝날 때까지 켜둬서 생성 중 리롤 버튼을 못 누르게 막는다.
-      for (let i = 0; i < (updated.charCands || []).length; i++) {
-        try { update(await CharacterAPI.rerollCandidate(i)); } catch (e) { fail(e); }
-      }
-    } catch (e) { fail(e); } finally { update({ charThinking: false }); }
-  }, [update, fail]);
+    await runGenerating(() => CharacterAPI.genCandidates());
+    update({ charThinking: false });
+  }, [update, runGenerating]);
 
   const selectCand = useCallback(async (i) => {
-    try { update(await CharacterAPI.select(i)); } catch (e) { fail(e); }
-  }, [update, fail]);
+    await runGenerating(() => CharacterAPI.select(i));
+  }, [runGenerating]);
 
   const rerollCand = useCallback(async (i) => {
-    update({ charThinking: true });
-    try { update(await CharacterAPI.rerollCandidate(i)); toast('다시 그렸어요'); }
-    catch (e) { fail(e); }
-    finally { update({ charThinking: false }); }
-  }, [update, toast, fail]);
+    await runGenerating(() => CharacterAPI.rerollCandidate(i));
+  }, [runGenerating]);
+
+  const rerollView = useCallback(async (i) => {
+    await runGenerating(() => CharacterAPI.rerollView(i));
+  }, [runGenerating]);
 
   const loadChar = useCallback(async () => {
-    try { update(await CharacterAPI.loadPrevious()); } catch (e) { fail(e); }
-  }, [update, fail]);
+    // 확정된 캐릭터가 없으면 400 — 예전처럼 없는 캐릭터를 지어내지 않는다.
+    await runGenerating(() => CharacterAPI.loadPrevious());
+  }, [runGenerating]);
 
+  /** 대화가 꼬였을 때 캐릭터만 처음 상태로. 가게 정보나 생산 기록은 건드리지 않는다. */
   const resetChar = useCallback(async () => {
-    if (!window.confirm('캐릭터 대화와 후보를 전부 지우고 처음부터 다시 시작할까요?')) return;
-    try { update(await CharacterAPI.reset()); } catch (e) { fail(e); }
-  }, [update, fail]);
-
-  const confirmCharPending = useCallback(async (pid) => {
-    try { update(await CharacterAPI.confirmPending(pid)); } catch (e) { fail(e); }
-  }, [update, fail]);
-
-  const declineCharPending = useCallback(async (pid) => {
-    try { update(await CharacterAPI.declinePending(pid)); } catch (e) { fail(e); }
-  }, [update, fail]);
+    try {
+      stopPolling();
+      const cleared = await CharacterAPI.reset();
+      update({ ...cleared, charInput: '', charThinking: false, charInfoReadOnly: true });
+      toast('캐릭터를 처음 상태로 되돌렸어요');
+    } catch (e) { fail(e); }
+  }, [update, toast, fail, stopPolling]);
 
   const confirmChar = useCallback(async () => {
     const s = stateRef.current;
-    if (s.charSelected < 0) return;
+    if (s.charSelected < 0) { toast('마음에 드는 그림을 먼저 골라주세요'); return; }
     try {
       await CharacterAPI.update({ name: s.charName, age: s.charAge, gender: s.charGender, hobby: s.charHobby, look: s.charLook });
       const updated = await CharacterAPI.confirm();
@@ -222,60 +283,31 @@ export function useAdMakerState() {
     }
   }, [update, toast, fail]);
 
-  // ---------- ad ----------
-  const applyAd = useCallback(() => update({ trendPopup: true }), [update]);
-
-  const trendYes = useCallback(async () => {
+  // ---------- 광고 설정 ----------
+  // 트렌드 조사는 없앴다. 종류와 컨셉만 고르면 바로 구성 단계로 간다.
+  const applyAd = useCallback(async () => {
     const s = stateRef.current;
     try {
       await AdAPI.update({ ad_type: s.adType, ad_concept: s.adConcept });
-      const updated = await AdAPI.trendYes();
+      // 앞 단계가 안 끝났으면 400 + 무엇이 남았는지가 온다.
+      const res = await AdAPI.apply();
       const sb = await StoryboardAPI.get();
-      update({ ...updated, ...sb, trendPopup: false });
+      update({ ...sb });
+      if (res?.message) toast(res.message);
       go('sb');
     } catch (e) { fail(e); }
-  }, [update, fail, go]);
+  }, [update, toast, fail, go]);
 
-  const trendNo = useCallback(async () => {
-    const s = stateRef.current;
-    try {
-      await AdAPI.update({ ad_type: s.adType, ad_concept: s.adConcept });
-      const updated = await AdAPI.trendNo();
-      const sb = await StoryboardAPI.get();
-      update({ ...updated, ...sb, trendPopup: false });
-      go('sb');
-    } catch (e) { fail(e); }
-  }, [update, fail, go]);
-
-  const goTrendFromAd = useCallback(() => { update({ fromAd: true, trendPopup: false }); go('trend'); }, [update, go]);
-  const backToAd = useCallback(() => update({ fromAd: false, screen: 'ad', trendPopup: true }), [update]);
-
-  // ---------- trend ----------
-  const toggleTrendAccordion = useCallback((name) => {
-    update((s) => ({ openTrend: s.openTrend === name ? '' : name }));
-  }, [update]);
-
-  const useTrend = useCallback(async (name) => {
-    if (!stateRef.current.charConfirmed) { toast('캐릭터를 먼저 확정해주세요'); return; }
-    try {
-      const updated = await TrendAPI.use(name);
-      const sb = await StoryboardAPI.get();
-      update({ ...updated, ...sb, fromAd: false });
-      go('sb');
-    } catch (e) { fail(e); }
-  }, [toast, update, fail, go]);
-
-  // ---------- storyboard ----------
+  // ---------- 광고 구성(스토리보드) ----------
   const toggleSbSet = useCallback(() => update((s) => ({ sbSetOpen: !s.sbSetOpen })), [update]);
   const toggleSbProd = useCallback(() => update((s) => ({ sbProdOpen: !s.sbProdOpen })), [update]);
 
   const sendSb = useCallback(async () => {
-    const s = stateRef.current;
-    const text = s.sbInput.trim();
+    const text = stateRef.current.sbInput.trim();
     if (!text) return;
     update((st) => ({ sbInput: '', sbThinking: true, sbMsgs: [...st.sbMsgs, { role: 'me', kind: 'text', text }] }));
     try {
-      const updated = await StoryboardAPI.chat(text, { adType: s.adType, trendApplied: s.trendApplied, trendPick: s.trendPick });
+      const updated = await StoryboardAPI.chat(text);
       update({ ...updated, sbThinking: false });
     } catch (e) { update({ sbThinking: false }); fail(e); }
   }, [update, fail]);
@@ -288,47 +320,38 @@ export function useAdMakerState() {
     try { update(await StoryboardAPI.decline(pid)); } catch (e) { fail(e); }
   }, [update, fail]);
 
-  const makeComic = useCallback(async () => {
-    if (!stateRef.current.plan.length) { toast('먼저 대화로 플랜을 만들어주세요'); return; }
-    update({ sbThinking: true });
-    try {
-      const updated = await StoryboardAPI.makeComic();
-      update({ ...updated, sbThinking: false });
-    } catch (e) { update({ sbThinking: false }); fail(e); }
-  }, [toast, update, fail]);
-
-  const rerollCut = useCallback(async (n) => {
-    try { update(await StoryboardAPI.rerollCut(n)); toast(`${n}컷만 다시 그렸어요`); } catch (e) { fail(e); }
-  }, [update, toast, fail]);
-
-  // ---------- result / save ----------
-  const openResult = useCallback(() => go('result'), [go]);
+  // ---------- 결과 / 저장 ----------
+  const openResult = useCallback(() => {
+    if (!stateRef.current.plan.length) { toast('먼저 대화로 컷 구성을 만들어주세요'); return; }
+    go('result');
+  }, [go, toast]);
   const backToSb = useCallback(() => update((s) => ({ screen: 'sb', stack: s.stack.filter((x) => x !== 'result') })), [update]);
   const confirmResult = useCallback(() => go('save'), [go]);
 
   const download = useCallback(async () => {
     const s = stateRef.current;
+    if (!s.plan.length) { toast('저장할 구성이 없어요'); return; }
     try {
       const entry = await HistoryAPI.add({
         title: `${s.adType} · ${s.adConcept}`,
-        meta: `${s.trendApplied ? s.trendPick + ' · ' : ''}네컷만화 · 방금 저장`,
-        cuts: s.comicCuts.map((c) => ({ hue: c.hue })),
+        meta: `${s.plan.length}컷 구성`,
+        cuts: s.plan.map((c) => ({ n: c.n, short: c.short || '', line: c.line || '' })),
       });
       update((st) => ({ history: [entry, ...st.history] }));
-      toast('이미지와 문구를 내려받았어요');
+      toast('구성을 보관함에 저장했어요');
     } catch (e) { fail(e); }
   }, [update, toast, fail]);
 
-  // ---------- my / production ----------
+  // ---------- 마이 / 생산기록 ----------
   const myHistory = useCallback(() => update({ myTab: 'history', notifOpen: false }), [update]);
   const myStoreTab = useCallback(() => go('myStore'), [go]);
   const myChar = useCallback(() => {
-    if (!stateRef.current.charConfirmed) { toast('아직 확정된 캐릭터가 없어요'); return; }
+    if (!stateRef.current.charConfirmed) { toast('아직 확정한 캐릭터가 없어요'); return; }
     go('charInfo');
   }, [toast, go]);
   const editStoreFromMy = useCallback(() => { update({ storeReadOnly: false }); go('store'); }, [update, go]);
   const openHistoryItem = useCallback((h) => {
-    update({ comicCuts: h.cuts.map((c, i) => ({ n: i + 1, short: '', hue: c.hue })) });
+    update({ plan: (h.cuts || []).map((c, i) => ({ n: c.n ?? i + 1, short: c.short || '', line: c.line || '' })) });
     go('result');
   }, [update, go]);
 
@@ -337,7 +360,11 @@ export function useAdMakerState() {
     if (!name) return;
     try {
       await ProductionAPI.addItem(name);
-      update((s) => ({ newItem: '', items: s.items.includes(name) ? s.items : [...s.items, name] }));
+      update((s) => ({
+        newItem: '',
+        items: s.items.includes(name) ? s.items : [...s.items, name],
+        draftItem: s.draftItem || name,
+      }));
     } catch (e) { fail(e); }
   }, [update, fail]);
 
@@ -396,34 +423,40 @@ export function useAdMakerState() {
     } catch (e) { fail(e); }
   }, [update, fail]);
 
+  /** 백업 내려받기 — 실제로 파일이 떨어진다. 예전엔 "준비 중"이라고만 했다. */
   const exportData = useCallback(async () => {
     try {
-      const res = await fetch('/api/history/export');
-      if (!res.ok) throw new Error('내보내기에 실패했어요');
-      await res.json();
-      update({ backupNote: '백업 파일을 만들었어요 (프로토타입 — 실제 다운로드는 준비 중).', backupErr: false });
+      const data = await HistoryAPI.exportAll();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `가게백업-${today()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      update({ backupNote: '백업 파일을 내려받았어요.', backupErr: false });
     } catch (e) {
-      update({ backupNote: e.message, backupErr: true });
+      update({ backupNote: e.message || '내보내기에 실패했어요', backupErr: true });
     }
   }, [update]);
 
   const importFile = useCallback(() => {
-    update({ backupNote: '이 프로토타입에서는 불러오기가 아직 준비 중이에요.', backupErr: true });
+    update({ backupNote: '불러오기는 아직 준비 중이에요. 내보내기는 지금도 됩니다.', backupErr: true });
   }, [update]);
 
   return {
     state,
     charLocked, adLocked,
     actions: {
-      set, toast, go, back, goHome,
-      goStore, goChar, goAd, goTrendHome, goMy, openProdTab, goData,
+      set, toast, go, back, goHome, reload,
+      goStore, goChar, goAd, goMy, openProdTab, goData,
       editStore, saveStore, toggleClosedDay, uploadStoreImage, deleteStoreImage,
-      genCandidates, sendChar, selectCand, rerollCand, loadChar, resetChar, confirmChar, toggleCharEdit,
-      confirmCharPending, declineCharPending,
+      genCandidates, sendChar, selectCand, rerollCand, rerollView, loadChar, resetChar, confirmChar, toggleCharEdit,
       confirmPending, declinePending,
-      applyAd, trendYes, trendNo, goTrendFromAd, backToAd,
-      toggleTrendAccordion, useTrend,
-      toggleSbSet, toggleSbProd, sendSb, makeComic, rerollCut,
+      applyAd,
+      toggleSbSet, toggleSbProd, sendSb,
       openResult, backToSb, confirmResult, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,

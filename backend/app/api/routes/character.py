@@ -230,7 +230,10 @@ def _handle_non_answer(char, messages: list, text: str, asked: str) -> None:
     proposal = sheet_llm.propose_field(char, following, text)
     if proposal:
         char.editing = following
-        _open_suggestion(char, messages, {following: proposal}, phase="filling")
+        # 물어보신 말에 먼저 답하고, 그 답의 결론을 카드로 올린다. 카드만 띄우면
+        # "왜 앞치마인가"가 없어서 사장님은 근거 없이 정해진 값으로 읽는다.
+        _open_suggestion(char, messages, {following: proposal}, phase="filling",
+                         lead=sheet_llm.reply(char, text, {}, following))
         return
 
     # 시트에 넣을 건 없지만 **할 말은 있다.** 질문이었을 수도 있고 고민이었을 수도 있다.
@@ -293,7 +296,7 @@ def _propose_keywords(char, messages: list) -> None:
     messages.append({"role": "ai", "kind": "confirm", "pid": pid})
 
 
-def _open_suggestion(char, messages: list, changes: dict, phase: str = "editing") -> None:
+def _open_suggestion(char, messages: list, changes: dict, phase: str = "editing", lead: str = "") -> None:
     """수정 제안을 승인 대기로 올린다. 한 문장이 여러 칸을 건드리면 한 카드에 모아 보여준다.
 
     phase는 승인 뒤 어디로 이어갈지를 정한다.
@@ -323,7 +326,11 @@ def _open_suggestion(char, messages: list, changes: dict, phase: str = "editing"
     }
     char.pending = pending
     labels = ", ".join(f"'{sheet.LABELS[f]}'" for f in real)
-    if phase == "filling":
+    if lead:
+        # 사장님이 물어보신 말에 대한 실제 대답이다. "이렇게 하면 어떨까요?"만
+        # 던지면 왜 그 값인지가 없어서, 카드가 있어도 근거 없는 제안으로 읽힌다.
+        _say(messages, lead)
+    elif phase == "filling":
         _say(messages, f"그럼 {labels}은(는) 이렇게 하면 어떨까요?")
     else:
         _say(messages, f"{labels}을(를) 이렇게 바꿀까요?")

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AdAPI, CharacterAPI, HistoryAPI, MemeAPI, ProductionAPI, StoreAPI, StoryboardAPI,
+  AdAPI, CharacterAPI, HistoryAPI, MemeAPI, ProductionAPI, StoreAPI, StoryboardAPI, TrendAPI,
 } from '../api/client.js';
 
 /** 그림 생성 진행을 확인하는 간격. 백엔드가 generating=false를 주면 멈춘다. */
@@ -54,6 +54,12 @@ function initialState() {
     charGenerating: false, charQueue: 0, charEta: 0,
 
     adType: '', adConcept: '',
+    // 홈에서 "광고 만들기"를 누르면 트렌드를 쓸지 먼저 물어보는 팝업.
+    adEntryOpen: false,
+
+    // 트렌드 확인 — /api/trend가 준 밈 목록을 그대로 두고, 필터/검색/정렬/선택은 화면에서만 쓴다.
+    trendItems: [], trendSites: [],
+    trendFilter: '전체', trendSearch: '', trendSort: '최신순', trendSel: '',
 
     sbMsgs: [], sbInput: '', sbThinking: false,
     plan: [], sbProdLogged: false, sbSetOpen: false, sbProdOpen: false, pending: {},
@@ -156,14 +162,15 @@ export function useAdMakerState() {
   useEffect(() => {
     (async () => {
       try {
-        const [store, character, ad, storyboard, items, prods, history, memes] = await Promise.all([
+        const [store, character, ad, storyboard, items, prods, history, memes, trend] = await Promise.all([
           StoreAPI.get(), CharacterAPI.get(), AdAPI.get(), StoryboardAPI.get(),
           ProductionAPI.listItems(), ProductionAPI.listRecords(), HistoryAPI.list(),
           // 밈 카드는 없어도 앱이 떠야 한다 — 실패하면 빈 목록.
           MemeAPI.list().catch(() => []),
+          TrendAPI.list(),
         ]);
         update({
-          ...store, ...character, ...ad, ...storyboard,
+          ...store, ...character, ...ad, ...storyboard, ...trend,
           items, prods, history, memes,
           storeReadOnly: store.storeSaved,
           draftItem: items[0] || '',
@@ -209,6 +216,25 @@ export function useAdMakerState() {
   const goMy = useCallback(() => { update({ myTab: 'history' }); go('my'); }, [go, update]);
   const openProdTab = useCallback(() => { update({ myTab: 'prod', notifOpen: false }); go('my'); }, [go, update]);
   const goData = useCallback(() => { update({ myTab: 'data', notifOpen: false }); go('my'); }, [go, update]);
+  const goTrend = useCallback(() => go('trend'), [go]);
+
+  /** 트렌드 화면에서 고른 밈을 들고 광고 만들기로 넘어간다. 고른 밈(trendSel)은 상태에 그대로
+   *  남아있으니 Ad 화면이 그 id로 다시 찾아서 요약에 보여준다 — 별도 필드를 안 만든다. */
+  const useTrendMeme = useCallback(() => {
+    if (!stateRef.current.trendSel) { toast('먼저 밈을 골라주세요'); return; }
+    goAd();
+  }, [toast, goAd]);
+
+  /** 홈의 "광고 만들기"는 곧바로 광고 화면으로 가지 않고, 트렌드를 참고할지부터 묻는다.
+   *  잠금 확인은 여기서 한 번만 하면 된다 — 팝업의 두 선택지(goTrend/goAd) 모두 이미
+   *  캐릭터가 확정된 뒤에만 열리므로 다시 안 막아도 된다. */
+  const openAdEntry = useCallback(() => {
+    if (adLocked) { toast('캐릭터를 먼저 확정해주세요'); return; }
+    update({ adEntryOpen: true });
+  }, [adLocked, toast, update]);
+  const closeAdEntry = useCallback(() => update({ adEntryOpen: false }), [update]);
+  const pickAdEntryTrend = useCallback(() => { update({ adEntryOpen: false }); goTrend(); }, [update, goTrend]);
+  const pickAdEntryDirect = useCallback(() => { update({ adEntryOpen: false }); goAd(); }, [update, goAd]);
 
   // ---------- 가게 정보 ----------
   const editStore = useCallback(() => { update({ storeReadOnly: false }); toast('편집할 수 있어요'); }, [update, toast]);
@@ -551,7 +577,8 @@ export function useAdMakerState() {
     charLocked, adLocked,
     actions: {
       set, toast, go, back, goHome, reload,
-      goStore, goChar, goAd, goMy, openProdTab, goData,
+      goStore, goChar, goAd, goMy, openProdTab, goData, goTrend, useTrendMeme,
+      openAdEntry, closeAdEntry, pickAdEntryTrend, pickAdEntryDirect,
       editStore, saveStore, toggleClosedDay, uploadStoreImage, deleteStoreImage,
       genCandidates, sendChar, selectCand, rerollCand, loadChar, resetChar, confirmChar, toggleCharEdit,
       saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion,

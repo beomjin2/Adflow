@@ -13,7 +13,7 @@ from app.core.database import get_db
 
 router = APIRouter(prefix="/api/ad", tags=["ad"])
 
-AD_TYPES = ["인스타 게시물", "포스터", "메뉴판"]
+AD_TYPES = ["인스타 게시물", "4컷만화"]
 
 
 def _get(db: Session) -> models.AdSettings:

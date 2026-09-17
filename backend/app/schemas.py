@@ -232,3 +232,32 @@ class HistoryCreate(BaseModel):
     title: str
     meta: str
     cuts: list[dict[str, Any]]
+
+
+# ---------- trend ----------
+class MemeOut(BaseModel):
+    id: str
+    source: str
+    source_label: str
+    name: str
+    url: str
+    image: str
+    origin: str
+    summary: str
+    published: str
+    views: str
+    category: str
+    situation: str = ""
+    situation_score: float | None = None
+    ad_safe: bool | None = None
+
+
+class TrendSiteOut(BaseModel):
+    source: str
+    label: str
+    count: int
+
+
+class TrendOut(BaseModel):
+    items: list[MemeOut]
+    sites: list[TrendSiteOut]

@@ -5,7 +5,7 @@ import { formatEta } from '../components/ImageSlot.jsx';
 import ComicPanels from '../components/ComicPanels.jsx';
 import ChatPanel from '../components/ChatPanel.jsx';
 
-const AD_TYPES = ['인스타 게시물', '포스터', '메뉴판'];
+const AD_TYPES = ['인스타 게시물', '4컷만화'];
 const AD_CONCEPTS = ['유쾌함', '감성', '정보형', '담백함'];
 
 const EMPTY_HINT = `오늘 무엇을 알리고 싶으신가요?

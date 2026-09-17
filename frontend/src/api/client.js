@@ -186,3 +186,20 @@ export const HistoryAPI = {
   add: (body) => post('/api/history', body).then(mapHistory),
   exportAll: () => get('/api/history/export'),
 };
+
+// ---------- trend ----------
+// 이름이 mapMeme가 아니라 mapTrendMeme인 이유: 위 MemeAPI 쪽 mapMeme(밈 카드)와
+// 이름은 같아 보여도 다른 데이터 모양이라 겹치면 안 된다.
+const mapTrendMeme = (m) => ({
+  id: m.id, source: m.source, sourceLabel: m.source_label, name: m.name,
+  url: m.url, image: m.image, origin: m.origin, summary: m.summary,
+  published: m.published, views: m.views, category: m.category,
+  situation: m.situation || '', situationScore: m.situation_score, adSafe: m.ad_safe,
+});
+
+export const TrendAPI = {
+  list: () => get('/api/trend').then((r) => ({
+    trendItems: (r.items || []).map(mapTrendMeme),
+    trendSites: r.sites || [],
+  })),
+};

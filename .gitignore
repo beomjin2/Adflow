@@ -19,3 +19,4 @@ crawling/*
 !crawling/memes_all.json
 !crawling/memes_classified.json
 !crawling/images/
+!crawling/*.py

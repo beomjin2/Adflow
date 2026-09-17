@@ -19,6 +19,7 @@
 
 import json
 import logging
+import re
 
 import requests
 
@@ -47,10 +48,31 @@ _EXTRACT_SYSTEM = """\
 2. 절대 지어내거나 추측하지 않는다. 그럴듯하게 채우지 않는다.
 3. 값은 사장님이 쓴 한국어 표현을 최대한 그대로 살린다. 요약하거나 다듬지 않는다.
 4. 한 문장에 여러 칸이 섞여 있으면 나눠서 각 칸에 넣는다.
-5. 사장님 말이 어느 칸인지 불분명하면 지금 묻고 있는 칸에 넣는다.
+5. 사장님 말이 **답이긴 한데** 어느 칸인지 불분명하면 지금 묻고 있는 칸에 넣는다.
+6. **답이 아닌 말은 어느 칸에도 넣지 않는다.** "몰라", "모르겠어", "알아서 해줘",
+   "니가 정해", "추천해줘", "아무거나", "좀 해봐" 같은 말과 인사·잡담·되묻는 질문은
+   {"fields": {}} 로 돌려준다. 그 말을 칸에 적으면 사장님이 정한 적 없는 내용이 시트에 남는다.
 
 출력은 이 모양의 JSON만: {"fields": {"look": "...", "age": "..."}}
 해당하는 게 하나도 없으면 {"fields": {}}
+"""
+
+_PROPOSE_SYSTEM = """\
+너는 한국 소상공인 사장님이 가게 마스코트 캐릭터를 만드는 걸 돕는다.
+사장님이 방금 한 말에는 시트에 넣을 내용이 없다. 그게 무슨 뜻인지 가려서 JSON으로 답한다.
+
+가리는 기준:
+- "몰라", "모르겠어", "알아서 해줘", "니가 정해", "추천해줘", "아무거나", "좀 해봐"처럼
+  **대신 정해달라는 뜻**이면 intent를 "help"로 하고, 지금 묻는 칸에 넣을 값을 하나 제안한다.
+- 인사·잡담·되묻는 질문이면 intent를 "other"로 하고 proposal은 빈 문자열로 둔다.
+
+제안을 만들 때:
+1. 이미 채워진 칸과 어울려야 한다. 갈색 곰인데 고양이 얘기를 하면 안 된다.
+2. 사장님이 그대로 쓸 수 있게 짧고 구체적으로. 한 문장을 넘기지 않는다.
+3. 동네 가게 마스코트로 쓸 수 있는 내용이어야 한다.
+4. 사장님이 쓰는 말투로 쓴다. 설정집 문장처럼 쓰지 않는다.
+
+출력은 이 모양의 JSON만: {"intent": "help", "proposal": "..."}
 """
 
 _KEYWORDS_SYSTEM = """\
@@ -154,8 +176,49 @@ def read_fields(char, text: str, asked_field: str = "") -> dict[str, str]:
         if field != asked_field and not _grounded(value, text):
             logger.info("근거 없는 칸 '%s'을(를) 버렸습니다", field)
             continue
+        # 답이 아닌 말. 위 _grounded 는 여기서 소용이 없다 — 문장을 그대로 베낀 값은
+        # 언제나 문장에 근거가 있기 때문이다.
+        if _is_refusal_value(value, text):
+            logger.info("답이 아닌 말이라 칸 '%s'을(를) 버렸습니다", field)
+            continue
         cleaned[field] = value
     return cleaned
+
+
+# "몰라" · "알아서 해줘" 는 답이 아니다. 프롬프트로 막아도 모델은 지금 묻는 칸에
+# 그대로 넣는다 — 배포된 서비스에서 성별 = "몰라 좀 해봐" 가 적히는 걸 확인했다.
+# 프롬프트는 부탁이고 이건 보장이다.
+_NON_ANSWER = re.compile(
+    "몰라|모르겠|모른다|알아서|니가정|네가정|아무거나|아무렇게|추천해|정해줘|좀해봐|맘대로|마음대로"
+)
+
+
+def _is_non_answer(text: str) -> bool:
+    return bool(_NON_ANSWER.search((text or "").replace(" ", "")))
+
+
+def _echoes_input(value: str, text: str) -> bool:
+    """값이 사장님 문장을 거의 그대로 되돌려준 것인가."""
+    v = (value or "").replace(" ", "")
+    t = (text or "").replace(" ", "")
+    return bool(v) and bool(t) and v in t and len(v) >= len(t) * 0.8
+
+
+def _is_refusal_value(value: str, text: str) -> bool:
+    """시트에 넣으면 안 되는 값인가. 두 갈래로 잡는다.
+
+    ① 값 자체가 "몰라"·"아무거나" 같은 말이다. ("아무거나 해줘" → 아무거나)
+    ② 답이 아닌 문장을 **통째로 되돌려준** 것이다. ("몰라 좀 해봐" → 몰라 좀 해봐)
+
+    ②가 따로 필요한 이유는 어느 조각도 단독으로는 안 걸리는 문장이 있어서고,
+    ①이 따로 필요한 이유는 모델이 문장 일부만 잘라 넣기도 해서다.
+
+    반대로 "잘 모르겠지만 갈색 곰이요" 는 '모르겠'이 들어 있어도 **외형이라는 답이
+    있다.** 잘라낸 조각('갈색 곰')은 둘 중 어느 갈래에도 안 걸려 살아남는다.
+    """
+    if _is_non_answer(value):
+        return True
+    return _is_non_answer(text) and _echoes_input(value, text)
 
 
 def _grounded(value: str, text: str) -> bool:
@@ -171,6 +234,37 @@ def _grounded(value: str, text: str) -> bool:
         for i in range(max(len(value) - 1, 1))
         if len(value[i:i + 2]) == 2
     )
+
+
+def propose_field(char, field: str, text: str) -> str:
+    """사장님이 "몰라, 알아서 해줘"라고 했을 때 그 칸에 넣을 값을 하나 제안한다.
+
+    대신 정해달라는 뜻이 아니면 빈 문자열을 돌려준다 — 그러면 호출부가 그냥 되묻는다.
+    인사나 잡담에 대고 캐릭터 설정을 지어내기 시작하면 사장님이 정한 적 없는 캐릭터가 된다.
+
+    여기서 나온 값은 `read_fields()`와 달리 **사장님 문장에 근거가 없다.** 그래서
+    시트에 바로 넣지 않고 승인 카드로 올린다 — 무엇을 지어냈는지 사장님이 보고 정한다.
+    """
+    from app.services import character_sheet as sheet
+
+    if not available() or not field:
+        return ""
+
+    label = sheet.LABELS.get(field, "")
+    prompt = (
+        f"지금까지 채워진 캐릭터 시트:\n{_sheet_summary(char)}\n\n"
+        f"지금 묻고 있는 칸: {label}({field})\n\n"
+        f"사장님이 방금 한 말:\n{(text or '').strip()}"
+    )
+    parsed = _ask(_PROPOSE_SYSTEM, prompt)
+    if parsed.get("intent") != "help":
+        return ""
+    value = parsed.get("proposal")
+    if not isinstance(value, str):
+        return ""
+    value = value.strip()
+    # 한 문장을 넘기면 제안이 아니라 소설이다. 승인 카드에 넣기도 어렵다.
+    return value if 0 < len(value) <= 60 else ""
 
 
 def suggest_keywords(char, limit: int = 5) -> list[str]:

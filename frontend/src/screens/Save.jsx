@@ -5,7 +5,7 @@ import { buildAdText, adTextForClipboard, characterImage } from '../lib/adText.j
 export default function Save({ state, actions }) {
   const { headline, lines, info, tags } = buildAdText(state);
   const charImg = characterImage(state);
-  const saved = state.history.length > 0;
+  const saved = state.savedThisAd;
 
   const copy = async () => {
     const text = adTextForClipboard(state);
@@ -48,7 +48,7 @@ export default function Save({ state, actions }) {
       </span>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: 340, maxWidth: '100%' }}>
-        <PrimaryButton onClick={actions.download}>보관함에 저장</PrimaryButton>
+        <PrimaryButton onClick={actions.download} disabled={saved}>{saved ? '보관함에 저장했어요' : '보관함에 저장'}</PrimaryButton>
         <SoftButton onClick={copy} style={{ height: 48, fontSize: 15 }}>문구 복사하기</SoftButton>
         <SecondaryButton onClick={actions.goHome}>홈으로</SecondaryButton>
       </div>

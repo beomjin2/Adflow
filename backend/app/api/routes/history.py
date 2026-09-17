@@ -21,6 +21,15 @@ def add_history(body: schemas.HistoryCreate, db: Session = Depends(get_db)):
     return entry
 
 
+@router.delete("/{history_id}", status_code=204)
+def delete_history(history_id: int, db: Session = Depends(get_db)):
+    entry = db.get(models.HistoryEntry, history_id)
+    if not entry:
+        raise HTTPException(404, "보관한 광고를 찾을 수 없어요")
+    db.delete(entry)
+    db.commit()
+
+
 @router.get("/export")
 def export_backup(db: Session = Depends(get_db)):
     """전체 데이터를 JSON 하나로 내보낸다 — frontend의 '백업 파일 내보내기'에 대응."""

@@ -81,6 +81,9 @@ function initialState() {
     plan: [], sbProdLogged: false, sbSetOpen: false, sbProdOpen: false, pending: {},
     // 네컷 그림 칸과 진행 상태 — 캐릭터 후보와 같은 규칙(status: empty|generating|done|failed)
     comicCuts: [], sbGenerating: false, sbEta: 0,
+    // "보관함에 저장"을 한 번 누르면 같은 구성으로 또 눌러도 중복 저장 안 되게 잠근다.
+    // 네컷을 새로 그리면(makeComic) 그건 다른 구성이니 다시 저장할 수 있게 풀어준다.
+    savedThisAd: false,
     // 밈 카드 목록과 "밈으로 스토리 제안" 입력란
     memes: [], memeId: '', memeTitle: '', memeSource: '', memeText: '',
     // memeTitle/memeSource/memeText가 트렌드 밈에서 채워졌는지 — 스토리보드가 배지 표시에 쓴다.
@@ -436,7 +439,9 @@ export function useAdMakerState() {
       // 앞 단계가 안 끝났으면 400 + 무엇이 남았는지가 온다.
       const res = await AdAPI.apply();
       const sb = await StoryboardAPI.get();
-      update({ ...sb });
+      // 광고 설정을 새로 확정하면 백엔드가 스토리보드를 처음 상태로 되돌린다(reset_storyboard) —
+      // 이전에 만든 다른 광고를 저장한 적이 있어도 이건 새 구성이니 다시 저장할 수 있게 푼다.
+      update({ ...sb, savedThisAd: false });
 
       // 트렌드 확인 화면에서 밈을 고르고 왔으면, 스토리보드의 "밈으로 스토리 제안받기"
       // 원문 붙여넣기 칸을 미리 채워둔다 — 크롤링 원문을 다시 복붙 안 해도 되게.
@@ -481,7 +486,8 @@ export function useAdMakerState() {
   const makeComic = useCallback(async () => {
     try {
       const sb = await StoryboardAPI.makeComic();
-      update(sb);
+      // 새로 그린 네컷은 지금까지 저장한 것과 다른 구성이니 다시 저장할 수 있게 푼다.
+      update({ ...sb, savedThisAd: false });
       if (sb.sbGenerating) startPolling();
     } catch (e) { fail(e); }
   }, [update, startPolling, fail]);
@@ -543,13 +549,14 @@ export function useAdMakerState() {
   const download = useCallback(async () => {
     const s = stateRef.current;
     if (!s.plan.length) { toast('저장할 구성이 없어요'); return; }
+    if (s.savedThisAd) { toast('이미 보관함에 저장했어요'); return; }
     try {
       const entry = await HistoryAPI.add({
         title: `${s.adType} · ${s.adConcept}`,
         meta: `${s.plan.length}컷 구성`,
         cuts: s.plan.map((c) => ({ n: c.n, short: c.short || '', line: c.line || '' })),
       });
-      update((st) => ({ history: [entry, ...st.history] }));
+      update((st) => ({ history: [entry, ...st.history], savedThisAd: true }));
       toast('구성을 보관함에 저장했어요');
     } catch (e) { fail(e); }
   }, [update, toast, fail]);
@@ -566,6 +573,13 @@ export function useAdMakerState() {
     update({ plan: (h.cuts || []).map((c, i) => ({ n: c.n ?? i + 1, short: c.short || '', line: c.line || '' })) });
     go('result');
   }, [update, go]);
+
+  const delHistoryItem = useCallback(async (id) => {
+    try {
+      await HistoryAPI.remove(id);
+      update((s) => ({ history: s.history.filter((h) => h.id !== id) }));
+    } catch (e) { fail(e); }
+  }, [update, fail]);
 
   const addItem = useCallback(async () => {
     const name = stateRef.current.newItem.trim();
@@ -673,7 +687,7 @@ export function useAdMakerState() {
       applyAd,
       toggleSbSet, toggleSbProd, sendSb, makeComic, rerollCut, proposeStory, addMeme, pickMemeCard,
       openResult, backToSb, confirmResult, download,
-      myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem,
+      myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,
       exportData, importFile,
     },

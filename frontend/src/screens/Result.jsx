@@ -51,7 +51,14 @@ export default function Result({ state, actions }) {
         {(state.comicCuts || []).some((c) => c.status !== 'empty') && (
           <div style={{ padding: '12px 16px 0', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
             {(state.comicCuts || []).map((c) => (
-              <ImageSlot key={c.n} slot={c} size={150} eta={state.sbEta} onReroll={() => actions.rerollCut(c.n)} />
+              <div key={c.n} style={{ position: 'relative' }}>
+                <ImageSlot slot={c} size={150} eta={state.sbEta} onReroll={() => actions.rerollCut(c.n)} />
+                {c.line && c.status === 'done' && (
+                  <div style={{ position: 'absolute', left: 8, right: 8, top: 8, background: 'rgba(255,255,255,.92)', border: '1px solid rgba(0,0,0,.12)', borderRadius: 9, padding: '4px 7px', fontSize: 12, lineHeight: '16px', fontWeight: 700, color: '#1E2321', pointerEvents: 'none' }}>
+                    {c.line}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}

@@ -163,6 +163,25 @@ def storyboard_out(sb, queue_depth: int = 0) -> "StoryboardOut":
     return out
 
 
+# ---------- meme ----------
+class MemeCardOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    title: str
+    source: str
+    card: dict[str, Any]
+
+
+class MemeCreate(BaseModel):
+    title: str
+    source: str = ""
+    original: str
+
+
+class ProposeIn(BaseModel):
+    meme_id: int
+
+
 # ---------- production ----------
 class ProductionItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)

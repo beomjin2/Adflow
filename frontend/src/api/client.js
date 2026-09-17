@@ -156,6 +156,15 @@ export const StoryboardAPI = {
   decline: (pid) => post(`/api/storyboard/decline/${pid}`).then(mapStoryboard),
   makeComic: () => post('/api/storyboard/comic').then(mapStoryboard),
   rerollCut: (n) => post(`/api/storyboard/comic/${n}/reroll`).then(mapStoryboard),
+  propose: (memeId) => post('/api/storyboard/propose', { meme_id: memeId }).then(mapStoryboard),
+};
+
+// ---------- meme ----------
+const mapMeme = (m) => ({ id: m.id, title: m.title, source: m.source, card: m.card || {} });
+export const MemeAPI = {
+  list: () => get('/api/memes').then((rows) => rows.map(mapMeme)),
+  create: (body) => post('/api/memes', body).then(mapMeme),
+  remove: (id) => del(`/api/memes/${id}`),
 };
 
 // ---------- production ----------

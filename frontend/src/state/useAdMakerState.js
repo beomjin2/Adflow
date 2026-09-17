@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AdAPI, CharacterAPI, HistoryAPI, ProductionAPI, StoreAPI, StoryboardAPI,
+  AdAPI, CharacterAPI, HistoryAPI, MemeAPI, ProductionAPI, StoreAPI, StoryboardAPI,
 } from '../api/client.js';
 
 /** 그림 생성 진행을 확인하는 간격. 백엔드가 generating=false를 주면 멈춘다. */
@@ -59,6 +59,8 @@ function initialState() {
     plan: [], sbProdLogged: false, sbSetOpen: false, sbProdOpen: false, pending: {},
     // 네컷 그림 칸과 진행 상태 — 캐릭터 후보와 같은 규칙(status: empty|generating|done|failed)
     comicCuts: [], sbGenerating: false, sbEta: 0,
+    // 밈 카드 목록과 "밈으로 스토리 제안" 입력란
+    memes: [], memeId: '', memeTitle: '', memeSource: '', memeText: '',
 
     myTab: 'history', history: [],
 
@@ -154,13 +156,15 @@ export function useAdMakerState() {
   useEffect(() => {
     (async () => {
       try {
-        const [store, character, ad, storyboard, items, prods, history] = await Promise.all([
+        const [store, character, ad, storyboard, items, prods, history, memes] = await Promise.all([
           StoreAPI.get(), CharacterAPI.get(), AdAPI.get(), StoryboardAPI.get(),
           ProductionAPI.listItems(), ProductionAPI.listRecords(), HistoryAPI.list(),
+          // 밈 카드는 없어도 앱이 떠야 한다 — 실패하면 빈 목록.
+          MemeAPI.list().catch(() => []),
         ]);
         update({
           ...store, ...character, ...ad, ...storyboard,
-          items, prods, history,
+          items, prods, history, memes,
           storeReadOnly: store.storeSaved,
           draftItem: items[0] || '',
           loading: false,
@@ -395,6 +399,27 @@ export function useAdMakerState() {
     } catch (e) { fail(e); }
   }, [update, startPolling, fail]);
 
+  // ---------- 밈으로 스토리 제안 ----------
+  const proposeStory = useCallback(async () => {
+    const id = Number(stateRef.current.memeId);
+    if (!id) { toast('밈을 먼저 골라주세요'); return; }
+    update({ sbThinking: true });
+    try {
+      const sb = await StoryboardAPI.propose(id);
+      update({ ...sb, sbThinking: false });
+    } catch (e) { update({ sbThinking: false }); fail(e); }
+  }, [update, toast, fail]);
+
+  const addMeme = useCallback(async () => {
+    const s = stateRef.current;
+    update({ sbThinking: true });
+    try {
+      const meme = await MemeAPI.create({ title: s.memeTitle.trim(), source: (s.memeSource || '').trim(), original: s.memeText.trim() });
+      update((st) => ({ memes: [...st.memes, meme], memeId: String(meme.id), memeTitle: '', memeSource: '', memeText: '', sbThinking: false }));
+      toast(`'${meme.title}' 카드를 만들었어요 (이해도 ${Math.round((meme.card.understanding || 0) * 100)}%)`);
+    } catch (e) { update({ sbThinking: false }); fail(e); }
+  }, [update, toast, fail]);
+
   // ---------- 결과 / 저장 ----------
   const openResult = useCallback(() => {
     if (!stateRef.current.plan.length) { toast('먼저 대화로 컷 구성을 만들어주세요'); return; }
@@ -531,7 +556,7 @@ export function useAdMakerState() {
       saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion,
       confirmPending, declinePending,
       applyAd,
-      toggleSbSet, toggleSbProd, sendSb, makeComic, rerollCut,
+      toggleSbSet, toggleSbProd, sendSb, makeComic, rerollCut, proposeStory, addMeme,
       openResult, backToSb, confirmResult, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,

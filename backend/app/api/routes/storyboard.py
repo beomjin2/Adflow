@@ -11,6 +11,7 @@
 문장을 컷 단위로 쪼갠 것이다 — 서비스가 대신 지어내는 문장은 없다.
 """
 
+import logging
 import re
 from pathlib import Path
 
@@ -24,6 +25,9 @@ from app.services import jobs
 from app.services.chat_ai import (character_part, comic_prompt, day_from, fmt_day, is_skip,
                                   item_from, iso_day, new_pid, qty_from, time_from)
 from app.services.image_gen import generate_images
+from app.services.meme_ai import propose_story
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/storyboard", tags=["storyboard"])
 
@@ -165,11 +169,12 @@ def _reference_path(char) -> Path | None:
     return path if path and path.is_file() else None
 
 
-def _fill_cuts(indexes: list[int], lines: list[str], char_part_text: str, reference: Path) -> None:
+def _fill_cuts(indexes: list[int], scenes: list[dict], char_part_text: str, reference: Path) -> None:
     """백그라운드 본체 — 컷마다 프롬프트를 만들고 한 장씩 뽑아 comic_cuts의 칸을 채운다.
-    컷 문장의 태그 변환(GPT)도 여기서 한다. 실패한 칸은 failed로 남긴다."""
-    for index, line in zip(indexes, lines):
-        prompt = comic_prompt(char_part_text, line)
+    컷 문장의 태그 변환(GPT)도 여기서 한다. 실패한 칸은 failed로 남긴다.
+    scenes[i] = {"text": 동작 문장(없으면 대사), "camera": 구도 태그 또는 ""}."""
+    for index, scene in zip(indexes, scenes):
+        prompt = comic_prompt(char_part_text, scene.get("text", ""), scene.get("camera", ""))
         images = generate_images(prompt, 1, workflow_file=settings.comfy_comic_workflow_file,
                                  reference_path=reference)
         image = images[0] if images else None
@@ -192,13 +197,70 @@ def _start_cuts(sb: models.Storyboard, char: models.Character, indexes: list[int
     if reference is None:
         raise HTTPException(400, "캐릭터를 먼저 확정해주세요 — 확정한 캐릭터 그림을 참조로 씁니다")
     cuts = list(sb.comic_cuts or [])
-    lines = [cuts[i].get("line", "") for i in indexes]
+    # 그림엔 대사가 아니라 동작을 넣는다(대사·글자는 말풍선 몫). 동작이 없으면(직접 쓴 컷) 대사 문장을 쓴다.
+    scenes = [{"text": cuts[i].get("action") or cuts[i].get("line", ""), "camera": cuts[i].get("camera", "")}
+              for i in indexes]
     for i in indexes:
         cuts[i] = {**cuts[i], "image": None, "status": "generating"}
     sb.comic_cuts = cuts
     db.commit()
     # 캐릭터 태그는 여기서 한 번만 계산한다(GPT 1회). 컷 문장 변환은 백그라운드에서.
-    jobs.submit(_fill_cuts, indexes, lines, character_part(char), reference)
+    jobs.submit(_fill_cuts, indexes, scenes, character_part(char), reference)
+
+
+@router.post("/propose", response_model=schemas.StoryboardOut)
+def propose(body: schemas.ProposeIn, db: Session = Depends(get_db)):
+    """밈 카드 + 가게 정보로 GPT가 4컷 초안을 만든다.
+
+    바로 확정하지 않는다 — 기존 확인 카드(pending/plan)로 제안하고, 사장님이 "이대로
+    바꾸기"를 눌러야 컷 구성이 된다. 서비스가 문장을 지어내는 유일한 지점이라 확인을 거친다.
+    """
+    sb = _get(db)
+    meme = db.get(models.MemeCard, body.meme_id)
+    if not meme:
+        raise HTTPException(404, "밈 카드를 찾을 수 없어요")
+    store = db.get(models.Store, 1)
+    ad = db.get(models.AdSettings, 1)
+    char = db.get(models.Character, 1)
+    prods = db.query(models.ProductionRecord).order_by(models.ProductionRecord.id.desc()).limit(10).all()
+    try:
+        story = propose_story(
+            meme.card or {}, meme.title,
+            {"category": store.category, "address": store.address, "hours": store.hours, "desc": store.desc} if store else {},
+            [{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time, "sold_out": p.sold_out} for p in prods],
+            {"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {},
+            (char.name if char else "") or "",
+        )
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception:
+        logger.exception("스토리 제안 실패")
+        raise HTTPException(502, "스토리를 만들지 못했어요. 잠시 뒤 다시 시도해 주세요")
+
+    cuts = story["cuts"]
+    current = list(sb.plan or [])
+    diffs = []
+    for cut in cuts:
+        before = next((c["line"] for c in current if c.get("n") == cut["n"]), "아직 없음")
+        diffs.append({"label": f"{cut['n']}컷", "from": before, "to": f"{cut['line']} — {cut['action']}"})
+    for old in current[len(cuts):]:
+        diffs.append({"label": f"{old['n']}컷", "from": old["line"], "to": "삭제"})
+
+    pending = dict(sb.pending or {})
+    pid = new_pid()
+    pending[pid] = {"which": "sb", "kind": "plan", "diffs": diffs, "payload": {"plan": cuts}, "status": "open"}
+    messages = list(sb.messages or [])
+    messages.append({
+        "role": "ai", "kind": "text",
+        "text": f"'{meme.title}' 밈으로 '{story['title']}' 4컷을 제안해요. 마음에 들면 아래에서 이대로 바꾸기를 눌러주세요.",
+    })
+    messages.append({"role": "ai", "kind": "confirm", "pid": pid})
+    sb.pending = pending
+    sb.messages = messages
+    sb.prod_logged = True  # 제안을 받은 뒤의 채팅은 컷 수정으로 다룬다(생산 기록 질문 단계 건너뜀)
+    db.commit()
+    db.refresh(sb)
+    return schemas.storyboard_out(sb, jobs.queue_depth())
 
 
 @router.post("/comic", response_model=schemas.StoryboardOut)
@@ -213,6 +275,7 @@ def make_comic(db: Session = Depends(get_db)):
         raise HTTPException(400, "캐릭터를 먼저 확정해주세요")
     sb.comic_cuts = [
         {"n": c["n"], "short": c.get("short", ""), "line": c.get("line", ""),
+         "action": c.get("action", ""), "camera": c.get("camera", ""),
          "label": f"{c['n']}컷", "image": None, "status": "generating"}
         for c in plan
     ]

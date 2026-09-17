@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { colors } from '../../theme.js';
 
 export default function HistoryTab({ state, actions }) {
@@ -25,8 +26,50 @@ export default function HistoryTab({ state, actions }) {
             )}
           </div>
           <button onClick={() => actions.openHistoryItem(h)} style={{ height: 48, borderRadius: 10, border: `1.5px solid ${colors.inputBorder}`, background: '#fff', fontSize: 15, fontWeight: 700, padding: '0 18px', cursor: 'pointer', flex: 'none' }}>열기</button>
+          <ConfirmDelete title={h.title} onDelete={() => actions.delHistoryItem(h.id)} />
         </div>
       ))}
+    </>
+  );
+}
+
+/** 지운 건 되돌릴 수 없다. 팝업으로 한 번 더 물어봐서 실수로 지우는 걸 막는다. */
+function ConfirmDelete({ title, onDelete }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)}
+        style={{ height: 48, borderRadius: 10, border: 0, background: colors.softBg, color: colors.textSub, fontSize: 14, fontWeight: 700, padding: '0 14px', cursor: 'pointer', flex: 'none' }}>삭제</button>
+      {open && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setOpen(false); }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,17,19,.42)', zIndex: 100,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <div style={{
+            width: '100%', maxWidth: 340, background: '#fff', borderRadius: 18, padding: 22,
+            display: 'flex', flexDirection: 'column', gap: 14, animation: 'pop .18s ease',
+            boxShadow: '0 20px 50px rgba(0,0,0,.22)',
+          }}>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>지울까요?</span>
+            <span style={{ fontSize: 13, lineHeight: '19px', color: colors.textSub }}>
+              {title ? `“${title}”` : '이 보관함 항목'}을 삭제하면 되돌릴 수 없어요.
+            </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => { setOpen(false); onDelete(); }}
+                style={{ flex: 1, height: 46, borderRadius: 11, border: 0, background: colors.warnAccent, color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                지우기
+              </button>
+              <button onClick={() => setOpen(false)}
+                style={{ flex: 'none', height: 46, padding: '0 16px', borderRadius: 11, border: `1.5px solid ${colors.inputBorder}`, background: '#fff', color: colors.text, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

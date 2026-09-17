@@ -184,6 +184,7 @@ export const ProductionAPI = {
 export const HistoryAPI = {
   list: () => get('/api/history').then((rows) => rows.map(mapHistory)),
   add: (body) => post('/api/history', body).then(mapHistory),
+  remove: (id) => del(`/api/history/${id}`),
   exportAll: () => get('/api/history/export'),
 };
 

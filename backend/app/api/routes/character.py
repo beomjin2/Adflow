@@ -175,7 +175,8 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
             following = sheet.next_field(char)
             if following:
                 char.editing = following
-                _say(messages, f"{labels} 적어뒀어요. {sheet.QUESTIONS[following]}")
+                _say(messages, _guide(char, text, filling, following,
+                                      fallback=f"{labels} 적어뒀어요. {sheet.QUESTIONS[following]}"))
             else:
                 # 묻는 칸이 다 찼다 — 키워드를 뽑아 제안한다.
                 char.editing = ""
@@ -217,11 +218,13 @@ def _handle_non_answer(char, messages: list, text: str, asked: str) -> None:
 
     if not asked:
         char.editing = following
-        _say(
-            messages,
-            f"캐릭터를 같이 만들어볼게요. {sheet.QUESTIONS[following]}\n"
-            "순서대로 안 하셔도 돼요 — 떠오르는 대로 말씀하시면 해당하는 칸에 적어둘게요.",
-        )
+        _say(messages, _guide(
+            char, text, {}, following,
+            fallback=(
+                f"캐릭터를 같이 만들어볼게요. {sheet.QUESTIONS[following]}\n"
+                "순서대로 안 하셔도 돼요 — 떠오르는 대로 말씀하시면 해당하는 칸에 적어둘게요."
+            ),
+        ))
         return
 
     proposal = sheet_llm.propose_field(char, following, text)
@@ -230,13 +233,28 @@ def _handle_non_answer(char, messages: list, text: str, asked: str) -> None:
         _open_suggestion(char, messages, {following: proposal}, phase="filling")
         return
 
+    # 시트에 넣을 건 없지만 **할 말은 있다.** 질문이었을 수도 있고 고민이었을 수도 있다.
+    # 여기서 정해진 문장만 돌려주면 "무슨 말을 해도 같은 소리를 한다"가 된다.
     label = sheet.LABELS[following]
     char.editing = following
-    _say(
-        messages,
-        f"방금 말씀은 시트에 넣지 않았어요. '{label}'은(는) 편하게 적어주셔도 되고, "
-        "정하기 어려우시면 '알아서 정해줘'라고 하시면 제가 하나 제안해 드릴게요.",
-    )
+    _say(messages, _guide(
+        char, text, {}, following,
+        fallback=(
+            f"방금 말씀은 시트에 넣지 않았어요. '{label}'은(는) 편하게 적어주셔도 되고, "
+            "정하기 어려우시면 '알아서 정해줘'라고 하시면 제가 하나 제안해 드릴게요."
+        ),
+    ))
+
+
+def _guide(char, text: str, filled: dict, ask_field: str, fallback: str) -> str:
+    """사장님 말에 대답하고 다음 칸을 묻는 한 문단. LLM이 못 하면 정해진 문장으로.
+
+    정해진 문장(`fallback`)은 누구에게나 똑같다. 그래서 "캐릭터화하면 뭘 하면
+    좋을까"라는 질문에도 "무엇을 입고 있으면 좋을까요?"로 답했다. 대화를 하려면
+    **방금 한 말을 읽고 답해야** 한다. 실패하면 조용히 정해진 문장으로 돌아간다 —
+    대화가 멈추는 것보다 딱딱한 게 낫다.
+    """
+    return sheet_llm.reply(char, text, filled, ask_field) or fallback
 
 
 def _propose_keywords(char, messages: list) -> None:

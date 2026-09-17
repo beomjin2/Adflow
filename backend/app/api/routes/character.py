@@ -127,11 +127,17 @@ def focus_field(field: str, db: Session = Depends(get_db)):
 
 @router.post("/chat", response_model=schemas.CharacterOut)
 def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
-    """한 번에 한 칸씩 묻고 채운다.
+    """사장님 말에서 **읽어낸 칸만** 채운다. 순서는 안내일 뿐 강제가 아니다.
 
-    시트가 덜 찼으면 답을 그 칸에 바로 넣고 다음 칸을 묻는다 — 빈 칸을 채우는
-    중이라 '전/후'가 없으니 승인받을 것도 없다. 다 찬 뒤부터는 덮어쓰기가 되므로
-    전/후를 보여주고 승인을 받는다.
+    한 문장이 여러 칸을 건드리면 여러 칸이 한 번에 찬다("앞치마 두른 3살 곰이요"
+    → 외형·아웃핏·나이). 묻고 있던 칸과 다른 칸을 말해도 그 칸에 들어간다.
+
+    읽어낼 게 없으면 **시트를 건드리지 않는다**(`_handle_non_answer`). 예전에는
+    물어본 칸에 원문을 통째로 넣어서 "몰라 좀 해봐"가 설명 칸에 적혔다.
+
+    빈 칸을 채우는 동안은 승인을 받지 않는다 — 전/후가 없으니 보여줄 게 없다.
+    예외가 하나 있다: 사장님이 "알아서 해줘"라고 해서 우리가 값을 **지어냈을 때**는
+    승인 카드로 올린다. 시트가 다 찬 뒤의 수정도 덮어쓰기라 승인을 받는다.
     """
     char = _get(db)
     text = (body.text or "").strip()
@@ -151,20 +157,17 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
 
     if not complete_before:
         # ---- 빈 칸 채우기 ----
-        # 답으로 치는 건 두 경우뿐이다: LLM이 칸을 읽어냈거나, 우리가 물어본 칸이 있거나.
-        # 둘 다 아니면 이건 답이 아니라 말을 거는 첫 마디다("캐릭터 만들래요", "안녕하세요").
-        # 그걸 외형에 넣어버리면 그 뒤 답이 전부 한 칸씩 밀린다 — 외형에 인사말이 들어가고
-        # 아웃핏 칸에 생김새가, 설명 칸에 옷이 들어간다.
-        filling = dict(read) or ({asked: text} if asked else {})
+        # 시트에 넣는 건 **LLM이 문장에서 실제로 읽어낸 것**뿐이다.
+        #
+        # 예전에는 못 읽으면 물어본 칸에 사장님 말을 통째로 넣었다(`{asked: text}`).
+        # 그래서 "몰라 좀 해봐"가 설명 칸에, "모른다고"가 능력 칸에 그대로 적혔다.
+        # 답이 아닌 말은 답이 아니다. 시트는 사장님이 **정한 것**만 담아야 한다.
+        filling = dict(read)
+        if not filling and asked and not sheet_llm.available():
+            # LLM이 없을 때만 규칙 기반으로 되돌아간다 — 그때는 이것 말고 방법이 없다.
+            filling = {asked: text}
 
-        if not filling:
-            following = sheet.next_field(char)
-            char.editing = following
-            _say(
-                messages,
-                f"캐릭터를 같이 만들어볼게요. {sheet.QUESTIONS[following]}",
-            )
-        else:
+        if filling:
             for field, value in filling.items():
                 sheet.absorb(char, field, value)
             labels = ", ".join(f"'{sheet.LABELS[f]}'" for f in filling if f in sheet.LABELS)
@@ -178,6 +181,8 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
                 char.editing = ""
                 _say(messages, f"{labels}까지 적어뒀어요. 시트가 다 채워졌어요.")
                 _propose_keywords(char, messages)
+        else:
+            _handle_non_answer(char, messages, text, asked)
     else:
         # ---- 다 찬 뒤의 수정 — 승인받고 반영한다 ----
         # 고칠 칸을 고르지 않았어도 LLM이 어느 칸 얘기인지 읽어낼 수 있다.
@@ -194,6 +199,44 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
 
     char.messages = messages
     return _out(char, db)
+
+
+def _handle_non_answer(char, messages: list, text: str, asked: str) -> None:
+    """시트에 넣을 내용이 없는 말에 답한다. **사장님 말이 시트에 적히는 일은 없다.**
+
+    세 갈래다.
+      - 아직 아무것도 안 물었다 → 말을 거는 첫 마디다. 시작 안내를 하고 첫 칸을 묻는다.
+      - "몰라, 알아서 해줘" → 대신 정해서 **승인 카드로** 올린다. 지어낸 값이니
+        시트에 바로 넣지 않는다 — 무엇을 지어냈는지 보고 사장님이 정한다.
+      - 그 밖의 잡담 → 시트를 건드리지 않고, 막혔을 때 쓸 수 있는 길을 알려준다.
+    """
+    following = asked or sheet.next_field(char)
+    if not following:
+        _say(messages, "시트가 다 찼어요. 고치고 싶은 칸을 시트에서 눌러주세요.")
+        return
+
+    if not asked:
+        char.editing = following
+        _say(
+            messages,
+            f"캐릭터를 같이 만들어볼게요. {sheet.QUESTIONS[following]}\n"
+            "순서대로 안 하셔도 돼요 — 떠오르는 대로 말씀하시면 해당하는 칸에 적어둘게요.",
+        )
+        return
+
+    proposal = sheet_llm.propose_field(char, following, text)
+    if proposal:
+        char.editing = following
+        _open_suggestion(char, messages, {following: proposal}, phase="filling")
+        return
+
+    label = sheet.LABELS[following]
+    char.editing = following
+    _say(
+        messages,
+        f"방금 말씀은 시트에 넣지 않았어요. '{label}'은(는) 편하게 적어주셔도 되고, "
+        "정하기 어려우시면 '알아서 정해줘'라고 하시면 제가 하나 제안해 드릴게요.",
+    )
 
 
 def _propose_keywords(char, messages: list) -> None:
@@ -232,8 +275,13 @@ def _propose_keywords(char, messages: list) -> None:
     messages.append({"role": "ai", "kind": "confirm", "pid": pid})
 
 
-def _open_suggestion(char, messages: list, changes: dict) -> None:
-    """수정 제안을 승인 대기로 올린다. 한 문장이 여러 칸을 건드리면 한 카드에 모아 보여준다."""
+def _open_suggestion(char, messages: list, changes: dict, phase: str = "editing") -> None:
+    """수정 제안을 승인 대기로 올린다. 한 문장이 여러 칸을 건드리면 한 카드에 모아 보여준다.
+
+    phase는 승인 뒤 어디로 이어갈지를 정한다.
+      - "editing"  — 다 찬 시트를 고치는 중. 가이드 순서상 다음 칸을 이어서 물어본다.
+      - "filling"  — 아직 빈 칸을 채우는 중. 가이드가 아니라 **남은 빈 칸**으로 이어간다.
+    """
     # 지금과 같은 값은 뺀다 — "바꿀까요?"라고 물으면서 같은 걸 보여주면 안 된다.
     real = {f: v for f, v in changes.items() if f in sheet.ORDER and sheet.value_of(char, f) != v}
     if not real:
@@ -248,6 +296,7 @@ def _open_suggestion(char, messages: list, changes: dict) -> None:
     pid = new_pid()
     pending[pid] = {
         "kind": "field",
+        "phase": phase,
         # 승인 뒤 가이드 제안의 기준점. 여러 칸이면 가이드 순서상 가장 뒤쪽을 기준으로 삼는다.
         "field": max(real, key=sheet.ORDER.index),
         "diffs": diffs,
@@ -256,7 +305,10 @@ def _open_suggestion(char, messages: list, changes: dict) -> None:
     }
     char.pending = pending
     labels = ", ".join(f"'{sheet.LABELS[f]}'" for f in real)
-    _say(messages, f"{labels}을(를) 이렇게 바꿀까요?")
+    if phase == "filling":
+        _say(messages, f"그럼 {labels}은(는) 이렇게 하면 어떨까요?")
+    else:
+        _say(messages, f"{labels}을(를) 이렇게 바꿀까요?")
     messages.append({"role": "ai", "kind": "confirm", "pid": pid})
 
 
@@ -286,18 +338,29 @@ def accept_suggestion(pid: str, db: Session = Depends(get_db)):
             sheet.absorb(char, field, value)
         label = ", ".join(sheet.LABELS[f] for f in changes)
 
-        # 가이드 순서상 다음 칸. 여러 칸을 한 번에 바꿨으면 가장 뒤쪽 칸 기준이다.
-        following = sheet.next_in_guide(proposal["field"])
-        if following:
-            char.editing = following
-            _say(
-                messages,
-                f"{label} 바꿨어요. 가이드 순서대로면 다음은 '{sheet.LABELS[following]}'이에요 — "
-                f"여기도 고칠까요? 다른 칸을 고치고 싶으시면 시트에서 그 칸을 눌러주세요.",
-            )
+        if proposal.get("phase") == "filling":
+            # 빈 칸을 대신 정해준 제안이었다. 가이드가 아니라 **남은 빈 칸**으로 이어간다.
+            following = sheet.next_field(char)
+            if following:
+                char.editing = following
+                _say(messages, f"{label} 그렇게 적어뒀어요. {sheet.QUESTIONS[following]}")
+            else:
+                char.editing = ""
+                _say(messages, f"{label}까지 적어뒀어요. 시트가 다 채워졌어요.")
+                _propose_keywords(char, messages)
         else:
-            char.editing = ""
-            _say(messages, f"{label} 바꿨어요. 더 고칠 칸이 있으면 시트에서 눌러주세요.")
+            # 가이드 순서상 다음 칸. 여러 칸을 한 번에 바꿨으면 가장 뒤쪽 칸 기준이다.
+            following = sheet.next_in_guide(proposal["field"])
+            if following:
+                char.editing = following
+                _say(
+                    messages,
+                    f"{label} 바꿨어요. 가이드 순서대로면 다음은 '{sheet.LABELS[following]}'이에요 — "
+                    f"여기도 고칠까요? 다른 칸을 고치고 싶으시면 시트에서 그 칸을 눌러주세요.",
+                )
+            else:
+                char.editing = ""
+                _say(messages, f"{label} 바꿨어요. 더 고칠 칸이 있으면 시트에서 눌러주세요.")
 
     char.messages = messages
     return _out(char, db)
@@ -319,6 +382,14 @@ def decline_suggestion(pid: str, db: Session = Depends(get_db)):
         # 키워드가 비면 시트가 미완성이라 생성이 잠긴 채로 남는다. 직접 받아야 한다.
         char.editing = sheet.KEYWORDS_FIELD
         _say(messages, "그럼 퍼스널 키워드를 직접 적어주세요. 쉼표로 여러 개 적으셔도 돼요.")
+    elif proposal.get("phase") == "filling":
+        # 대신 정해준 게 마음에 안 든 것이다. 그 칸은 여전히 비어 있으니 다시 묻는다.
+        field = proposal["field"]
+        char.editing = field
+        _say(
+            messages,
+            f"그럼 '{sheet.LABELS[field]}'은(는) 사장님이 정해주세요. {sheet.QUESTIONS.get(field, '')}",
+        )
     else:
         _say(messages, "그대로 둘게요. 어떻게 바꾸면 좋을지 다시 적어주세요.")
 

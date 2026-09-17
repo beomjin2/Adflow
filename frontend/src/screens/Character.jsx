@@ -29,20 +29,54 @@ const STATE_KEY = {
   age: 'charAge', gender: 'charGender', name: 'charName', keywords: 'charKeywords',
 };
 
-function Row({ row, state, actions, asking, canFocus }) {
+/** 접힌 칸 — 라벨과 값을 한 줄로. 누르면 펼쳐져 고칠 수 있다.
+ *
+ *  칸이 8개인데 전부 입력창으로 펼쳐두면 시트만 세로로 900px 가까이 된다.
+ *  옆의 대화창보다 훨씬 길어져 둘의 비율이 무너진다. 사장님이 지금 볼 것은
+ *  **묻고 있는 칸 하나**이고, 나머지는 "뭐라고 적었더라"를 확인하는 용도다. */
+function CompactRow({ row, value, help, onOpen }) {
+  const filled = !!String(value).trim();
+  return (
+    <button
+      onClick={onOpen}
+      title={filled ? String(value) : '아직 비어 있어요 — 눌러서 적을 수 있어요'}
+      style={{
+        display: 'flex', alignItems: 'baseline', gap: 8, width: '100%',
+        padding: '7px 9px', borderRadius: 9, border: 0, cursor: 'pointer',
+        background: 'transparent', textAlign: 'left', font: 'inherit',
+      }}
+    >
+      <span style={{
+        flex: 'none', width: 62, fontSize: 12, fontWeight: 700,
+        color: filled ? colors.textSub : colors.textFaint,
+      }}>{row.label}</span>
+      <span style={{
+        flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: '20px',
+        color: filled ? colors.text : colors.textFaint,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {filled ? value : (help || '비어 있음')}
+      </span>
+    </button>
+  );
+}
+
+function Row({ row, state, actions, asking, open, onToggle }) {
   const shape = SHAPE[row.field] || { multiline: false, help: '' };
   const key = STATE_KEY[row.field];
   const value = state[key] ?? '';
-  const filled = !!String(value).trim();
   const Input = shape.multiline ? TextArea : TextInput;
+
+  // 묻고 있는 칸은 항상 펼친다. 나머지는 사장님이 누를 때만.
+  if (!asking && !open) {
+    return <CompactRow row={row} value={value} help={shape.help} onOpen={onToggle} />;
+  }
 
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', gap: 5,
-      padding: asking ? '10px 11px' : 0,
-      margin: asking ? '-10px -11px' : 0,
-      borderRadius: 12,
-      background: asking ? colors.onboardBg : 'transparent',
+      padding: '9px 10px', borderRadius: 11,
+      background: asking ? colors.onboardBg : colors.softBg,
       boxShadow: asking ? `inset 0 0 0 1.5px ${colors.onboardBorder}` : 'none',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
@@ -53,11 +87,15 @@ function Row({ row, state, actions, asking, canFocus }) {
             background: colors.primarySoft, borderRadius: 999, padding: '2px 7px',
           }}>지금 묻는 칸</span>
         )}
-        {!filled && !asking && (
-          <span style={{ fontSize: 11, fontWeight: 700, color: colors.textFaint }}>비어 있음</span>
-        )}
         {shape.help && (
           <span style={{ fontSize: 11, color: colors.textFaint, marginLeft: 'auto' }}>{shape.help}</span>
+        )}
+        {!asking && (
+          <button onClick={onToggle} style={{
+            marginLeft: shape.help ? 8 : 'auto', border: 0, background: 'transparent',
+            color: colors.textFaint, fontSize: 11.5, fontWeight: 700,
+            cursor: 'pointer', padding: '2px 4px',
+          }}>접기</button>
         )}
       </div>
 
@@ -66,16 +104,14 @@ function Row({ row, state, actions, asking, canFocus }) {
         onChange={(e) => actions.set(key, e.target.value)}
         onBlur={actions.saveCharSheet}
         aria-label={row.label}
-        style={shape.multiline ? { minHeight: 64 } : undefined}
+        style={shape.multiline ? { minHeight: 56 } : undefined}
       />
 
-      {/* 시트가 다 찬 뒤에만 보인다. 그 전에는 대화가 가이드 순서대로 알아서 물어보므로
-          칸을 고르라고 하면 순서만 흐트러진다. */}
-      {canFocus && (
+      {!asking && (
         <button onClick={() => actions.focusCharField(row.field)} style={{
           alignSelf: 'flex-start', border: 0, background: 'transparent',
           color: colors.textFaint, fontSize: 12, fontWeight: 700,
-          textDecoration: 'underline', cursor: 'pointer', padding: '4px 2px',
+          textDecoration: 'underline', cursor: 'pointer', padding: '2px 2px',
         }}>대화로 고치기</button>
       )}
     </div>
@@ -85,6 +121,8 @@ function Row({ row, state, actions, asking, canFocus }) {
 export default function Character({ state, actions }) {
   const busy = state.charGenerating;
   const [confirmReset, setConfirmReset] = useState(false);
+  // 손으로 펼친 칸 하나. 지금 묻는 칸은 이것과 별개로 언제나 펼쳐져 있다.
+  const [openField, setOpenField] = useState('');
 
   const rows = state.charSheet || [];
   const missing = state.charMissing || [];
@@ -140,12 +178,18 @@ export default function Character({ state, actions }) {
             </div>
           )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* 접힌 칸은 한 줄, 펼친 칸만 입력창. 한 번에 하나만 펼쳐 시트 높이가
+              대화창을 넘지 않게 한다. 그래도 넘치면 시트 안에서만 스크롤한다. */}
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: 4,
+            maxHeight: 380, overflowY: 'auto',
+          }}>
             {rows.map((row) => (
               <Row
                 key={row.field} row={row} state={state} actions={actions}
                 asking={state.charEditing === row.field}
-                canFocus={done}
+                open={openField === row.field}
+                onToggle={() => setOpenField(openField === row.field ? '' : row.field)}
               />
             ))}
           </div>

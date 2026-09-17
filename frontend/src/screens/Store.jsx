@@ -10,6 +10,9 @@ const MAX_MB = 10;
 
 export default function Store({ state, actions }) {
   const ro = state.storeReadOnly;
+  const imageCount = state.storeImages.length;
+  const maxImages = state.storeMaxImages;
+  const atLimit = imageCount >= maxImages;
   const [uploading, setUploading] = useState(false);
 
   const handleFile = async (e) => {
@@ -44,6 +47,9 @@ export default function Store({ state, actions }) {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
         <Label>대표 상품 사진 — ＋를 눌러 올려주세요</Label>
+        <span style={{ fontSize: 11.5, color: colors.textFaint }}>
+          최대 {maxImages}장 · 장당 5MB 이하 · jpg · png · webp · {imageCount}/{maxImages}장
+        </span>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           {state.storeImages.map((im, i) => (
             <div key={i} style={{
@@ -64,17 +70,19 @@ export default function Store({ state, actions }) {
               )}
             </div>
           ))}
-          <label style={{
-            width: 116, height: 92, borderRadius: 12, border: `1.5px dashed ${colors.inputBorder}`,
-            background: '#fff', color: colors.textSub, flex: 'none',
-            fontSize: 13, fontWeight: 600, cursor: ro || uploading ? 'not-allowed' : 'pointer',
-            opacity: ro || uploading ? .45 : 1,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
-          }}>
-            <span style={{ fontSize: 22 }}>{uploading ? '…' : '＋'}</span>
-            <span>{uploading ? '올리는 중' : '사진 추가'}</span>
-            <input type="file" accept="image/*" disabled={ro || uploading} onChange={handleFile} style={{ display: 'none' }} />
-          </label>
+          {!atLimit && (
+            <label style={{
+              width: 116, height: 92, borderRadius: 12, border: `1.5px dashed ${colors.inputBorder}`,
+              background: '#fff', color: colors.textSub, flex: 'none',
+              fontSize: 13, fontWeight: 600, cursor: ro || uploading ? 'not-allowed' : 'pointer',
+              opacity: ro || uploading ? .45 : 1,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2,
+            }}>
+              <span style={{ fontSize: 22 }}>{uploading ? '…' : '＋'}</span>
+              <span>{uploading ? '올리는 중' : '사진 추가'}</span>
+              <input type="file" accept="image/jpeg,image/png,image/webp" disabled={ro || uploading} onChange={handleFile} style={{ display: 'none' }} />
+            </label>
+          )}
         </div>
         {state.storeImages.length === 0 && (
           <span style={{ fontSize: 12.5, color: colors.textFaint, lineHeight: '19px' }}>

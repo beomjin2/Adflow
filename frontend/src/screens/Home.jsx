@@ -1,4 +1,5 @@
 import { colors, cardBase } from '../theme.js';
+import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
 
 export default function Home({ state, actions, charLocked, adLocked }) {
   const missingProds = state.prods.filter(p => !p.soldOut);
@@ -39,10 +40,13 @@ export default function Home({ state, actions, charLocked, adLocked }) {
         <StepCard onClick={actions.goChar} step="2단계" title="마스코트 캐릭터" desc="대화로 우리 가게 캐릭터를 만들어요"
           status={charStatus} statusColor={state.charConfirmed ? colors.primary : charLocked ? colors.textFaint : colors.warnAccent}
           locked={charLocked} />
-        <StepCard onClick={actions.goAd} step="3단계" title="광고 만들기" desc="종류와 느낌을 고르고 내용을 정해요"
+        <StepCard onClick={actions.openAdEntry} step="3단계" title="광고 만들기" desc="종류와 느낌을 고르고 내용을 정해요"
           status={adStatus} statusColor={adLocked ? colors.textFaint : colors.primary} locked={adLocked} />
         <StepCard onClick={actions.openProdTab} step="언제든지" stepColor="#4A86C5" title="생산 기록" desc="품목 · 만든 시각 · 매진 시각"
           status={prodStatus} statusColor={missingProds.length ? colors.warnAccent : state.prods.length ? colors.primary : colors.textFaint} />
+        <StepCard onClick={actions.goTrend} step="언제든지" stepColor="#7B5CFA" title="트렌드 확인" desc="요즘 뜨는 밈을 둘러봐요"
+          status={state.trendItems.length ? `${state.trendItems.length}개 수집됨` : '아직 없음'}
+          statusColor={state.trendItems.length ? colors.primary : colors.textFaint} />
       </div>
 
       <button onClick={actions.goMy} style={{ cursor: 'pointer', background: colors.softBg, border: 0, borderRadius: 14, padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', flexWrap: 'wrap', minHeight: 48 }}>
@@ -53,6 +57,38 @@ export default function Home({ state, actions, charLocked, adLocked }) {
           {state.history.length ? `보관한 광고 ${state.history.length}개 →` : '열기 →'}
         </span>
       </button>
+
+      {state.adEntryOpen && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) actions.closeAdEntry(); }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,17,19,.4)', zIndex: 100,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <div style={{
+            width: '100%', maxWidth: 380, background: '#fff', borderRadius: 18, padding: 22,
+            display: 'flex', flexDirection: 'column', gap: 16, animation: 'pop .18s ease',
+            boxShadow: '0 20px 50px rgba(0,0,0,.22)',
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: -.3 }}>광고를 어떻게 만들까요?</span>
+              <span style={{ fontSize: 13.5, lineHeight: '20px', color: colors.textSub }}>
+                요즘 뜨는 밈을 참고해서 만들 수도 있고, 바로 내용을 정할 수도 있어요.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+              <PrimaryButton onClick={actions.pickAdEntryTrend}>
+                트렌드 참고해서 만들기
+              </PrimaryButton>
+              <SecondaryButton onClick={actions.pickAdEntryDirect}>
+                트렌드 없이 바로 만들기
+              </SecondaryButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

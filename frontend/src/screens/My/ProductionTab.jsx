@@ -27,8 +27,7 @@ export default function ProductionTab({ state, actions }) {
             const last = mine[0];
             return (
               <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 14px', background: '#fff', borderBottom: i < state.items.length - 1 ? '1px solid #F1F3F4' : 'none' }}>
-                <input value={n} onChange={e => actions.renameItem(n, e.target.value)} aria-label="품목명"
-                  style={{ flex: '2 1 150px', minWidth: 0, height: 42, borderRadius: 8, border: '1px solid transparent', background: 'transparent', color: colors.text, fontSize: 15, fontWeight: 600, padding: '0 8px' }} />
+                <ItemNameInput name={n} onRename={actions.renameItem} />
                 <span style={{ flex: '1 1 90px', fontSize: 14, color: colors.textSub }}>{mine.length}건</span>
                 <span style={{ flex: '1 1 110px', fontSize: 14, color: colors.textSub }}>{last ? `${last.date} ${last.time}` : '—'}</span>
                 <ConfirmDelete onDelete={() => actions.delItem(n)} width={60} />
@@ -100,6 +99,30 @@ export default function ProductionTab({ state, actions }) {
         );
       })}
     </div>
+  );
+}
+
+/** 타이핑마다 서버에 이름 변경을 보내지 않는다 — 포커스를 벗어나거나 Enter를 눌렀을 때만
+ *  커밋한다. 실패하면(중복 이름 등) 입력값을 그대로 두고 다시 고칠 수 있게 한다. */
+function ItemNameInput({ name, onRename }) {
+  const [draft, setDraft] = useState(name);
+
+  const commit = async () => {
+    const trimmed = draft.trim();
+    if (!trimmed || trimmed === name) { setDraft(name); return; }
+    const ok = await onRename(name, trimmed);
+    if (!ok) return;
+  };
+
+  return (
+    <input
+      value={draft}
+      onChange={e => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.target.blur(); }}
+      aria-label="품목명"
+      style={{ flex: '2 1 150px', minWidth: 0, height: 42, borderRadius: 8, border: '1px solid transparent', background: 'transparent', color: colors.text, fontSize: 15, fontWeight: 600, padding: '0 8px' }}
+    />
   );
 }
 

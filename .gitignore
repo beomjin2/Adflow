@@ -11,3 +11,8 @@ backend/__pycache__/
 backend/**/__pycache__/
 backend/*.db
 backend/.env
+
+# 크롤링 원본 산출물 — 다시 돌리면 새로 생기는 데이터라 폴더만 두고 내용은 안 올린다.
+# 화면에 쓸 이미지는 backend/app/static/memes/로 따로 옮겨 커밋해뒀다.
+crawling/*
+!crawling/.gitkeep

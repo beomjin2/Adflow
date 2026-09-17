@@ -2,6 +2,9 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
+# 가게 대표 상품 이미지 최대 개수 — models.py(Store.max_images)와 store.py 라우트가 같이 참조한다.
+STORE_MAX_IMAGES = 5
+
 # backend/ 디렉터리. media_dir 같은 상대경로의 기준점이다 — 프로세스의 CWD에 기대면
 # systemd로 띄웠을 때와 셸에서 띄웠을 때 그림이 서로 다른 곳에 쌓이고,
 # 쓰는 쪽과 내려주는 쪽이 갈라지면 파일은 생겼는데 404가 난다.

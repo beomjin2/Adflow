@@ -1,13 +1,13 @@
+"""가게 정보. 값은 전부 사장님이 직접 입력하거나 올린 것만 들어간다."""
+
 import os
 import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-"""가게 정보. 값은 전부 사장님이 직접 입력하거나 올린 것만 들어간다."""
-
 from app import models, schemas
-from app.core.config import settings
+from app.core.config import STORE_MAX_IMAGES, settings
 from app.core.database import get_db
 
 router = APIRouter(prefix="/api/store", tags=["store"])
@@ -15,8 +15,8 @@ router = APIRouter(prefix="/api/store", tags=["store"])
 # 저장하려면 이 네 가지는 있어야 한다. 뒤 단계(캐릭터·광고)가 이걸 근거로 돈다.
 REQUIRED = {"category": "업종", "address": "주소", "desc": "가게 소개"}
 
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
-MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
 
 def _get(db: Session) -> models.Store:
@@ -68,22 +68,27 @@ def save_store(db: Session = Depends(get_db)):
 
 @router.post("/images/upload", response_model=schemas.StoreOut)
 async def upload_image(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    if not (file.content_type or "").startswith("image/"):
-        raise HTTPException(400, "이미지 파일만 업로드할 수 있어요")
+    store = _get(db)
+    if len(store.images or []) >= STORE_MAX_IMAGES:
+        raise HTTPException(400, f"이미지는 최대 {STORE_MAX_IMAGES}장까지 올릴 수 있어요")
+    ext = os.path.splitext(os.path.basename(file.filename or ""))[1].lower()
+    if not (file.content_type or "").startswith("image/") or ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(400, "jpg, png, webp 파일만 업로드할 수 있어요")
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(400, "파일이 너무 커요 (최대 8MB)")
+        raise HTTPException(400, "파일이 너무 커요 (최대 5MB)")
 
-    store = _get(db)
-    ext = os.path.splitext(os.path.basename(file.filename or ""))[1].lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        ext = ".jpg"
     filename = f"{uuid.uuid4().hex}{ext}"
     (settings.uploads_path / filename).write_bytes(content)
 
+    # 파일 저장 중 다른 요청이 images를 바꿨을 수 있으니, 쓰기 직전에 최신 상태를 다시 읽는다.
+    db.refresh(store)
+    images = list(store.images or [])
+    if len(images) >= STORE_MAX_IMAGES:
+        (settings.uploads_path / filename).unlink(missing_ok=True)
+        raise HTTPException(400, f"이미지는 최대 {STORE_MAX_IMAGES}장까지 올릴 수 있어요")
     # 라벨은 사장님이 올린 파일 이름 그대로 — 나중에 목록에서 어떤 사진인지 알아본다.
     original = os.path.splitext(os.path.basename(file.filename or ""))[0][:30]
-    images = list(store.images or [])
     images.append({
         "label": original or f"사진 {len(images) + 1}",
         "image": f"/api/uploads/store/{filename}",
@@ -98,6 +103,7 @@ async def upload_image(file: UploadFile = File(...), db: Session = Depends(get_d
 @router.delete("/images/{index}", response_model=schemas.StoreOut)
 def delete_image(index: int, db: Session = Depends(get_db)):
     store = _get(db)
+    db.refresh(store)
     images = list(store.images or [])
     if not 0 <= index < len(images):
         raise HTTPException(404, "image index out of range")

@@ -2,11 +2,12 @@ import { colors } from '../theme.js';
 import { Label, Select } from '../components/ui/Field.jsx';
 import { PrimaryButton } from '../components/ui/Button.jsx';
 
-const AD_TYPES = ['인스타 게시물', '포스터', '메뉴판'];
+const AD_TYPES = ['인스타 게시물', '4컷만화'];
 const AD_CONCEPTS = ['유쾌함', '감성', '정보형', '담백함'];
 
 export default function Ad({ state, actions }) {
   const ready = !!state.adType && !!state.adConcept;
+  const trendMeme = state.trendItems.find((m) => m.id === state.trendSel);
 
   return (
     <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -41,6 +42,11 @@ export default function Ad({ state, actions }) {
         <span style={{ fontSize: 14, lineHeight: '21px', color: colors.textSub }}>
           캐릭터 — <b style={{ color: colors.text }}>{state.charName || (state.charConfirmed ? '이름 없음' : '미확정')}</b>
         </span>
+        {trendMeme && (
+          <span style={{ fontSize: 14, lineHeight: '21px', color: colors.textSub }}>
+            트렌드 — <b style={{ color: colors.text }}>{trendMeme.name}</b>
+          </span>
+        )}
       </div>
 
       <PrimaryButton onClick={actions.applyAd} disabled={!ready}>

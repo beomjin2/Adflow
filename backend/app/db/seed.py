@@ -22,9 +22,11 @@ def ensure_rows(db: Session) -> None:
         ))
 
     if not db.get(models.Character, 1):
+        # 시트 8칸 전부 빈 값으로. 예시 문구조차 넣지 않는다 — 화면이 안내할 몫이다.
         db.add(models.Character(
-            id=1, name="", age="", gender="", hobby="", look="",
-            confirmed=False, candidates=[], selected_index=-1, views=[], messages=[],
+            id=1, name="", age="", gender="", look="", outfit="", abilities="",
+            keywords=[], desc="", editing="", pending={},
+            confirmed=False, candidates=[], selected_index=-1, messages=[],
         ))
 
     if not db.get(models.AdSettings, 1):

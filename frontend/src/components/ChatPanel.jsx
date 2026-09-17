@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { colors, inputStyle, TAP } from '../theme.js';
-import { TextBubble, CandidatesBubble, ViewsBubble, PlanBubble, ProdBubble, ConfirmBubble } from './bubbles/Bubbles.jsx';
+import { TextBubble, CandidatesBubble, PlanBubble, ProdBubble, ConfirmBubble } from './bubbles/Bubbles.jsx';
 
 export default function ChatPanel({
   messages, thinking, thinkingLabel = '생각하는 중…',
@@ -8,7 +8,6 @@ export default function ChatPanel({
   placeholder = '메시지 입력…',
   emptyHint = '',
   cands, charSelected, onSelectCand, onRerollCand,
-  views, onRerollView,
   eta = 0,
   plan,
   prods, onPatchProd,
@@ -20,7 +19,7 @@ export default function ChatPanel({
   useEffect(() => {
     const el = listRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages, thinking, cands, views, plan]);
+  }, [messages, thinking, cands, plan]);
 
   const prodById = (id) => (prods || []).find(p => p.id === id);
   const empty = !messages.length && !thinking;
@@ -46,7 +45,6 @@ export default function ChatPanel({
             <CandidatesBubble key={i} items={cands || []} selected={charSelected} eta={eta}
               onSelect={onSelectCand} onReroll={onRerollCand} />
           );
-          if (m.kind === 'views') return <ViewsBubble key={i} items={views || []} onReroll={onRerollView} eta={eta} />;
           if (m.kind === 'plan') return <PlanBubble key={i} items={(plan || []).map(c => ({ n: c.n, line: c.line }))} />;
           if (m.kind === 'prod') return (
             <ProdBubble key={i} prod={prodById(m.prodId)} onChange={(patch) => onPatchProd(m.prodId, patch)} />

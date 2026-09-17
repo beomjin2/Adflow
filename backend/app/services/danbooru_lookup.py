@@ -8,12 +8,15 @@ Danbooru 자체 API는 대량 조회를 막아놔서 이 미러를 쓴다(resear
 
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 
 import pyarrow.parquet as pq
 
 from app.core.config import BACKEND_ROOT, settings
+
+logger = logging.getLogger(__name__)
 
 MIN_POST_COUNT = 2000
 
@@ -23,6 +26,15 @@ def _valid_tags() -> dict[str, int]:
     path = Path(settings.danbooru_tags_path)
     if not path.is_absolute():
         path = BACKEND_ROOT / path
+    # parquet는 159만 행짜리라 저장소에 없다(backend/.gitignore). 배포 서버에 아직
+    # 내려받지 않았으면 여기서 죽는 대신 빈 사전을 돌려준다 — 그러면 verify_tags가
+    # 전부 버리고 tags_for_look이 화이트리스트로 폴백한다. 검증을 건너뛰고 통과시키는
+    # 반대 방향은 위험하다: GPT가 지어낸 태그가 그대로 프롬프트에 들어간다.
+    if not path.exists():
+        logger.warning(
+            "Danbooru 태그 목록이 없습니다(%s) — 태그 검증을 건너뛰고 화이트리스트로 폴백합니다", path
+        )
+        return {}
     table = pq.read_table(path, columns=["name", "post_count"])
     names = table.column("name").to_pylist()
     counts = table.column("post_count").to_pylist()

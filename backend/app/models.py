@@ -29,20 +29,40 @@ class Store(Base):
 
 
 class Character(Base):
-    """마스코트 캐릭터 — 싱글턴 (id=1)."""
+    """마스코트 캐릭터 시트 — 싱글턴 (id=1).
+
+    시트 8칸이 전부 채워져야 후보 생성이 열린다(services/character_sheet.py).
+    그중 퍼스널 키워드는 사장님에게 묻지 않고 마지막에 자동으로 뽑아 제안한다.
+    """
     __tablename__ = "character"
 
     id = Column(Integer, primary_key=True, default=1)
-    name = Column(String, default="")
-    age = Column(String, default="")
-    gender = Column(String, default="")
-    hobby = Column(String, default="")
-    look = Column(String, default="")
+
+    # ---- 시트 8칸 ----
+    name = Column(String, default="")        # 이름
+    age = Column(String, default="")         # 나이
+    gender = Column(String, default="")      # 성별
+    look = Column(String, default="")        # 외형   ← 이미지 태깅에 쓰임
+    outfit = Column(String, default="")      # 아웃핏 ← 이미지 태깅에 쓰임
+    abilities = Column(String, default="")   # 능력
+    keywords = Column(JSON, default=list)    # 퍼스널 키워드 ["느긋한", ...] — 자동 제안
+    desc = Column(String, default="")        # 설명
+
+    # 대화가 지금 어느 칸을 다루는 중인가. 가이드 순서를 이 값으로 걸어 둔다.
+    editing = Column(String, default="")
+    # {pid: {kind, field, diffs, payload, status}} — 시트 완성 후 수정은 전/후를 보여주고 승인받는다
+    pending = Column(JSON, default=dict)
+
     confirmed = Column(Boolean, default=False)
     candidates = Column(JSON, default=list)  # [{label, image, status}]
     selected_index = Column(Integer, default=-1)
-    views = Column(JSON, default=list)  # [{label, image, status}]
     messages = Column(JSON, default=list)  # [{role, kind, ...}] 채팅 히스토리
+
+    # 쓰지 않는다. 예전 DB에 남아 있어 컬럼만 유지한다.
+    # hobby: '취미'는 시트에서 '능력'과 '설명'으로 갈라졌다.
+    # views: 4방향 뽑기는 걷어냈다.
+    hobby = Column(String, default="")
+    views = Column(JSON, default=list)
 
 
 class AdSettings(Base):

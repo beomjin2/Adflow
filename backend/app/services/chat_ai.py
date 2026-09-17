@@ -18,6 +18,8 @@ KST = ZoneInfo("Asia/Seoul")
 def _now() -> datetime:
     return datetime.now(timezone.utc).astimezone(KST)
 
+# 4방향 뽑기는 지금 UI에서 빠져 있다(화이트보드: "당장 캐릭터 4방향 뽑기는 x").
+# 태그는 실측해서 넣어둔 것이라 지우지 않는다 — 다시 붙일 때 그대로 쓴다.
 VIEW_LABELS = ["정면", "좌측면", "우측면", "뒷면"]
 # 실존 Danbooru 구도 태그만 쓴다(CLAUDE.md 5-1). "front view"류는 Danbooru에 없는 표현이다.
 # Danbooru엔 좌/우를 가르는 태그가 없어 양 측면은 같은 태그다 — 좌우는 IP-Adapter 참조와 시드에 맡긴다.
@@ -34,15 +36,22 @@ STYLE_TAGS = "masterpiece, best quality, score_7, safe, solo, (chibi:1.3), full 
 
 
 def character_prompt(char, hint: str = "") -> str:
-    """사장님이 입력한 캐릭터 설명을 '연습용' 워크플로우의 프롬프트로 조립한다.
+    """캐릭터 시트를 '연습용' 워크플로우의 프롬프트로 조립한다.
 
     Anima는 Danbooru 태그로 학습된 모델이라 한국어 문장을 그대로 넣으면 얼버무린다
     (CLAUDE.md 5-1, v4 12컷 실험). 설명을 실존 Danbooru 태그로 바꿔 넣고, 태그를
     하나도 못 뽑았을 때만 원문으로 폴백한다. STYLE_TAGS 접두어는 그대로 둔다.
+
+    시트에서 무엇을 읽을지는 character_sheet.IMAGE_FIELDS 한 곳에서만 정한다 —
+    외형·아웃핏·설명·나이·이름 다섯 칸. 능력·성별·퍼스널 키워드는 시트에만 남고
+    그림 쪽으로 넘어가지 않는다. 라우터가 시트가 다 찬 뒤에만 여기까지 오게 막으므로
+    described가 비는 경우는 없다(비면 태그도 프롬프트도 STYLE_TAGS뿐이다).
     """
-    described = (char.look or "").strip()
-    if not described:
-        described = ", ".join(p for p in [char.name, char.age, char.gender, char.hobby] if p)
+    from app.services.character_sheet import IMAGE_FIELDS
+
+    described = ", ".join(
+        value for value in ((getattr(char, f, "") or "").strip() for f in IMAGE_FIELDS) if value
+    )
 
     pieces = [STYLE_TAGS]
     tags = tags_for_look(described) if described else []
@@ -50,8 +59,6 @@ def character_prompt(char, hint: str = "") -> str:
         pieces.append(", ".join(tags))
     elif described:
         pieces.append(described)
-    else:
-        pieces.append("cute animal mascot character")
     if hint:
         pieces.append(hint)
     return ", ".join(pieces)
@@ -62,14 +69,6 @@ def pending_candidates(count: int = 3) -> list[dict]:
     return [
         {"label": f"후보{i + 1}", "image": None, "status": "generating"}
         for i in range(count)
-    ]
-
-
-def pending_views() -> list[dict]:
-    """4방향 생성 대기 칸."""
-    return [
-        {"label": label, "image": None, "status": "generating"}
-        for label in VIEW_LABELS
     ]
 
 

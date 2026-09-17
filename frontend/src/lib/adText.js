@@ -53,10 +53,8 @@ export function adTextForClipboard(state) {
   return [lines.join('\n'), info, tags.join(' ')].filter(Boolean).join('\n\n');
 }
 
-/** 확정된 캐릭터 그림 한 장. 4방향 중 그려진 첫 장, 없으면 고른 후보. */
+/** 확정된 캐릭터 그림 한 장 — 사장님이 고른 후보 그 장이다. */
 export function characterImage(state) {
-  const fromViews = (state.charViews || []).find((v) => v.status === 'done' && v.image);
-  if (fromViews) return fromViews.image;
   const picked = (state.charCands || [])[state.charSelected];
   return picked && picked.status === 'done' ? picked.image : null;
 }

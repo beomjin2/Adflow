@@ -42,17 +42,36 @@ class StoreUpdate(BaseModel):
 
 
 # ---------- character ----------
+class SheetRow(BaseModel):
+    """시트 한 칸. 화면은 이 순서대로 그린다 — 순서가 곧 대화 가이드 순서다."""
+    field: str
+    label: str
+    value: str
+    auto: bool = False   # 사장님에게 묻지 않고 자동으로 채우는 칸(퍼스널 키워드)
+
+
 class CharacterOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
+    # ---- 시트 8칸 ----
     name: str
     age: str
     gender: str
-    hobby: str
     look: str
+    outfit: str
+    abilities: str
+    keywords: list[str]
+    desc: str
+
+    # ---- 시트 진행 상태 ----
+    sheet: list[SheetRow] = []        # 화면이 그대로 그리는 8줄
+    sheet_complete: bool = False      # 전부 찼는가 — false면 후보 생성이 잠긴다
+    missing: list[str] = []           # 아직 빈 칸의 라벨
+    editing: str = ""                 # 대화가 지금 다루는 칸
+    pending: dict[str, Any] = {}      # 승인 대기 중인 수정 제안
+
     confirmed: bool
     candidates: list[ImageItem]
     selected_index: int
-    views: list[ImageItem]
     messages: list[dict[str, Any]]
     # 생성이 백그라운드로 돌기 때문에 화면이 폴링해야 한다. 아래 세 값이 그 근거다.
     generating: bool = False          # 하나라도 그리는 중인가 — true면 3초 뒤 다시 물어본다
@@ -61,27 +80,39 @@ class CharacterOut(BaseModel):
 
 
 def character_out(char, queue_depth: int = 0) -> "CharacterOut":
-    """DB 행 + 생성 진행 상태를 합쳐 응답을 만든다."""
+    """DB 행 + 시트 진행 + 생성 진행을 합쳐 응답을 만든다."""
+    from app.services import character_sheet as sheet
     from app.services.image_gen import eta_seconds as _eta
 
-    pending = sum(
+    drawing = sum(
         1
-        for slot in list(char.candidates or []) + list(char.views or [])
+        for slot in list(char.candidates or [])
         if isinstance(slot, dict) and slot.get("status") == "generating"
     )
     out = CharacterOut.model_validate(char)
-    out.generating = pending > 0
+    out.sheet = [SheetRow(**row) for row in sheet.sheet_rows(char)]
+    # 화면의 '그림 뽑기' 버튼이 이 값 하나로 잠기고 풀린다 — 키워드까지 포함한 판정이다.
+    out.sheet_complete = sheet.ready_to_generate(char)
+    out.missing = [
+        sheet.KEYWORDS_LABEL if f == sheet.KEYWORDS_FIELD else sheet.LABELS[f]
+        for f in sheet.missing_all(char)
+    ]
+    out.generating = drawing > 0
     out.queue_depth = queue_depth
-    out.eta_seconds = _eta(pending) if pending else 0
+    out.eta_seconds = _eta(drawing) if drawing else 0
     return out
 
 
 class CharacterUpdate(BaseModel):
+    """시트 직접 수정. 보낸 칸만 바뀐다."""
     name: str | None = None
     age: str | None = None
     gender: str | None = None
-    hobby: str | None = None
     look: str | None = None
+    outfit: str | None = None
+    abilities: str | None = None
+    keywords: list[str] | None = None
+    desc: str | None = None
 
 
 class ChatIn(BaseModel):

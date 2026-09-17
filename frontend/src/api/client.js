@@ -65,21 +65,30 @@ const mapStore = (s) => ({
   storeMaxImages: s.max_images,
 });
 
-/** 캐릭터 응답에서 "그림 진행 상태"만 뽑는다. 폴링은 3초마다 도는데 이때 이름·나이 같은
- *  입력란까지 덮어쓰면 사장님이 타이핑하던 글자가 사라진다. 그래서 둘을 나눠 둔다. */
+/** 캐릭터 응답에서 "진행 상태"만 뽑는다. 폴링은 3초마다 도는데 이때 시트 입력란까지
+ *  덮어쓰면 사장님이 타이핑하던 글자가 사라진다. 그래서 둘을 나눠 둔다.
+ *
+ *  charSheet(읽기 전용 8줄)는 진행 쪽에 둔다 — 대화가 채운 값을 바로 비춰야 하고,
+ *  사장님이 직접 고치는 건 charLook 같은 개별 입력 상태이지 이 배열이 아니다. */
 const mapCharacterProgress = (c) => ({
   charConfirmed: c.confirmed,
   charCands: (c.candidates || []).map(mapSlot),
   charSelected: c.selected_index,
-  charViews: (c.views || []).map(mapSlot),
   charMsgs: c.messages || [],
+  charSheet: c.sheet || [],
+  charSheetDone: !!c.sheet_complete,
+  charMissing: c.missing || [],
+  charEditing: c.editing || '',
+  charPending: c.pending || {},
   charGenerating: !!c.generating,
   charQueue: c.queue_depth || 0,
   charEta: c.eta_seconds || 0,
 });
 
 const mapCharacter = (c) => ({
-  charName: c.name, charAge: c.age, charGender: c.gender, charHobby: c.hobby, charLook: c.look,
+  charName: c.name, charAge: c.age, charGender: c.gender, charLook: c.look,
+  charOutfit: c.outfit, charAbilities: c.abilities, charDesc: c.desc,
+  charKeywords: (c.keywords || []).join(', '),
   ...mapCharacterProgress(c),
 });
 
@@ -106,17 +115,23 @@ export const StoreAPI = {
 };
 
 // ---------- character ----------
-// 생성은 백그라운드로 돈다. 아래 POST들은 즉시 돌아오고 칸이 status:"generating"으로 생긴다.
+// 대화로 시트 8칸을 채우고, 다 찬 뒤에 genCandidates()로 그림을 뽑는다.
+// 생성은 백그라운드로 돈다 — POST는 즉시 돌아오고 칸이 status:"generating"으로 생기며,
 // 실제 그림은 getProgress()를 3초 간격으로 불러서 채운다.
+//
+// chat()은 그림을 돌리지 않는다. 생성은 사장님이 버튼을 눌렀을 때만 시작된다.
 export const CharacterAPI = {
   get: () => get('/api/character').then(mapCharacter),
   getProgress: () => get('/api/character').then(mapCharacterProgress),
   update: (fields) => put('/api/character', fields).then(mapCharacter),
   chat: (text) => post('/api/character/chat', { text }).then(mapCharacterProgress),
+  // 시트에서 칸을 눌러 "이 칸을 대화로 고치겠다"고 알린다.
+  focus: (field) => post(`/api/character/focus/${field}`).then(mapCharacterProgress),
+  acceptSuggestion: (pid) => post(`/api/character/suggestions/${pid}/accept`).then(mapCharacter),
+  declineSuggestion: (pid) => post(`/api/character/suggestions/${pid}/decline`).then(mapCharacterProgress),
   genCandidates: () => post('/api/character/candidates').then(mapCharacterProgress),
   rerollCandidate: (i) => post(`/api/character/candidates/${i}/reroll`).then(mapCharacterProgress),
   select: (i) => post(`/api/character/select/${i}`).then(mapCharacterProgress),
-  rerollView: (i) => post(`/api/character/views/${i}/reroll`).then(mapCharacterProgress),
   loadPrevious: () => post('/api/character/load-previous').then(mapCharacterProgress),
   reset: () => post('/api/character/reset').then(mapCharacter),
   confirm: () => post('/api/character/confirm').then(mapCharacter),

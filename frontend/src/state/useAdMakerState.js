@@ -16,6 +16,16 @@ function today() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }
 
+/** 시트 8칸을 PUT /api/character 모양으로 모은다. 키워드만 쉼표 문자열 ↔ 배열로 옮긴다 —
+ *  사장님은 한 칸에 쉼표로 적고, 백엔드는 목록으로 들고 있는다. */
+function sheetFields(s) {
+  return {
+    name: s.charName, age: s.charAge, gender: s.charGender, look: s.charLook,
+    outfit: s.charOutfit, abilities: s.charAbilities, desc: s.charDesc,
+    keywords: (s.charKeywords || '').split(',').map((k) => k.trim()).filter(Boolean),
+  };
+}
+
 /** 처음 상태는 전부 비어 있다. 화면에 보이는 값은 사장님이 입력했거나 백엔드가 준 것뿐이다.
  *  여기에 예시 값을 하나라도 넣으면 그건 사장님이 만든 적 없는 데이터가 되어
  *  히스토리·내보내기에 그대로 섞인다. */
@@ -32,9 +42,13 @@ function initialState() {
     storeOpenTime: '', storeCloseTime: '', storeClosedDays: [],
     storeDesc: '', storeImages: [], storeMaxImages: 5,
 
-    charName: '', charAge: '', charGender: '', charHobby: '', charLook: '',
+    // 캐릭터 시트 8칸. 대화로 채워지고, 시트에서 직접 고칠 수도 있다.
+    charName: '', charAge: '', charGender: '', charLook: '',
+    charOutfit: '', charAbilities: '', charDesc: '', charKeywords: '',
+    // 백엔드가 준 시트 상태 — 어느 칸이 비었는지, 그림 뽑기를 열어도 되는지.
+    charSheet: [], charSheetDone: false, charMissing: [], charEditing: '', charPending: {},
     charMsgs: [], charInput: '', charThinking: false,
-    charCands: [], charSelected: -1, charViews: [],
+    charCands: [], charSelected: -1,
     charConfirmed: false, charInfoReadOnly: true,
     // 그림 생성 진행 상태 — 백엔드가 준 값이다. 화면의 "약 N초 남았어요"가 여기서 나온다.
     charGenerating: false, charQueue: 0, charEta: 0,
@@ -225,31 +239,58 @@ export function useAdMakerState() {
     update({ charThinking: false });
   }, [update, runGenerating]);
 
-  // 왼쪽 폼(이름·나이·성별·취미·외형)은 타이핑해도 브라우저 상태에만 있다 — 생성 전에 서버로 먼저 보낸다.
-  // 안 그러면 서버의 옛 look(초기화 직후엔 빈 문자열)으로 그려지거나 "먼저 말해주세요" 400이 난다.
-  // runGenerating 안에서 부르므로 PUT이 실패해도 같은 경로(fail)로 토스트가 뜬다.
-  const syncCharForm = useCallback(() => {
-    const s = stateRef.current;
-    return CharacterAPI.update({ name: s.charName, age: s.charAge, gender: s.charGender, hobby: s.charHobby, look: s.charLook });
-  }, []);
+  /** 시트를 직접 고쳤을 때 저장한다. 칸에서 포커스가 빠질 때 부른다 —
+   *  타이핑 한 글자마다 PUT을 날리면 폰에서 느려지고, 저장 버튼을 따로 두면
+   *  사장님이 안 누르고 넘어간다. */
+  const saveCharSheet = useCallback(async () => {
+    try {
+      update(await CharacterAPI.update(sheetFields(stateRef.current)));
+    } catch (e) { fail(e); }
+  }, [update, fail]);
 
+  /** 시트에서 칸을 눌러 대화로 고치겠다고 알린다. */
+  const focusCharField = useCallback(async (field) => {
+    await runGenerating(() => CharacterAPI.focus(field));
+  }, [runGenerating]);
+
+  /** AI 제안(퍼스널 키워드·시트 수정)을 받아들인다. 시트 값이 바뀌므로 전체를 다시 받는다. */
+  const acceptCharSuggestion = useCallback(async (pid) => {
+    try {
+      update(await CharacterAPI.acceptSuggestion(pid));
+    } catch (e) { fail(e); }
+  }, [update, fail]);
+
+  const declineCharSuggestion = useCallback(async (pid) => {
+    try {
+      update(await CharacterAPI.declineSuggestion(pid));
+    } catch (e) { fail(e); }
+  }, [update, fail]);
+
+  // 시트에 타이핑한 내용은 브라우저 상태에만 있다 — 생성 전에 서버로 먼저 보낸다.
+  // 안 그러면 서버의 옛 값으로 그려지거나 "아직 안 채운 칸이 있어요" 400이 난다.
+  // runGenerating 안에서 부르므로 PUT이 실패해도 같은 경로(fail)로 토스트가 뜬다.
+  const syncCharSheet = useCallback(() => CharacterAPI.update(sheetFields(stateRef.current)), []);
+
+  /** 후보 3장 뽑기. 시트가 덜 찼으면 백엔드가 400 + 남은 칸 이름을 돌려준다. */
   const genCandidates = useCallback(async () => {
+    const s = stateRef.current;
+    // 화면에서도 한 번 막는다 — 눌러놓고 에러를 보는 것보다 눌리지 않는 게 낫다.
+    if (!s.charSheetDone) {
+      toast(`시트를 먼저 다 채워주세요 — ${s.charMissing.join(', ')}이(가) 비었어요`);
+      return;
+    }
     update({ charThinking: true });
-    await runGenerating(async () => { await syncCharForm(); return CharacterAPI.genCandidates(); });
+    await runGenerating(async () => { await syncCharSheet(); return CharacterAPI.genCandidates(); });
     update({ charThinking: false });
-  }, [update, runGenerating, syncCharForm]);
+  }, [update, runGenerating, toast, syncCharSheet]);
 
   const selectCand = useCallback(async (i) => {
     await runGenerating(() => CharacterAPI.select(i));
   }, [runGenerating]);
 
   const rerollCand = useCallback(async (i) => {
-    await runGenerating(async () => { await syncCharForm(); return CharacterAPI.rerollCandidate(i); });
-  }, [runGenerating, syncCharForm]);
-
-  const rerollView = useCallback(async (i) => {
-    await runGenerating(() => CharacterAPI.rerollView(i));
-  }, [runGenerating]);
+    await runGenerating(async () => { await syncCharSheet(); return CharacterAPI.rerollCandidate(i); });
+  }, [runGenerating, syncCharSheet]);
 
   const loadChar = useCallback(async () => {
     // 확정된 캐릭터가 없으면 400 — 예전처럼 없는 캐릭터를 지어내지 않는다.
@@ -270,7 +311,7 @@ export function useAdMakerState() {
     const s = stateRef.current;
     if (s.charSelected < 0) { toast('마음에 드는 그림을 먼저 골라주세요'); return; }
     try {
-      await CharacterAPI.update({ name: s.charName, age: s.charAge, gender: s.charGender, hobby: s.charHobby, look: s.charLook });
+      await CharacterAPI.update(sheetFields(s));
       const updated = await CharacterAPI.confirm();
       update({ ...updated, charInfoReadOnly: true });
       toast('캐릭터를 확정했어요');
@@ -282,7 +323,7 @@ export function useAdMakerState() {
     const s = stateRef.current;
     if (!s.charInfoReadOnly) {
       try {
-        const updated = await CharacterAPI.update({ name: s.charName, age: s.charAge, gender: s.charGender, hobby: s.charHobby, look: s.charLook });
+        const updated = await CharacterAPI.update(sheetFields(s));
         update({ ...updated, charInfoReadOnly: true });
         toast('캐릭터 정보를 저장했어요');
       } catch (e) { fail(e); }
@@ -461,7 +502,8 @@ export function useAdMakerState() {
       set, toast, go, back, goHome, reload,
       goStore, goChar, goAd, goMy, openProdTab, goData,
       editStore, saveStore, toggleClosedDay, uploadStoreImage, deleteStoreImage,
-      genCandidates, sendChar, selectCand, rerollCand, rerollView, loadChar, resetChar, confirmChar, toggleCharEdit,
+      genCandidates, sendChar, selectCand, rerollCand, loadChar, resetChar, confirmChar, toggleCharEdit,
+      saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion,
       confirmPending, declinePending,
       applyAd,
       toggleSbSet, toggleSbProd, sendSb,

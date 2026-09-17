@@ -89,8 +89,10 @@ def recover_interrupted(db) -> int:
     if not char:
         return 0
 
+    # views는 4방향 뽑기와 함께 걷어냈다. 예전 DB에 남아 있을 수 있어 같이 훑는다 —
+    # 안 그러면 그 칸이 영원히 "그리는 중"으로 남는다.
     for field in ("candidates", "views"):
-        slots = list(getattr(char, field) or [])
+        slots = list(getattr(char, field, None) or [])
         changed = False
         for i, slot in enumerate(slots):
             if isinstance(slot, dict) and slot.get("status") == "generating":

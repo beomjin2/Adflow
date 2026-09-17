@@ -118,3 +118,37 @@ systemctl is-active adflow-backend adflow-frontend  # 둘 다 active여야 한�
 
 - [DB 스키마 (Adflow ERD)](https://claude.ai/code/artifact/f5766efd-aa09-4bfc-881f-29c77c536ee1)
 - [Adflow 아키텍처](https://claude.ai/artifact/7Zb39jAHm9HfeGXuTXXUd2)
+
+## 폴더 구조
+
+```
+part4_3team/
+├── backend/                  # FastAPI 서버
+│   ├── app/
+│   │   ├── api/routes/       # 화면 단위 라우터 — store·character·ad·storyboard·meme·production·history·trend
+│   │   ├── services/         # GPT·ComfyUI 연동 — sheet_llm·chat_ai·danbooru_tags·image_gen·jobs·meme_ai·meme_recommend
+│   │   ├── core/              # 설정(config.py), DB 세션(database.py)
+│   │   ├── db/seed.py         # 싱글턴 행 초기화
+│   │   ├── models.py          # SQLAlchemy 모델
+│   │   ├── schemas.py         # Pydantic 스키마
+│   │   └── main.py            # 앱 진입점, 라우터·정적 파일 마운트
+│   ├── import_memes.py       # crawling/의 memes_all.json을 memes 테이블에 적재
+│   ├── requirements.txt
+│   └── app.db                 # SQLite (git에 안 올림)
+├── frontend/                  # React + Vite
+│   └── src/
+│       ├── screens/           # 화면별 컴포넌트 — Home·Store·Character·Trend·Ad·Storyboard·Save·My/ 등
+│       ├── components/        # 공용 UI — ChatPanel·ComicPanels·Lightbox·ui/(Button·Field) 등
+│       ├── state/useAdMakerState.js  # 전역 상태 훅 하나
+│       ├── api/client.js      # 백엔드 호출 래퍼
+│       └── theme.js           # 색상·타이포 토큰
+├── crawling/                  # 밈 크롤링 결과 + 상황 분류 스크립트 (앱과 분리된 오프라인 파이프라인)
+│   ├── classify_memes_situation.py  # memes 테이블 → OpenAI 임베딩으로 상황 분류
+│   ├── memes_all.json         # 크롤링 결과(중복 병합 완료본)
+│   └── images/                # 밈 대표 이미지 — /api/meme-images/로 직접 서빙
+├── deploy/                    # 배포 스크립트, VM에서 사람이 직접 할 일 문서
+│   ├── deploy_from_github.sh  # VM에서 도는 실제 배포 스크립트 (main pull → 빌드 → 교체)
+│   ├── reset_service_data.py  # 데모 데이터 정리
+│   └── USER_COMMANDS.md       # 서비스 재시작 등 자동화 안 된 절차
+└── README.md
+```

@@ -20,6 +20,13 @@ logger = logging.getLogger(__name__)
 
 MIN_POST_COUNT = 2000
 
+# Danbooru 태그 분류. 우리가 쓸 수 있는 건 **일반(0)** 과 **메타(5)** 뿐이다.
+#   1 작가명 · 3 작품명 · 4 캐릭터명 → 특정 애니의 인물·작품·그린 사람을 가리킨다.
+# 장수만 보고 걸렀더니 2,000장 이상 8,410개 중 2,070개(25%)가 이쪽이었다
+# (캐릭터명 1,314 · 작품명 624 · 작가명 87 · 폐기 46 — 2026-09-17 실측).
+# 그게 사장님 마스코트 프롬프트에 섞이면 그건 더 이상 사장님 캐릭터가 아니다.
+ALLOWED_CATEGORIES = (0, 5)
+
 
 @lru_cache(maxsize=1)
 def _valid_tags() -> dict[str, int]:
@@ -35,19 +42,40 @@ def _valid_tags() -> dict[str, int]:
             "Danbooru 태그 목록이 없습니다(%s) — 태그 검증을 건너뛰고 화이트리스트로 폴백합니다", path
         )
         return {}
-    table = pq.read_table(path, columns=["name", "post_count"])
+    wanted = ["name", "post_count", "category", "is_deprecated"]
+    have = set(pq.read_schema(path).names)
+    table = pq.read_table(path, columns=[c for c in wanted if c in have])
+
+    def column(name, default):
+        return table.column(name).to_pylist() if name in have else [default] * table.num_rows
+
     names = table.column("name").to_pylist()
     counts = table.column("post_count").to_pylist()
-    return {n: c for n, c in zip(names, counts) if c is not None and c >= MIN_POST_COUNT}
+    categories = column("category", 0)
+    deprecated = column("is_deprecated", False)
+
+    return {
+        name: count
+        for name, count, category, is_dep in zip(names, counts, categories, deprecated)
+        if count is not None and count >= MIN_POST_COUNT
+        and category in ALLOWED_CATEGORIES
+        and not is_dep
+    }
 
 
 def verify_tags(candidates: list[str]) -> list[str]:
-    """존재하고 post_count >= 2,000인 태그만, 중복 제거해서 원래 순서대로 돌려준다."""
+    """쓸 수 있는 태그만 중복 없이 원래 순서대로. 조건은 세 가지다 —
+    실존하고 post_count >= 2,000, 분류가 일반·메타, 폐기되지 않았을 것.
+
+    띄어쓰기는 밑줄로 바꿔 조회한다. Danbooru 표기는 밑줄인데 GPT가 'red scarf'처럼
+    띄어 쓰는 일이 잦아서, 실존하는 태그가 표기 때문에 버려지던 걸 막는다.
+    돌려줄 때는 Danbooru 표기(밑줄)로 통일한다.
+    """
     valid = _valid_tags()
     seen: set[str] = set()
     result: list[str] = []
     for raw in candidates:
-        tag = raw.strip().strip(",")
+        tag = raw.strip().strip(",").replace(" ", "_")
         if tag and tag in valid and tag not in seen:
             result.append(tag)
             seen.add(tag)

@@ -97,6 +97,9 @@ const mapAd = (a) => ({ adType: a.ad_type, adConcept: a.ad_concept });
 const mapStoryboard = (sb) => ({
   sbMsgs: sb.messages || [], plan: sb.plan || [],
   sbProdLogged: sb.prod_logged, pending: sb.pending || {},
+  comicCuts: (sb.comic_cuts || []).map((c) => ({ ...mapSlot(c), n: c.n, line: c.line })),
+  sbGenerating: !!sb.generating,
+  sbEta: sb.eta_seconds || 0,
 });
 
 const mapRecord = (r) => ({
@@ -152,6 +155,17 @@ export const StoryboardAPI = {
   chat: (text) => post('/api/storyboard/chat', { text }).then(mapStoryboard),
   confirm: (pid) => post(`/api/storyboard/confirm/${pid}`).then(mapStoryboard),
   decline: (pid) => post(`/api/storyboard/decline/${pid}`).then(mapStoryboard),
+  makeComic: () => post('/api/storyboard/comic').then(mapStoryboard),
+  rerollCut: (n) => post(`/api/storyboard/comic/${n}/reroll`).then(mapStoryboard),
+  propose: (memeId) => post('/api/storyboard/propose', { meme_id: memeId }).then(mapStoryboard),
+};
+
+// ---------- meme ----------
+const mapMeme = (m) => ({ id: m.id, title: m.title, source: m.source, card: m.card || {} });
+export const MemeAPI = {
+  list: () => get('/api/memes').then((rows) => rows.map(mapMeme)),
+  create: (body) => post('/api/memes', body).then(mapMeme),
+  remove: (id) => del(`/api/memes/${id}`),
 };
 
 // ---------- production ----------

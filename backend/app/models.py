@@ -86,6 +86,22 @@ class Storyboard(Base):
     pending = Column(JSON, default=dict)   # {pid: {which, kind, diffs, payload, status}}
 
 
+class MemeCard(Base):
+    """밈 카드 — 밈 원문을 GPT가 한 번 읽어 정리한 것(정의·유행 이유·말 틀·시각 요소·업종·피할 것).
+
+    사장님 데이터가 아니라 서비스가 갖고 있는 소재다. 그래서 히스토리·내보내기에는 섞이지
+    않고, 스토리 제안(POST /api/storyboard/propose)의 입력으로만 쓴다. 비싼 단계(카드
+    만들기)는 밈 하나당 한 번만 돌고 여기 저장된다.
+    """
+    __tablename__ = "meme_cards"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String, nullable=False)
+    source = Column(String, default="")      # 사이트/원문 링크
+    original = Column(String, default="")    # 카드를 만들 때 넣은 원문(요약이 아니라 본문)
+    card = Column(JSON, default=dict)        # {definition, why, template, visual, industries, avoid, understanding}
+
+
 class ProductionItem(Base):
     """생산 기록에 쓸 품목 목록."""
     __tablename__ = "production_items"

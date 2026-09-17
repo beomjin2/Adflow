@@ -1,6 +1,8 @@
 import { colors } from '../theme.js';
 import { Select } from '../components/ui/Field.jsx';
-import { PrimaryButton } from '../components/ui/Button.jsx';
+import { PrimaryButton, SoftButton } from '../components/ui/Button.jsx';
+import { formatEta } from '../components/ImageSlot.jsx';
+import ComicPanels from '../components/ComicPanels.jsx';
 import ChatPanel from '../components/ChatPanel.jsx';
 
 const AD_TYPES = ['인스타 게시물', '포스터', '메뉴판'];
@@ -87,6 +89,37 @@ export default function Storyboard({ state, actions }) {
           )}
         </div>
 
+        <div style={{ background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: 14, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>밈으로 스토리 제안받기</span>
+          <span style={{ fontSize: 12, lineHeight: '18px', color: colors.textFaint }}>
+            밈을 고르면 가게 정보로 4컷 초안을 만들어 대화창에 제안해요. 마음에 들면 거기서 "이대로 바꾸기".
+          </span>
+          <Select value={state.memeId || ''} onChange={e => actions.set('memeId', e.target.value)}>
+            <option value="">밈 고르기</option>
+            {(state.memes || []).map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
+          </Select>
+          {state.memeId && (state.memes || []).find(m => String(m.id) === String(state.memeId)) && (
+            <span style={{ fontSize: 12, lineHeight: '18px', color: colors.textSub }}>
+              말 틀: {(state.memes || []).find(m => String(m.id) === String(state.memeId)).card.template || '—'}
+            </span>
+          )}
+          <SoftButton onClick={actions.proposeStory} disabled={!state.memeId || state.sbThinking}
+            style={{ height: 42, fontSize: 14, background: colors.primarySoft, color: colors.primarySoftText }}>
+            {state.sbThinking ? '만드는 중…' : '스토리 제안받기'}
+          </SoftButton>
+          <details>
+            <summary style={{ fontSize: 12, color: colors.textFaint, cursor: 'pointer' }}>밈 카드 추가 (원문 붙여넣기)</summary>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+              <input value={state.memeTitle || ''} onChange={e => actions.set('memeTitle', e.target.value)} placeholder="밈 이름" style={miniFieldStyle} />
+              <input value={state.memeSource || ''} onChange={e => actions.set('memeSource', e.target.value)} placeholder="출처(사이트·링크)" style={miniFieldStyle} />
+              <textarea value={state.memeText || ''} onChange={e => actions.set('memeText', e.target.value)} placeholder="밈 원문 본문을 그대로 붙여넣기 (요약만으로는 카드가 안 나와요)" style={{ ...miniFieldStyle, height: 90, padding: 8, resize: 'vertical' }} />
+              <SoftButton onClick={actions.addMeme} disabled={!(state.memeTitle || '').trim() || (state.memeText || '').trim().length < 40 || state.sbThinking} style={{ height: 38, fontSize: 13 }}>
+                카드 만들기
+              </SoftButton>
+            </div>
+          </details>
+        </div>
+
         <div style={{ background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: 14, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>지금 정해진 내용</span>
@@ -107,6 +140,25 @@ export default function Storyboard({ state, actions }) {
             </div>
           ))}
         </div>
+
+        {(state.comicCuts || []).length > 0 && (
+          <div style={{ background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: 14, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>
+              {state.sbGenerating ? `네컷을 그리는 중 — 약 ${formatEta(state.sbEta)}` : '네컷 그림'}
+            </span>
+            {/* 여기선 작은 미리보기라 말풍선을 얹지 않는다 — 말풍선 달린 큰 네컷은 결과 화면. */}
+            <ComicPanels cuts={state.comicCuts || []} eta={state.sbEta} onReroll={actions.rerollCut} bubbles={false} gap={6} />
+          </div>
+        )}
+        <SoftButton
+          onClick={actions.makeComic}
+          disabled={!state.plan.length || !state.charConfirmed || state.sbGenerating}
+          style={{ height: 46, fontSize: 15, background: colors.primarySoft, color: colors.primarySoftText }}
+        >
+          {!state.charConfirmed ? '캐릭터를 먼저 확정해주세요'
+            : state.sbGenerating ? '그리는 중…'
+              : (state.comicCuts || []).length ? '네컷 다시 그리기' : '네컷 그리기'}
+        </SoftButton>
 
         <div style={{ flex: 1 }} />
         <PrimaryButton onClick={actions.openResult} disabled={!state.plan.length}>

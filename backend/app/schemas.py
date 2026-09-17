@@ -141,9 +141,46 @@ class StoryboardOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     messages: list[dict[str, Any]]
     plan: list[dict[str, Any]]
-    comic_cuts: list[dict[str, Any]]
+    comic_cuts: list[dict[str, Any]]  # [{n, short, line, label, image, status}]
     prod_logged: bool
     pending: dict[str, Any]
+    generating: bool = False          # 네컷 중 하나라도 그리는 중이면 3초 뒤 다시 물어본다
+    queue_depth: int = 0
+    eta_seconds: int = 0
+
+
+def storyboard_out(sb, queue_depth: int = 0) -> "StoryboardOut":
+    """DB 행 + 네컷 생성 진행 상태를 합쳐 응답을 만든다 (character_out과 같은 규칙)."""
+    from app.services.image_gen import eta_seconds as _eta
+
+    pending = sum(
+        1 for cut in list(sb.comic_cuts or [])
+        if isinstance(cut, dict) and cut.get("status") == "generating"
+    )
+    out = StoryboardOut.model_validate(sb)
+    out.generating = pending > 0
+    out.queue_depth = queue_depth
+    out.eta_seconds = _eta(pending) if pending else 0
+    return out
+
+
+# ---------- meme ----------
+class MemeCardOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    title: str
+    source: str
+    card: dict[str, Any]
+
+
+class MemeCreate(BaseModel):
+    title: str
+    source: str = ""
+    original: str
+
+
+class ProposeIn(BaseModel):
+    meme_id: int
 
 
 # ---------- production ----------

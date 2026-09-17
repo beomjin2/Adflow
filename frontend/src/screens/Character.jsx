@@ -34,48 +34,54 @@ const STATE_KEY = {
  *  칸이 8개인데 전부 입력창으로 펼쳐두면 시트만 세로로 900px 가까이 된다.
  *  옆의 대화창보다 훨씬 길어져 둘의 비율이 무너진다. 사장님이 지금 볼 것은
  *  **묻고 있는 칸 하나**이고, 나머지는 "뭐라고 적었더라"를 확인하는 용도다. */
-function CompactRow({ row, value, help, onOpen }) {
+function CompactRow({ row, value, onOpen }) {
   const filled = !!String(value).trim();
   return (
     <button
       onClick={onOpen}
       title={filled ? String(value) : '아직 비어 있어요 — 눌러서 적을 수 있어요'}
       style={{
-        display: 'flex', alignItems: 'baseline', gap: 8, width: '100%',
-        padding: '7px 9px', borderRadius: 9, border: 0, cursor: 'pointer',
+        display: 'flex', alignItems: 'baseline', gap: 10, width: '100%',
+        padding: '6px 11px', border: 0, cursor: 'pointer',
         background: 'transparent', textAlign: 'left', font: 'inherit',
       }}
     >
       <span style={{
-        flex: 'none', width: 62, fontSize: 12, fontWeight: 700,
-        color: filled ? colors.textSub : colors.textFaint,
+        flex: 'none', width: 52, fontSize: 11.5, fontWeight: 700,
+        color: colors.textFaint,
       }}>{row.label}</span>
       <span style={{
-        flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: '20px',
-        color: filled ? colors.text : colors.textFaint,
+        flex: 1, minWidth: 0, fontSize: 13, lineHeight: '19px',
+        color: filled ? colors.text : colors.cardBorder,
         overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
       }}>
-        {filled ? value : (help || '비어 있음')}
+        {filled ? value : '—'}
       </span>
     </button>
   );
 }
 
-function Row({ row, state, actions, asking, open, onToggle }) {
+function Row({ row, state, actions, asking, open, onToggle, divider }) {
   const shape = SHAPE[row.field] || { multiline: false, help: '' };
   const key = STATE_KEY[row.field];
   const value = state[key] ?? '';
   const Input = shape.multiline ? TextArea : TextInput;
 
+  const edge = divider ? { borderTop: `1px solid ${colors.cardBorder}` } : null;
+
   // 묻고 있는 칸은 항상 펼친다. 나머지는 사장님이 누를 때만.
   if (!asking && !open) {
-    return <CompactRow row={row} value={value} help={shape.help} onOpen={onToggle} />;
+    return (
+      <div style={edge}>
+        <CompactRow row={row} value={value} onOpen={onToggle} />
+      </div>
+    );
   }
 
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column', gap: 5,
-      padding: '9px 10px', borderRadius: 11,
+      ...edge,
+      display: 'flex', flexDirection: 'column', gap: 5, padding: '9px 11px',
       background: asking ? colors.onboardBg : colors.softBg,
       boxShadow: asking ? `inset 0 0 0 1.5px ${colors.onboardBorder}` : 'none',
     }}>
@@ -178,17 +184,20 @@ export default function Character({ state, actions }) {
             </div>
           )}
 
-          {/* 접힌 칸은 한 줄, 펼친 칸만 입력창. 한 번에 하나만 펼쳐 시트 높이가
-              대화창을 넘지 않게 한다. 그래도 넘치면 시트 안에서만 스크롤한다. */}
+          {/* 여덟 칸을 머리카락 선으로 나눈 카드 하나로 묶는다. 칸마다 입력창을
+              띄워 두면 시트가 대화창보다 훨씬 길어지고, 무엇보다 '채워야 할 서식'처럼
+              보인다. 지금 묻는 칸만 펼치고 나머지는 한 줄로 둔다. */}
           <div style={{
-            display: 'flex', flexDirection: 'column', gap: 4,
-            maxHeight: 380, overflowY: 'auto',
+            display: 'flex', flexDirection: 'column',
+            border: `1px solid ${colors.cardBorder}`, borderRadius: 12, overflow: 'hidden',
+            maxHeight: 340, overflowY: 'auto',
           }}>
-            {rows.map((row) => (
+            {rows.map((row, i) => (
               <Row
                 key={row.field} row={row} state={state} actions={actions}
                 asking={state.charEditing === row.field}
                 open={openField === row.field}
+                divider={i > 0}
                 onToggle={() => setOpenField(openField === row.field ? '' : row.field)}
               />
             ))}
@@ -202,7 +211,7 @@ export default function Character({ state, actions }) {
             onClick={actions.genCandidates}
             disabled={busy || !done}
             style={{
-              height: 52, fontSize: 16,
+              height: 48, fontSize: 15.5,
               background: done ? colors.primarySoft : colors.softBg,
               color: done ? colors.primarySoftText : colors.textFaint,
               cursor: done && !busy ? 'pointer' : 'not-allowed',
@@ -211,10 +220,12 @@ export default function Character({ state, actions }) {
             {busy ? '그리는 중…' : state.charCands.length ? '다시 뽑기' : '그림 뽑기'}
           </SoftButton>
 
+          {/* 남은 칸을 전부 나열하면 세 줄이 되고 '채워야 할 서식'처럼 읽힌다.
+              개수만 알려주고, 채우는 방법은 대화든 직접 입력이든 열어 둔다. */}
           <span style={{ fontSize: 12.5, lineHeight: '19px', color: colors.textFaint }}>
             {done
-              ? '시트가 다 찼어요. 한 장에 1분쯤 걸리고, 창을 닫아도 서버에서 계속 그립니다.'
-              : `시트를 다 채우면 그림을 뽑을 수 있어요. 남은 칸: ${missing.join(', ') || '—'}`}
+              ? '한 장에 1분쯤. 창을 닫아도 서버에서 계속 그려요.'
+              : `${missing.length}칸 남았어요 — 대화로 채워도 되고, 위에서 눌러 직접 적어도 돼요.`}
           </span>
 
           <PrimaryButton onClick={actions.confirmChar} disabled={state.charSelected < 0 || busy}>

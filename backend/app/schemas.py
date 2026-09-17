@@ -245,8 +245,7 @@ class MemeOut(BaseModel):
     origin: str
     summary: str
     published: str
-    views: str
-    category: str
+    views: int | None = None
     situation: str = ""
     situation_score: float | None = None
     ad_safe: bool | None = None

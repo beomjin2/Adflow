@@ -19,6 +19,7 @@
 
 import json
 import logging
+import re
 
 import requests
 
@@ -47,7 +48,10 @@ _EXTRACT_SYSTEM = """\
 2. 절대 지어내거나 추측하지 않는다. 그럴듯하게 채우지 않는다.
 3. 값은 사장님이 쓴 한국어 표현을 최대한 그대로 살린다. 요약하거나 다듬지 않는다.
 4. 한 문장에 여러 칸이 섞여 있으면 나눠서 각 칸에 넣는다.
-5. 사장님 말이 어느 칸인지 불분명하면 지금 묻고 있는 칸에 넣는다.
+5. 사장님 말이 **답이긴 한데** 어느 칸인지 불분명하면 지금 묻고 있는 칸에 넣는다.
+6. **답이 아닌 말은 어느 칸에도 넣지 않는다.** "몰라", "모르겠어", "알아서 해줘",
+   "니가 정해", "추천해줘", "아무거나", "좀 해봐" 같은 말과 인사·잡담·되묻는 질문은
+   {"fields": {}} 로 돌려준다. 그 말을 칸에 적으면 사장님이 정한 적 없는 내용이 시트에 남는다.
 
 출력은 이 모양의 JSON만: {"fields": {"look": "...", "age": "..."}}
 해당하는 게 하나도 없으면 {"fields": {}}
@@ -172,8 +176,49 @@ def read_fields(char, text: str, asked_field: str = "") -> dict[str, str]:
         if field != asked_field and not _grounded(value, text):
             logger.info("근거 없는 칸 '%s'을(를) 버렸습니다", field)
             continue
+        # 답이 아닌 말. 위 _grounded 는 여기서 소용이 없다 — 문장을 그대로 베낀 값은
+        # 언제나 문장에 근거가 있기 때문이다.
+        if _is_refusal_value(value, text):
+            logger.info("답이 아닌 말이라 칸 '%s'을(를) 버렸습니다", field)
+            continue
         cleaned[field] = value
     return cleaned
+
+
+# "몰라" · "알아서 해줘" 는 답이 아니다. 프롬프트로 막아도 모델은 지금 묻는 칸에
+# 그대로 넣는다 — 배포된 서비스에서 성별 = "몰라 좀 해봐" 가 적히는 걸 확인했다.
+# 프롬프트는 부탁이고 이건 보장이다.
+_NON_ANSWER = re.compile(
+    "몰라|모르겠|모른다|알아서|니가정|네가정|아무거나|아무렇게|추천해|정해줘|좀해봐|맘대로|마음대로"
+)
+
+
+def _is_non_answer(text: str) -> bool:
+    return bool(_NON_ANSWER.search((text or "").replace(" ", "")))
+
+
+def _echoes_input(value: str, text: str) -> bool:
+    """값이 사장님 문장을 거의 그대로 되돌려준 것인가."""
+    v = (value or "").replace(" ", "")
+    t = (text or "").replace(" ", "")
+    return bool(v) and bool(t) and v in t and len(v) >= len(t) * 0.8
+
+
+def _is_refusal_value(value: str, text: str) -> bool:
+    """시트에 넣으면 안 되는 값인가. 두 갈래로 잡는다.
+
+    ① 값 자체가 "몰라"·"아무거나" 같은 말이다. ("아무거나 해줘" → 아무거나)
+    ② 답이 아닌 문장을 **통째로 되돌려준** 것이다. ("몰라 좀 해봐" → 몰라 좀 해봐)
+
+    ②가 따로 필요한 이유는 어느 조각도 단독으로는 안 걸리는 문장이 있어서고,
+    ①이 따로 필요한 이유는 모델이 문장 일부만 잘라 넣기도 해서다.
+
+    반대로 "잘 모르겠지만 갈색 곰이요" 는 '모르겠'이 들어 있어도 **외형이라는 답이
+    있다.** 잘라낸 조각('갈색 곰')은 둘 중 어느 갈래에도 안 걸려 살아남는다.
+    """
+    if _is_non_answer(value):
+        return True
+    return _is_non_answer(text) and _echoes_input(value, text)
 
 
 def _grounded(value: str, text: str) -> bool:

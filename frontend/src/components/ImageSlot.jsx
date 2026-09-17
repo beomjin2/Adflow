@@ -34,7 +34,7 @@ export default function ImageSlot({
     <div style={{ position: 'relative', flex: 'none' }}>
       <Tag
         onClick={clickable ? onClick : undefined}
-        title={clickable ? '이 그림으로 정하기' : undefined}
+        title={clickable ? '눌러서 크게 보기' : undefined}
         style={{ ...base, cursor: clickable ? 'pointer' : 'default', font: 'inherit', color: colors.text }}
       >
         {status === 'done' && image && (

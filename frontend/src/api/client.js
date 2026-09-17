@@ -190,11 +190,12 @@ export const HistoryAPI = {
 // ---------- trend ----------
 // 이름이 mapMeme가 아니라 mapTrendMeme인 이유: 위 MemeAPI 쪽 mapMeme(밈 카드)와
 // 이름은 같아 보여도 다른 데이터 모양이라 겹치면 안 된다.
+// category/situation_score/ad_safe는 백엔드 응답엔 있지만 화면 어디서도 안 읽어서 안 옮긴다
+// (DB·API엔 그대로 남아있다 — 나중에 "광고 부적합 밈 숨기기" 같은 걸 붙이려면 ad_safe부터 보면 된다).
 const mapTrendMeme = (m) => ({
   id: m.id, source: m.source, sourceLabel: m.source_label, name: m.name,
   url: m.url, image: m.image, origin: m.origin, summary: m.summary,
-  published: m.published, views: m.views, category: m.category,
-  situation: m.situation || '', situationScore: m.situation_score, adSafe: m.ad_safe,
+  published: m.published, views: m.views, situation: m.situation || '',
 });
 
 export const TrendAPI = {

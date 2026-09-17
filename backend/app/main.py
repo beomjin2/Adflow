@@ -33,10 +33,12 @@ app.mount("/api/uploads", StaticFiles(directory=BACKEND_ROOT / "uploads"), name=
 app.mount("/api/media", StaticFiles(directory=settings.media_path), name="media")
 
 # 트렌드 확인 화면의 밈 대표 이미지 — 외부 사이트 URL에 의존하지 않도록 크롤링 시점에
-# 내려받아 둔 사본이다(원본이 이미지를 내리거나 핫링크를 막아도 안 깨진다). app/ 밑에
-# 두는 이유는 배포 스크립트가 backend/app을 통째로 옮기기 때문 — repo 루트의 crawling/은
-# 배포 대상이 아니다. 채워 넣는 스크립트는 localize_meme_images.py.
-app.mount("/api/meme-images", StaticFiles(directory=BACKEND_ROOT / "app" / "static" / "memes"), name="meme-images")
+# 내려받아 둔 사본을 그대로 쓴다(원본이 이미지를 내리거나 핫링크를 막아도 안 깨진다).
+# repo 루트의 crawling/images/를 직접 본다 — 배포 스크립트(deploy.sh)는 backend/app만
+# 옮기고 crawling/은 안 건드리므로, 배포 뒤 매번 .src/crawling을 운영 디렉터리로
+# 직접 옮겨줘야 이미지가 뜬다(USER_COMMANDS.md 참고). 경로 값은 import_memes.py가
+# crawling/memes_nested.json에 적어 둔 served_path를 그대로 따른다.
+app.mount("/api/meme-images", StaticFiles(directory=BACKEND_ROOT.parent / "crawling" / "images"), name="meme-images")
 
 
 @app.on_event("startup")

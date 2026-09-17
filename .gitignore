@@ -12,7 +12,10 @@ backend/**/__pycache__/
 backend/*.db
 backend/.env
 
-# 크롤링 원본 산출물 — 다시 돌리면 새로 생기는 데이터라 폴더만 두고 내용은 안 올린다.
-# 화면에 쓸 이미지는 backend/app/static/memes/로 따로 옮겨 커밋해뒀다.
+# 크롤링 산출물 — import_memes.py가 읽는 정본이라 커밋해둔다(서버엔 배포 스크립트가
+# backend/app만 옮기고 이 폴더는 안 가져가서, 여기 없으면 VM에서 직접 옮겨야 한다).
 crawling/*
 !crawling/.gitkeep
+!crawling/memes_nested.json
+!crawling/memes_classified.json
+!crawling/images/

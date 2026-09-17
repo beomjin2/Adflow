@@ -75,6 +75,22 @@ _PROPOSE_SYSTEM = """\
 출력은 이 모양의 JSON만: {"intent": "help", "proposal": "..."}
 """
 
+_REPLY_SYSTEM = """\
+너는 한국 소상공인 사장님이 가게 마스코트 캐릭터를 만드는 걸 돕는 **대화 상대**다.
+사장님이 방금 한 말에 사람처럼 대답하고, 그다음 아직 비어 있는 칸 하나를 자연스럽게 물어본다.
+
+규칙:
+1. 사장님이 **질문을 했으면 먼저 그 질문에 답한다.** 답을 건너뛰고 다음 칸을 물으면
+   대화가 아니라 설문지가 된다. "캐릭터화하면 뭘 하면 좋을까"에는 실제로 의견을 낸다.
+2. 방금 시트에 적은 게 있으면 무엇을 적었는지 한마디로 알린다.
+3. 물어볼 칸은 아래에 주어진 **그 하나뿐**이다. 다른 칸을 묻지 않는다.
+4. 이미 적힌 내용에 이어서 말한다. 시트에 없는 설정을 사실처럼 말하지 않는다 —
+   제안일 때는 제안이라고 말한다.
+5. **3문장을 넘기지 않는다.** 존댓말로, 동네 가게 사장님에게 말하듯 쉽게.
+
+출력은 이 모양의 JSON만: {"reply": "..."}
+"""
+
 _KEYWORDS_SYSTEM = """\
 너는 한국 소상공인 사장님이 만든 가게 마스코트 캐릭터의 퍼스널 키워드를 정한다.
 
@@ -265,6 +281,41 @@ def propose_field(char, field: str, text: str) -> str:
     value = value.strip()
     # 한 문장을 넘기면 제안이 아니라 소설이다. 승인 카드에 넣기도 어렵다.
     return value if 0 < len(value) <= 60 else ""
+
+
+def reply(char, text: str, filled: dict[str, str], ask_field: str) -> str:
+    """사장님 말에 **대답하고** 다음 칸을 물어보는 한 문단. 못 만들면 빈 문자열.
+
+    이게 없으면 화면이 설문지가 된다. 실제로 사장님이
+    "배불뚝이 아저씨 오너인데 캐릭터화하면 뭘 하면 좋을까"라고 물었는데,
+    외형만 뜯어 적고 "무엇을 입고 있으면 좋을까요?"로 넘어가 버렸다. **질문에
+    대답을 안 한 것이다.** 시트를 채우는 건 대화의 결과여야지 목적이 아니다.
+
+    돌려주는 건 **말뿐이다.** 여기서 나온 문장이 시트에 적히는 일은 없다 —
+    칸을 채우는 건 `read_fields()`와 `propose_field()`만 한다.
+    """
+    from app.services import character_sheet as sheet
+
+    if not available() or not ask_field:
+        return ""
+
+    noted = ", ".join(
+        f"{sheet.LABELS[f]} = {v}" for f, v in (filled or {}).items() if f in sheet.LABELS
+    )
+    prompt = (
+        f"지금까지 채워진 캐릭터 시트:\n{_sheet_summary(char)}\n\n"
+        f"방금 시트에 적은 것: {noted or '(없음)'}\n\n"
+        f"다음에 물어볼 칸: {sheet.LABELS.get(ask_field, '')}({ask_field})\n"
+        f"그 칸의 기본 질문: {sheet.QUESTIONS.get(ask_field, '')}\n\n"
+        f"사장님이 방금 한 말:\n{(text or '').strip()}"
+    )
+    parsed = _ask(_REPLY_SYSTEM, prompt)
+    value = parsed.get("reply")
+    if not isinstance(value, str):
+        return ""
+    value = value.strip()
+    # 너무 길면 대화가 아니라 설명문이다. 화면 한 칸에 들어가야 한다.
+    return value if 0 < len(value) <= 400 else ""
 
 
 def suggest_keywords(char, limit: int = 5) -> list[str]:

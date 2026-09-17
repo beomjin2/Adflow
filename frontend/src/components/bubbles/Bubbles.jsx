@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { colors } from '../../theme.js';
 import ImageSlot, { formatEta } from '../ImageSlot.jsx';
+import Lightbox from '../Lightbox.jsx';
 
 export function TextBubble({ role, text }) {
   const mine = role === 'me';
@@ -15,6 +17,9 @@ export function TextBubble({ role, text }) {
 }
 
 export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 }) {
+  // 크게 보고 있는 후보의 번호. -1이면 팝업이 닫혀 있다.
+  const [preview, setPreview] = useState(-1);
+
   const drawing = items.filter((c) => c.status === 'generating').length;
   const failed = items.filter((c) => c.status === 'failed').length;
   const done = items.filter((c) => c.status === 'done').length;
@@ -25,7 +30,7 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 
         {drawing > 0
           ? `그림을 그리고 있어요 — ${drawing}장 남았어요`
           : done > 0
-            ? '후보가 나왔어요 — 마음에 드는 걸 눌러주세요'
+            ? '후보가 나왔어요 — 눌러서 크게 보고 고르세요'
             : '아직 그림이 없어요'}
       </span>
       {drawing > 0 && eta > 0 && (
@@ -36,7 +41,7 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 
           <ImageSlot
             key={i} slot={c} size={96} eta={eta}
             selectable selected={selected === i}
-            onClick={() => onSelect(i)} onReroll={() => onReroll(i)}
+            onClick={() => setPreview(i)} onReroll={() => onReroll(i)}
           />
         ))}
       </div>
@@ -48,6 +53,13 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 
       {done > 0 && drawing === 0 && (
         <span style={hintStyle}>↻ 는 설정을 그대로 두고 그림만 다시 뽑아요. 고치고 싶은 점은 그냥 말해주세요.</span>
       )}
+
+      {/* 그림을 누르면 여기서 크게 본다. 고르는 건 팝업 안의 '선택하기' 버튼이 한다 —
+          누르는 것과 정하는 것은 다른 일이다. */}
+      <Lightbox
+        items={items} index={preview} selected={selected}
+        onClose={() => setPreview(-1)} onMove={setPreview} onSelect={onSelect}
+      />
     </div>
   );
 }

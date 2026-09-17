@@ -1,38 +1,44 @@
 # 파일명: classify_memes_situation.py
-# 실행 환경: GCP VM (리눅스) 전용 버전 - torch/sentence-transformers 사용
-#
-# [로컬 Windows 버전과 다른 점]
-# 로컬 PC에서는 Windows 보안정책(스마트 앱 제어)이 torch DLL을 차단해서
-# fastembed(다국어 모델)로 우회했었는데,
-# 리눅스 기반 GCP VM에서는 이 문제가 없으므로
-# 한국어에 더 특화된 sentence-transformers + ko-sroberta-multitask 모델을 사용합니다.
 #
 # [전체 동작 과정]
-# 1. memes_normalized.json 파일을 읽는다
+# 1. memes 테이블(app.db)에서 밈을 읽는다
 # 2. situation_categories(상황 카테고리 설명들)를 임베딩 모델로 벡터화한다
-# 3. 밈들의 combined_text도 벡터화한다
+# 3. 밈들의 combined_text(이름+유래+활용예시)도 벡터화한다
 # 4. 코사인 유사도로 가장 가까운 카테고리를 찾는다
 # 5. 유사도가 너무 낮으면 "미분류" 처리한다
-# 6. 결과를 csv, json으로 저장한다
+# 6. 결과를 csv, json으로 저장한다 (DB에 다시 넣는 건 여전히 import_memes.py 몫이다)
 
-import json
 import csv
+import json
+import math
 import os
-from sentence_transformers import SentenceTransformer, util
+import sqlite3
+import sys
+from pathlib import Path
+
+from dotenv import load_dotenv
+from openai import OpenAI
+
+load_dotenv()
 
 # -----------------------------
 # 0. 설정값
 # -----------------------------
-INPUT_PATH = "memes_normalized.json"
+# VM 운영 경로를 기본값으로 고정한다 — 다른 위치(예: ~/test)에서 테스트할 땐
+# MEME_CLASSIFY_DB 환경변수로 경로를 바꿔주면 된다.
+DB_PATH = os.environ.get("MEME_CLASSIFY_DB", "/home/sprint05/part4_3team/backend/app.db")
 OUTPUT_JSON_PATH = "memes_classified.json"
 OUTPUT_CSV_PATH = "memes_classified.csv"
 
-# ko-sroberta-multitask 모델 기준 임계값 (fastembed/e5 모델과 값 범위가 다름)
-SIMILARITY_THRESHOLD = 0.35
+# text-embedding-3-small 기준 임계값 — 이전에 쓰던 sentence-transformers 모델과
+# 코사인 유사도 값의 분포 자체가 다르다(임베딩 모델이 바뀌면 값 범위도 달라진다).
+# 처음 이 모델로 바꿨다면 몇 건 돌려서 situation_score 분포를 보고 다시 맞출 것 —
+# MEME_CLASSIFY_THRESHOLD 환경변수로 코드를 안 건드리고 바꿀 수 있다.
+SIMILARITY_THRESHOLD = float(os.environ.get("MEME_CLASSIFY_THRESHOLD", "0.228"))
 
-# 한국어 전용 문장 임베딩 모델. 다른 임베딩 모델로 테스트해볼 때 코드를 안 건드리고
-# 바꿀 수 있게 환경변수로 뺐다 — 안 정해주면 지금 쓰는 모델이 기본값이다.
-MODEL_NAME = os.environ.get("MEME_CLASSIFY_MODEL", "jhgan/ko-sroberta-multitask")
+# text-embedding-3-small(기본) 또는 text-embedding-3-large. 다른 임베딩 모델로
+# 테스트해볼 때 코드를 안 건드리고 바꿀 수 있게 환경변수로 뺐다.
+MODEL_NAME = os.environ.get("MEME_CLASSIFY_MODEL", "text-embedding-3-small")
 
 # -----------------------------
 # 1. 상황(시나리오) 카테고리 정의
@@ -65,27 +71,80 @@ situation_categories = {
 }
 
 
-def load_memes(path):
-    """정규화된 밈 데이터 JSON 파일을 읽어오는 함수"""
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+def get_client() -> OpenAI:
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        print("OPENAI_API_KEY가 비어 있어요 — 환경변수로 넣어주세요.")
+        sys.exit(1)
+    return OpenAI(api_key=api_key)
 
 
-def classify_all_memes(memes, model):
+def embed(client: OpenAI, texts: list[str]) -> list[list[float]]:
+    """문장 리스트를 OpenAI 임베딩 API로 한 번에 벡터화한다(반복 호출보다 효율적).
+    응답의 data는 입력 순서대로 오지만, index로 한 번 더 맞춰서 순서를 보장한다."""
+    resp = client.embeddings.create(model=MODEL_NAME, input=texts)
+    rows = sorted(resp.data, key=lambda d: d.index)
+    return [row.embedding for row in rows]
+
+
+def cosine_similarity(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+def load_memes(db_path):
+    """memes 테이블에서 밈을 읽어 분류에 필요한 모양으로 바꾸는 함수.
+
+    combined_text는 DB에 저장된 컬럼이 아니라 여기서 이름+유래+활용예시를 이어붙여
+    만든다 — situation 임베딩과 비교할 문장이 필요해서다(빈 필드는 건너뛴다)."""
+    if not Path(db_path).exists():
+        print(f"DB 파일을 못 찾았어요: {db_path}")
+        print("MEME_CLASSIFY_DB 환경변수로 app.db 경로를 알려주세요.")
+        sys.exit(1)
+
+    con = sqlite3.connect(db_path)
+    con.row_factory = sqlite3.Row
+    try:
+        rows = con.execute(
+            "SELECT id, source, meme_name, origin, usage_example FROM memes"
+        ).fetchall()
+    finally:
+        con.close()
+
+    memes = []
+    for r in rows:
+        combined_text = "\n".join(
+            t for t in (r["meme_name"], r["origin"], r["usage_example"]) if t
+        )
+        memes.append({
+            "id": r["id"],
+            "source": r["source"] or "",
+            "meme_name": r["meme_name"] or "",
+            "origin": r["origin"] or "",
+            "combined_text": combined_text,
+        })
+    return memes
+
+
+def classify_all_memes(memes, client: OpenAI):
     """밈 리스트 전체를 situation_categories 중 가장 유사한 카테고리로 분류하는 함수"""
     category_names = list(situation_categories.keys())
     category_descriptions = [info["설명"] for info in situation_categories.values()]
 
     # 카테고리 설명들과 밈 텍스트들을 각각 한 번에 벡터화 (반복 호출보다 효율적)
-    category_vectors = model.encode(category_descriptions)
+    category_vectors = embed(client, category_descriptions)
     meme_texts = [item["combined_text"] for item in memes]
-    meme_vectors = model.encode(meme_texts)
+    meme_vectors = embed(client, meme_texts)
 
     results = []
     for i, item in enumerate(memes):
-        similarities = util.cos_sim(meme_vectors[i], category_vectors)[0]
-        best_index = similarities.argmax().item()
-        best_score = similarities[best_index].item()
+        similarities = [cosine_similarity(meme_vectors[i], v) for v in category_vectors]
+        best_score = max(similarities)
+        best_index = similarities.index(best_score)
         best_category = category_names[best_index]
 
         if best_score < SIMILARITY_THRESHOLD:
@@ -131,15 +190,15 @@ def print_summary(results):
 
 
 def main():
-    print("1) 임베딩 모델을 불러오는 중입니다... (처음 실행 시 다운로드로 시간이 걸릴 수 있음)")
-    model = SentenceTransformer(MODEL_NAME)
+    print(f"1) OpenAI 임베딩 클라이언트를 준비하는 중입니다... (모델: {MODEL_NAME})")
+    client = get_client()
 
-    print("2) 밈 데이터를 불러오는 중입니다...")
-    memes = load_memes(INPUT_PATH)
+    print(f"2) memes 테이블에서 밈 데이터를 불러오는 중입니다... ({DB_PATH})")
+    memes = load_memes(DB_PATH)
     print(f"   → 총 {len(memes)}개 밈 데이터 로드 완료")
 
     print("3) 상황 카테고리로 분류하는 중입니다...")
-    results = classify_all_memes(memes, model)
+    results = classify_all_memes(memes, client)
 
     print("4) 결과를 저장하는 중입니다...")
     save_results(results)

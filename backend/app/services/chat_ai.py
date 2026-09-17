@@ -4,12 +4,15 @@
 사장님이 한국어로 쓴 문장에서 숫자·품목·시각을 읽어내는 파서다.
 """
 
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from app.services.danbooru_lookup import verify_tags
 from app.services.danbooru_tags import tags_for_look
+
+logger = logging.getLogger(__name__)
 
 # 서버는 UTC로 돈다. 그대로 쓰면 새벽 5시에 구운 빵이 '어제' 생산으로 기록된다 —
 # 새벽에 굽는 가게가 많으니 여기서 한국 시간으로 고정한다.
@@ -60,8 +63,10 @@ def character_prompt(char, hint: str = "") -> str:
 def character_part(char) -> str:
     """시트의 IMAGE_FIELDS 다섯 칸 → 실존 Danbooru 태그 문자열.
 
-    태그를 하나도 못 뽑으면 원문, 그것도 없으면 빈 문자열. 캐릭터 후보 프롬프트와
-    네컷 프롬프트(comic_prompt)가 같은 캐릭터 태그를 쓰도록 여기 한 곳에서만 계산한다.
+    태그를 하나도 못 뽑으면 **빈 문자열**이다. 예전에는 한국어 원문을 그대로 넣었는데,
+    Anima는 Danbooru 태그로 학습돼 한국어를 못 읽는다 — 설명이 아니라 잡음이 하나 더
+    붙을 뿐이었다. 캐릭터 후보 프롬프트와 네컷 프롬프트(comic_prompt)가 같은 캐릭터
+    태그를 쓰도록 여기 한 곳에서만 계산한다.
     """
     from app.services.character_sheet import IMAGE_FIELDS
 
@@ -71,7 +76,9 @@ def character_part(char) -> str:
     tags = tags_for_look(described) if described else []
     if tags:
         return ", ".join(tags)
-    return described
+    if described:
+        logger.warning("캐릭터 태그를 하나도 못 뽑았습니다 — 설명 없이 갑니다: %s", described[:60])
+    return ""
 
 
 # 네컷은 장소·소품 태그가 들어가므로 STYLE_TAGS의 simple background만 뺀다.
@@ -81,16 +88,21 @@ COMIC_STYLE_TAGS = "masterpiece, best quality, score_7, safe, solo, (chibi:1.3),
 def comic_prompt(char_part_text: str, cut_line: str, camera: str = "") -> str:
     """네컷의 한 컷 프롬프트 — 캐릭터 태그 + 컷 문장을 태그로 바꾼 것 (+ 구도 태그).
 
-    컷 문장("손님이 몰려온다")도 같은 변환을 거친다. 태그가 안 나오면 원문을 넣는다 —
-    Anima가 얼버무릴 수 있지만 컷을 비워 두는 것보다 낫다. 캐릭터 정체성은 참조
-    이미지(IP-Adapter)가 잡고, 여기 태그는 행동·소품·장소를 말한다.
+    컷 문장("손님이 몰려온다")도 같은 변환을 거친다. **태그가 안 나와도 한국어 원문을
+    넣지 않는다** — 예전에는 "컷을 비워 두는 것보다 낫다"고 원문을 넣었지만, Anima는
+    Danbooru 태그로 학습돼 한국어를 못 읽으므로 비워 두는 것과 결과가 같고 프롬프트만
+    흐려진다. tags_for_look()이 검증을 못 통과한 영문 후보까지 내려가며 찾아 주므로
+    여기까지 비는 일은 GPT 호출 자체가 실패했을 때뿐이다.
+    캐릭터 정체성은 참조 이미지(IP-Adapter)가 잡고, 여기 태그는 행동·소품·장소를 말한다.
     char_part_text는 character_part()로 한 번만 계산해 넘긴다(GPT 호출 절약).
     camera는 스토리 제안이 고른 구도 태그(straight-on 등) — 실존 검증을 통과할 때만 붙인다.
     """
     scene = (cut_line or "").strip()
     scene_tags = tags_for_look(scene, kind="scene") if scene else []
+    if scene and not scene_tags:
+        logger.warning("컷 태그를 못 뽑았습니다 — 컷 문장 없이 갑니다: %s", scene[:60])
     cam = verify_tags([camera]) if camera else []
-    pieces = [COMIC_STYLE_TAGS, char_part_text, ", ".join(scene_tags) if scene_tags else scene, ", ".join(cam)]
+    pieces = [COMIC_STYLE_TAGS, char_part_text, ", ".join(scene_tags), ", ".join(cam)]
     return ", ".join(p for p in pieces if p)
 
 

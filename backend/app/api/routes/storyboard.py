@@ -3,22 +3,27 @@
 두 가지가 빠져 있다. 의도한 것이다.
 - **트렌드 조사**: 제거됐다. 어디서 가져왔는지 댈 수 없는 순위·조회수를 근거로
   사장님에게 광고를 권할 수는 없다.
-- **광고 이미지 생성**: 하지 않는다. 그림은 캐릭터 단계에서만 만들고, 여기서는
-  그 캐릭터로 무엇을 말할지(컷 구성·대사)만 정한다.
+- **광고 이미지 생성**: 컷 구성이 정해진 뒤 `POST /comic`으로만 만든다(MVP). 확정한
+  캐릭터 그림을 참조로 넣어 컷마다 한 장씩 백그라운드에서 그린다. 대사·글자는 그림에
+  넣지 않는다 — 그림 모델은 글자를 못 쓴다.
 
 남은 건 전부 사장님이 직접 입력한 값이다. 컷 구성도 템플릿이 아니라 사장님이 쓴
 문장을 컷 단위로 쪼갠 것이다 — 서비스가 대신 지어내는 문장은 없다.
 """
 
 import re
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.core.config import settings
 from app.core.database import get_db
-from app.services.chat_ai import (day_from, fmt_day, is_skip, item_from,
-                                  iso_day, new_pid, qty_from, time_from)
+from app.services import jobs
+from app.services.chat_ai import (character_part, comic_prompt, day_from, fmt_day, is_skip,
+                                  item_from, iso_day, new_pid, qty_from, time_from)
+from app.services.image_gen import generate_images
 
 router = APIRouter(prefix="/api/storyboard", tags=["storyboard"])
 
@@ -61,7 +66,7 @@ def _cuts_from_text(text: str) -> list[dict]:
 
 @router.get("", response_model=schemas.StoryboardOut)
 def get_storyboard(db: Session = Depends(get_db)):
-    return _get(db)
+    return schemas.storyboard_out(_get(db), jobs.queue_depth())
 
 
 @router.post("/chat", response_model=schemas.StoryboardOut)
@@ -145,7 +150,91 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     sb.messages = messages
     db.commit()
     db.refresh(sb)
-    return sb
+    return schemas.storyboard_out(sb, jobs.queue_depth())
+
+
+def _reference_path(char) -> Path | None:
+    """확정한 후보 그림의 디스크 경로. /api/media/<파일명> URL을 media_path의 파일로 되돌린다."""
+    cands = list(char.candidates or [])
+    index = char.selected_index if char.selected_index is not None else -1
+    if not 0 <= index < len(cands):
+        return None
+    image = (cands[index] or {}).get("image") or ""
+    name = image.rsplit("/", 1)[-1]
+    path = settings.media_path / name if name else None
+    return path if path and path.is_file() else None
+
+
+def _fill_cuts(indexes: list[int], lines: list[str], char_part_text: str, reference: Path) -> None:
+    """백그라운드 본체 — 컷마다 프롬프트를 만들고 한 장씩 뽑아 comic_cuts의 칸을 채운다.
+    컷 문장의 태그 변환(GPT)도 여기서 한다. 실패한 칸은 failed로 남긴다."""
+    for index, line in zip(indexes, lines):
+        prompt = comic_prompt(char_part_text, line)
+        images = generate_images(prompt, 1, workflow_file=settings.comfy_comic_workflow_file,
+                                 reference_path=reference)
+        image = images[0] if images else None
+
+        def write(db: Session, index=index, image=image):
+            sb = db.get(models.Storyboard, 1)
+            if not sb:
+                return
+            cuts = list(sb.comic_cuts or [])
+            if 0 <= index < len(cuts):
+                cuts[index] = {**cuts[index], "image": image, "status": "done" if image else "failed"}
+                sb.comic_cuts = cuts
+                db.commit()
+
+        jobs.with_session(write)
+
+
+def _start_cuts(sb: models.Storyboard, char: models.Character, indexes: list[int], db: Session) -> None:
+    reference = _reference_path(char)
+    if reference is None:
+        raise HTTPException(400, "캐릭터를 먼저 확정해주세요 — 확정한 캐릭터 그림을 참조로 씁니다")
+    cuts = list(sb.comic_cuts or [])
+    lines = [cuts[i].get("line", "") for i in indexes]
+    for i in indexes:
+        cuts[i] = {**cuts[i], "image": None, "status": "generating"}
+    sb.comic_cuts = cuts
+    db.commit()
+    # 캐릭터 태그는 여기서 한 번만 계산한다(GPT 1회). 컷 문장 변환은 백그라운드에서.
+    jobs.submit(_fill_cuts, indexes, lines, character_part(char), reference)
+
+
+@router.post("/comic", response_model=schemas.StoryboardOut)
+def make_comic(db: Session = Depends(get_db)):
+    """컷 구성 전부를 네컷 그림으로 뽑는다(비동기). 화면은 GET /api/storyboard를 폴링한다."""
+    sb = _get(db)
+    plan = list(sb.plan or [])
+    if not plan:
+        raise HTTPException(400, "먼저 대화로 컷 구성을 만들어주세요")
+    char = db.get(models.Character, 1)
+    if not char or not char.confirmed:
+        raise HTTPException(400, "캐릭터를 먼저 확정해주세요")
+    sb.comic_cuts = [
+        {"n": c["n"], "short": c.get("short", ""), "line": c.get("line", ""),
+         "label": f"{c['n']}컷", "image": None, "status": "generating"}
+        for c in plan
+    ]
+    _start_cuts(sb, char, list(range(len(plan))), db)
+    db.refresh(sb)
+    return schemas.storyboard_out(sb, jobs.queue_depth())
+
+
+@router.post("/comic/{n}/reroll", response_model=schemas.StoryboardOut)
+def reroll_cut(n: int, db: Session = Depends(get_db)):
+    """컷 하나만 다시 뽑는다."""
+    sb = _get(db)
+    cuts = list(sb.comic_cuts or [])
+    index = next((i for i, c in enumerate(cuts) if c.get("n") == n), None)
+    if index is None:
+        raise HTTPException(404, "cut not found")
+    char = db.get(models.Character, 1)
+    if not char or not char.confirmed:
+        raise HTTPException(400, "캐릭터를 먼저 확정해주세요")
+    _start_cuts(sb, char, [index], db)
+    db.refresh(sb)
+    return schemas.storyboard_out(sb, jobs.queue_depth())
 
 
 @router.post("/confirm/{pid}", response_model=schemas.StoryboardOut)
@@ -167,7 +256,7 @@ def confirm_pending(pid: str, db: Session = Depends(get_db)):
     sb.messages = messages
     db.commit()
     db.refresh(sb)
-    return sb
+    return schemas.storyboard_out(sb, jobs.queue_depth())
 
 
 @router.post("/decline/{pid}", response_model=schemas.StoryboardOut)
@@ -187,4 +276,4 @@ def decline_pending(pid: str, db: Session = Depends(get_db)):
     sb.messages = messages
     db.commit()
     db.refresh(sb)
-    return sb
+    return schemas.storyboard_out(sb, jobs.queue_depth())

@@ -57,6 +57,8 @@ function initialState() {
 
     sbMsgs: [], sbInput: '', sbThinking: false,
     plan: [], sbProdLogged: false, sbSetOpen: false, sbProdOpen: false, pending: {},
+    // 네컷 그림 칸과 진행 상태 — 캐릭터 후보와 같은 규칙(status: empty|generating|done|failed)
+    comicCuts: [], sbGenerating: false, sbEta: 0,
 
     myTab: 'history', history: [],
 
@@ -114,9 +116,16 @@ export function useAdMakerState() {
       try {
         const progress = await CharacterAPI.getProgress();
         update(progress);
+        // 네컷도 같은 폴링으로 본다 — 그리는 중일 때만 물어본다.
+        let sbBusy = false;
+        if (stateRef.current.sbGenerating) {
+          const sb = await StoryboardAPI.get();
+          update(sb);
+          sbBusy = sb.sbGenerating;
+        }
         // generating=false면 끝났다는 뜻이다. 칸 상태를 하나씩 보고 판단하면
         // 실패(failed) 칸이 섞였을 때 폴링이 안 멈춘다.
-        if (!progress.charGenerating) stopPolling();
+        if (!progress.charGenerating && !sbBusy) stopPolling();
       } catch {
         // 한 번 실패했다고 멈추지 않는다 — 잠깐 끊긴 것일 수 있으니 다음 차례에 다시 묻는다.
       }
@@ -369,6 +378,23 @@ export function useAdMakerState() {
     try { update(await StoryboardAPI.decline(pid)); } catch (e) { fail(e); }
   }, [update, fail]);
 
+  // ---------- 네컷 그림 ----------
+  const makeComic = useCallback(async () => {
+    try {
+      const sb = await StoryboardAPI.makeComic();
+      update(sb);
+      if (sb.sbGenerating) startPolling();
+    } catch (e) { fail(e); }
+  }, [update, startPolling, fail]);
+
+  const rerollCut = useCallback(async (n) => {
+    try {
+      const sb = await StoryboardAPI.rerollCut(n);
+      update(sb);
+      if (sb.sbGenerating) startPolling();
+    } catch (e) { fail(e); }
+  }, [update, startPolling, fail]);
+
   // ---------- 결과 / 저장 ----------
   const openResult = useCallback(() => {
     if (!stateRef.current.plan.length) { toast('먼저 대화로 컷 구성을 만들어주세요'); return; }
@@ -505,7 +531,7 @@ export function useAdMakerState() {
       saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion,
       confirmPending, declinePending,
       applyAd,
-      toggleSbSet, toggleSbProd, sendSb,
+      toggleSbSet, toggleSbProd, sendSb, makeComic, rerollCut,
       openResult, backToSb, confirmResult, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,

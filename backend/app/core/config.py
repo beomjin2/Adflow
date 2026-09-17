@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     # 연결을 따라가 프롬프트를 자동으로 채워 넣는다).
     comfy_workflow_file: str = "character_practice.json"
     comfy_timeout_seconds: int = 150
+    # 네컷(만화) 생성용 그래프 — 참조 이미지(IP-Adapter) 노드가 있다. Turbo 기본, base는 예비.
+    comfy_comic_workflow_file: str = "comic_ipadapter_turbo.json"
 
     # 생성된 캐릭터 PNG를 저장할 폴더. /api/media/<파일명>으로 서빙된다.
     media_dir: str = "media"

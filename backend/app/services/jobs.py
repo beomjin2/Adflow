@@ -102,6 +102,18 @@ def recover_interrupted(db) -> int:
         if changed:
             setattr(char, field, slots)
 
+    sb = db.get(models.Storyboard, 1)
+    if sb:
+        cuts = list(sb.comic_cuts or [])
+        changed = False
+        for i, cut in enumerate(cuts):
+            if isinstance(cut, dict) and cut.get("status") == "generating":
+                cuts[i] = {**cut, "status": "failed", "image": None}
+                changed = True
+                fixed += 1
+        if changed:
+            sb.comic_cuts = cuts
+
     if fixed:
         db.commit()
         logger.warning("재시작으로 끊긴 생성 %d칸을 failed로 정리했습니다", fixed)

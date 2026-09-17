@@ -1,6 +1,7 @@
 import { colors } from '../theme.js';
 import { PrimaryButton, SecondaryButton, SoftButton } from '../components/ui/Button.jsx';
 import { buildAdText, adTextForClipboard, characterImage } from '../lib/adText.js';
+import ImageSlot from '../components/ImageSlot.jsx';
 
 export default function Result({ state, actions }) {
   const { headline, lines, info, tags, empty } = buildAdText(state);
@@ -31,7 +32,7 @@ export default function Result({ state, actions }) {
 
   return (
     <div style={{ padding: 22, display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-      {/* 컷 구성 — 사장님이 정한 문장 그대로. 그림은 캐릭터만 있고, 컷 그림은 만들지 않는다. */}
+      {/* 컷 구성 — 사장님이 정한 문장 그대로. 네컷 그림은 스토리보드에서 "네컷 그리기"를 눌렀을 때만 생긴다. */}
       <div style={{ flex: '1 1 340px', minWidth: 0, border: `1px solid ${colors.cardBorder}`, borderRadius: 18, background: '#fff', overflow: 'hidden' }}>
         <div style={{ padding: '14px 16px', borderBottom: `1px solid ${colors.cardBorder}`, display: 'flex', alignItems: 'center', gap: 10 }}>
           {charImg && (
@@ -47,6 +48,13 @@ export default function Result({ state, actions }) {
             </span>
           </div>
         </div>
+        {(state.comicCuts || []).some((c) => c.status !== 'empty') && (
+          <div style={{ padding: '12px 16px 0', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+            {(state.comicCuts || []).map((c) => (
+              <ImageSlot key={c.n} slot={c} size={150} eta={state.sbEta} onReroll={() => actions.rerollCut(c.n)} />
+            ))}
+          </div>
+        )}
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           {state.plan.map((c) => (
             <div key={c.n} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>

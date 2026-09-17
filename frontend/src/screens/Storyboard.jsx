@@ -1,6 +1,7 @@
 import { colors } from '../theme.js';
 import { Select } from '../components/ui/Field.jsx';
-import { PrimaryButton } from '../components/ui/Button.jsx';
+import { PrimaryButton, SoftButton } from '../components/ui/Button.jsx';
+import ImageSlot, { formatEta } from '../components/ImageSlot.jsx';
 import ChatPanel from '../components/ChatPanel.jsx';
 
 const AD_TYPES = ['인스타 게시물', '포스터', '메뉴판'];
@@ -107,6 +108,28 @@ export default function Storyboard({ state, actions }) {
             </div>
           ))}
         </div>
+
+        {(state.comicCuts || []).length > 0 && (
+          <div style={{ background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: 14, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>
+              {state.sbGenerating ? `네컷을 그리는 중 — 약 ${formatEta(state.sbEta)}` : '네컷 그림'}
+            </span>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+              {(state.comicCuts || []).map((c) => (
+                <ImageSlot key={c.n} slot={c} size={120} eta={state.sbEta} onReroll={() => actions.rerollCut(c.n)} />
+              ))}
+            </div>
+          </div>
+        )}
+        <SoftButton
+          onClick={actions.makeComic}
+          disabled={!state.plan.length || !state.charConfirmed || state.sbGenerating}
+          style={{ height: 46, fontSize: 15, background: colors.primarySoft, color: colors.primarySoftText }}
+        >
+          {!state.charConfirmed ? '캐릭터를 먼저 확정해주세요'
+            : state.sbGenerating ? '그리는 중…'
+              : (state.comicCuts || []).length ? '네컷 다시 그리기' : '네컷 그리기'}
+        </SoftButton>
 
         <div style={{ flex: 1 }} />
         <PrimaryButton onClick={actions.openResult} disabled={!state.plan.length}>

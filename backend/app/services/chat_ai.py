@@ -8,6 +8,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
+from app.services.danbooru_lookup import verify_tags
 from app.services.danbooru_tags import tags_for_look
 
 # 서버는 UTC로 돈다. 그대로 쓰면 새벽 5시에 구운 빵이 '어제' 생산으로 기록된다 —
@@ -47,21 +48,50 @@ def character_prompt(char, hint: str = "") -> str:
     그림 쪽으로 넘어가지 않는다. 라우터가 시트가 다 찬 뒤에만 여기까지 오게 막으므로
     described가 비는 경우는 없다(비면 태그도 프롬프트도 STYLE_TAGS뿐이다).
     """
+    pieces = [STYLE_TAGS]
+    part = character_part(char)
+    if part:
+        pieces.append(part)
+    if hint:
+        pieces.append(hint)
+    return ", ".join(pieces)
+
+
+def character_part(char) -> str:
+    """시트의 IMAGE_FIELDS 다섯 칸 → 실존 Danbooru 태그 문자열.
+
+    태그를 하나도 못 뽑으면 원문, 그것도 없으면 빈 문자열. 캐릭터 후보 프롬프트와
+    네컷 프롬프트(comic_prompt)가 같은 캐릭터 태그를 쓰도록 여기 한 곳에서만 계산한다.
+    """
     from app.services.character_sheet import IMAGE_FIELDS
 
     described = ", ".join(
         value for value in ((getattr(char, f, "") or "").strip() for f in IMAGE_FIELDS) if value
     )
-
-    pieces = [STYLE_TAGS]
     tags = tags_for_look(described) if described else []
     if tags:
-        pieces.append(", ".join(tags))
-    elif described:
-        pieces.append(described)
-    if hint:
-        pieces.append(hint)
-    return ", ".join(pieces)
+        return ", ".join(tags)
+    return described
+
+
+# 네컷은 장소·소품 태그가 들어가므로 STYLE_TAGS의 simple background만 뺀다.
+COMIC_STYLE_TAGS = "masterpiece, best quality, score_7, safe, solo, (chibi:1.3), full body"
+
+
+def comic_prompt(char_part_text: str, cut_line: str, camera: str = "") -> str:
+    """네컷의 한 컷 프롬프트 — 캐릭터 태그 + 컷 문장을 태그로 바꾼 것 (+ 구도 태그).
+
+    컷 문장("손님이 몰려온다")도 같은 변환을 거친다. 태그가 안 나오면 원문을 넣는다 —
+    Anima가 얼버무릴 수 있지만 컷을 비워 두는 것보다 낫다. 캐릭터 정체성은 참조
+    이미지(IP-Adapter)가 잡고, 여기 태그는 행동·소품·장소를 말한다.
+    char_part_text는 character_part()로 한 번만 계산해 넘긴다(GPT 호출 절약).
+    camera는 스토리 제안이 고른 구도 태그(straight-on 등) — 실존 검증을 통과할 때만 붙인다.
+    """
+    scene = (cut_line or "").strip()
+    scene_tags = tags_for_look(scene, kind="scene") if scene else []
+    cam = verify_tags([camera]) if camera else []
+    pieces = [COMIC_STYLE_TAGS, char_part_text, ", ".join(scene_tags) if scene_tags else scene, ", ".join(cam)]
+    return ", ".join(p for p in pieces if p)
 
 
 def pending_candidates(count: int = 3) -> list[dict]:

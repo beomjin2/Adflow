@@ -55,16 +55,17 @@ def eta_seconds(count: int = 1) -> int:
     return SECONDS_BASE + SECONDS_PER_IMAGE * max(count, 1)
 
 
-def _load_workflow() -> dict:
-    path = Path(settings.comfy_workflow_file)
+def _load_workflow(name: str | None = None) -> dict:
+    path = Path(name or settings.comfy_workflow_file)
     if not path.is_absolute():
         path = WORKFLOWS_DIR / path
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-def _build_prompt_graph(text: str, seed: int, batch_size: int = 1) -> dict:
-    graph = _load_workflow()
+def _build_prompt_graph(text: str, seed: int, batch_size: int = 1,
+                        workflow_file: str | None = None, reference_name: str | None = None) -> dict:
+    graph = _load_workflow(workflow_file)
 
     # 샘플러 노드의 positive/negative가 가리키는 노드를 따라가 그 노드의 text를 치환한다.
     for node in graph.values():
@@ -83,6 +84,12 @@ def _build_prompt_graph(text: str, seed: int, batch_size: int = 1) -> dict:
             inputs["seed"] = seed
         if isinstance(inputs.get("noise_seed"), int):
             inputs["noise_seed"] = seed
+
+    # 참조 이미지 노드(LoadImage)가 있는 그래프면 ComfyUI에 올려둔 파일명을 꽂는다.
+    if reference_name:
+        for node in graph.values():
+            if node.get("class_type") == "LoadImage":
+                node["inputs"]["image"] = reference_name
 
     # 후보 3장을 한 번에 뽑을 때는 batch_size를 올린다. 3번 따로 돌리면 168초인데
     # 배치로 돌리면 86초다 (모델 로드·VAE 디코드가 한 번이라서).
@@ -114,7 +121,22 @@ def _save_png(content: bytes) -> str | None:
     return f"{MEDIA_URL_PREFIX}/{filename}"
 
 
-def generate_images(prompt: str, count: int = 1, seed: int | None = None) -> list[str | None]:
+def _upload_reference(path: Path) -> str | None:
+    """참조 PNG를 ComfyUI input/에 올리고 LoadImage에 넣을 파일명을 돌려준다. 실패하면 None."""
+    try:
+        with open(path, "rb") as f:
+            resp = _comfy_request("POST", "/upload/image",
+                                  files={"image": (path.name, f, "image/png")},
+                                  data={"overwrite": "true"})
+        resp.raise_for_status()
+        return resp.json().get("name") or path.name
+    except (OSError, requests.RequestException, ValueError):
+        logger.exception("참조 이미지 업로드 실패: %s", path)
+        return None
+
+
+def generate_images(prompt: str, count: int = 1, seed: int | None = None,
+                    workflow_file: str | None = None, reference_path: Path | None = None) -> list[str | None]:
     """ComfyUI로 이미지 count장을 생성해 **URL 목록**을 반환한다 (`/api/media/<uuid>.png`).
 
     PNG는 디스크(settings.media_path)에 저장하고 응답엔 경로만 담는다 — 예전처럼
@@ -128,10 +150,16 @@ def generate_images(prompt: str, count: int = 1, seed: int | None = None) -> lis
     seed = seed if seed is not None else random.randint(0, 2**32 - 1)
     client_id = str(uuid.uuid4())
 
+    reference_name = None
+    if reference_path is not None:
+        reference_name = _upload_reference(reference_path)
+        if not reference_name:
+            return []
+
     try:
         submit = _comfy_request("POST", "/prompt", json={
             "client_id": client_id,
-            "prompt": _build_prompt_graph(prompt, seed, count),
+            "prompt": _build_prompt_graph(prompt, seed, count, workflow_file, reference_name),
         })
         submit.raise_for_status()
         prompt_id = submit.json()["prompt_id"]

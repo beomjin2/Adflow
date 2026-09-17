@@ -99,9 +99,35 @@ _LLM_SYSTEM_PROMPT = (
     "'red scarf' -> scarf, red_scarf (keep both, do not drop the color)."
 )
 
+# 네컷의 한 컷 문장(장면) 전용. 캐릭터용 프롬프트를 그대로 쓰면 GPT가 한국어 단어를
+# 그대로 뱉거나(빵집, 빈 진열대) 없는 태그를 지어낸다(salt_bread). 예시는 전부 parquet에서
+# 2,000장 이상 확인한 태그다. "비어 있음"은 태그가 없으므로 물체+반응으로, 손님은 동물로 옮긴다.
+_SCENE_SYSTEM_PROMPT = (
+    "You convert one Korean sentence describing a scene in a 4-panel bakery mascot comic "
+    "into Danbooru imageboard tags for the mascot's ACTION, EXPRESSION, PROPS and PLACE. "
+    "Output ONLY a comma-separated list of real Danbooru tags in exact tag format "
+    "(lowercase English, spaces as underscores). Never output Korean words, never invent "
+    "compound tags, never describe the mascot's appearance (it is given elsewhere). "
+    "If a concept has no real Danbooru tag, express it with tags that do exist. Examples: "
+    "'갓 구운 빵이 진열된다' -> bread, food, tray, steam, shop, indoors; "
+    "'오븐에서 빵을 꺼낸다' -> holding_tray, tray, bread, steam, kitchen; "
+    "'손님들이 빵집으로 몰려온다' -> multiple_others, crowd, cat, dog, shop, indoors; "
+    "'진열대가 텅 비었다 / 다 팔렸다' -> tray, plate, looking_down, looking_at_object, surprised, open_mouth, sweatdrop, indoors "
+    "(no bread tag — emptiness is shown by the empty tray and the reaction); "
+    "'빵을 들고 손을 흔든다' -> holding_food, bread, waving, arm_up, smile, shop; "
+    "'턱을 짚고 고민한다' -> hand_on_own_chin, head_tilt, thinking; "
+    "'기뻐서 눈을 반짝인다' -> happy, sparkling_eyes, smile; "
+    "'지쳐서 땀을 흘린다' -> sweatdrop, shaded_face, half-closed_eyes."
+)
 
-def generate_tags_via_llm(look: str) -> list[str]:
-    """GPT로 look 묘사에서 Danbooru 태그 후보를 뽑고 실존·게시물수를 검증해 돌려준다.
+
+def _system_prompt(kind: str) -> str:
+    return _SCENE_SYSTEM_PROMPT if kind == "scene" else _LLM_SYSTEM_PROMPT
+
+
+def generate_tags_via_llm(look: str, kind: str = "character") -> list[str]:
+    """GPT로 묘사에서 Danbooru 태그 후보를 뽑고 실존·게시물수를 검증해 돌려준다.
+    kind="character"는 외형 설명, "scene"은 네컷의 한 컷 문장(행동·소품·장소).
     OPENAI_API_KEY가 없거나 호출이 실패하면 빈 리스트(호출부가 화이트리스트로 폴백)."""
     if not settings.openai_api_key or not (look or "").strip():
         return []
@@ -110,7 +136,7 @@ def generate_tags_via_llm(look: str) -> list[str]:
         resp = client.chat.completions.create(
             model=settings.openai_model,
             messages=[
-                {"role": "system", "content": _LLM_SYSTEM_PROMPT},
+                {"role": "system", "content": _system_prompt(kind)},
                 {"role": "user", "content": look},
             ],
             temperature=0,
@@ -123,9 +149,10 @@ def generate_tags_via_llm(look: str) -> list[str]:
     return verify_tags(candidates)
 
 
-def tags_for_look(look: str) -> list[str]:
-    """look 묘사를 실존 Danbooru 태그 목록으로. GPT(검증 포함)가 1순위, 실패하면 화이트리스트."""
-    tags = generate_tags_via_llm(look)
+def tags_for_look(look: str, kind: str = "character") -> list[str]:
+    """묘사를 실존 Danbooru 태그 목록으로. GPT(검증 포함)가 1순위, 실패하면 화이트리스트.
+    화이트리스트는 캐릭터 외형 어휘라 kind="scene"에서는 거의 비어 돌아온다(호출부가 원문 폴백)."""
+    tags = generate_tags_via_llm(look, kind)
     if tags:
         return tags
     matched, _unmatched = resolve_look_to_tags(look)

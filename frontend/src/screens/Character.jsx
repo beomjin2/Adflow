@@ -186,11 +186,14 @@ export default function Character({ state, actions }) {
 
           {/* 여덟 칸을 머리카락 선으로 나눈 카드 하나로 묶는다. 칸마다 입력창을
               띄워 두면 시트가 대화창보다 훨씬 길어지고, 무엇보다 '채워야 할 서식'처럼
-              보인다. 지금 묻는 칸만 펼치고 나머지는 한 줄로 둔다. */}
+              보인다. 지금 묻는 칸만 펼치고 나머지는 한 줄로 둔다.
+
+              높이를 막지 않는다. 예전엔 340px에서 잘라 스크롤을 붙였는데, 묻는 칸이
+              펼쳐지는 순간 아래 세 칸(성별·이름·키워드)이 그 선 밖으로 밀려나
+              **카드 밑에 빈자리를 두고도 안 보였다.** 한 줄짜리 칸 여덟은 길지 않다. */}
           <div style={{
             display: 'flex', flexDirection: 'column',
             border: `1px solid ${colors.cardBorder}`, borderRadius: 12, overflow: 'hidden',
-            maxHeight: 340, overflowY: 'auto',
           }}>
             {rows.map((row, i) => (
               <Row

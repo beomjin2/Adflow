@@ -1,5 +1,5 @@
 import { colors } from '../theme.js';
-import { Select } from '../components/ui/Field.jsx';
+import { Select, TextInput, TextArea } from '../components/ui/Field.jsx';
 import { PrimaryButton, SoftButton } from '../components/ui/Button.jsx';
 import { formatEta } from '../components/ImageSlot.jsx';
 import ComicPanels from '../components/ComicPanels.jsx';
@@ -17,6 +17,11 @@ const EMPTY_HINT = `오늘 무엇을 알리고 싶으신가요?
 export default function Storyboard({ state, actions }) {
   const missingProds = state.prods.filter(p => !p.soldOut);
   const sbSummary = [state.adType, state.adConcept, state.charName].filter(Boolean).join(' · ') || '아직 안 정함';
+  const selectedMemeCard = (state.memes || []).find(m => String(m.id) === String(state.memeId));
+  const memeCard = selectedMemeCard?.card || {};
+  // 트렌드 확인 화면에서 밈을 고르고 왔으면 applyAd()가, "밈 고르기"에서 카드를 골랐으면
+  // pickMemeCard()가 이 칸들을 채운다 — 어느 쪽이든 채워져 있으면 접힌 채로 두지 않는다.
+  const memeDraftFilled = !!(state.memeTitle || state.memeText);
 
   return (
     <div style={{ padding: '18px 20px 20px', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'stretch' }}>
@@ -89,30 +94,71 @@ export default function Storyboard({ state, actions }) {
           )}
         </div>
 
-        <div style={{ background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: 14, padding: '13px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>밈으로 스토리 제안받기</span>
+        <div style={{ background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: 14, padding: '14px 15px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>밈으로 스토리 제안받기</span>
+            <span style={{ flex: 1 }} />
+            <button onClick={actions.goTrend} style={{ border: 0, background: 'transparent', padding: 0, fontSize: 11.5, fontWeight: 700, color: colors.primarySoftText, cursor: 'pointer' }}>
+              트렌드에서 더 보기 ›
+            </button>
+          </div>
           <span style={{ fontSize: 12, lineHeight: '18px', color: colors.textFaint }}>
             밈을 고르면 가게 정보로 4컷 초안을 만들어 대화창에 제안해요. 마음에 들면 거기서 "이대로 바꾸기".
           </span>
-          <Select value={state.memeId || ''} onChange={e => actions.set('memeId', e.target.value)}>
+
+          <Select value={state.memeId || ''} onChange={e => actions.pickMemeCard(e.target.value)} disabled={!!state.trendSel}>
             <option value="">밈 고르기</option>
             {(state.memes || []).map(m => <option key={m.id} value={m.id}>{m.title}</option>)}
           </Select>
-          {state.memeId && (state.memes || []).find(m => String(m.id) === String(state.memeId)) && (
-            <span style={{ fontSize: 12, lineHeight: '18px', color: colors.textSub }}>
-              말 틀: {(state.memes || []).find(m => String(m.id) === String(state.memeId)).card.template || '—'}
+          {state.trendSel && (
+            <span style={{ fontSize: 11.5, color: colors.textFaint }}>
+              트렌드에서 고른 밈으로 카드를 만드는 중이라 다른 카드는 고를 수 없어요. 다른 밈을 쓰려면 트렌드 화면에서 다시 골라주세요.
             </span>
           )}
+
+          {selectedMemeCard && (
+            <div style={{ background: colors.softBg, borderRadius: 11, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 7, animation: 'pop .18s ease' }}>
+              {memeCard.definition && (
+                <span style={{ fontSize: 12.5, lineHeight: '19px', color: colors.text }}>{memeCard.definition}</span>
+              )}
+              {memeCard.template && (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: colors.textFaint, letterSpacing: .3, flex: 'none' }}>말 틀</span>
+                  <span style={{ fontSize: 12.5, lineHeight: '18px', color: colors.textSub }}>{memeCard.template}</span>
+                </div>
+              )}
+              {(memeCard.industries || []).length > 0 && (
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  {memeCard.industries.map((ind) => (
+                    <span key={ind} style={{ fontSize: 10.5, fontWeight: 700, color: colors.primarySoftText, background: colors.primarySoft, borderRadius: 999, padding: '3px 8px' }}>
+                      {ind}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <SoftButton onClick={actions.proposeStory} disabled={!state.memeId || state.sbThinking}
             style={{ height: 42, fontSize: 14, background: colors.primarySoft, color: colors.primarySoftText }}>
             {state.sbThinking ? '만드는 중…' : '스토리 제안받기'}
           </SoftButton>
-          <details>
-            <summary style={{ fontSize: 12, color: colors.textFaint, cursor: 'pointer' }}>밈 카드 추가 (원문 붙여넣기)</summary>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-              <input value={state.memeTitle || ''} onChange={e => actions.set('memeTitle', e.target.value)} placeholder="밈 이름" style={miniFieldStyle} />
-              <input value={state.memeSource || ''} onChange={e => actions.set('memeSource', e.target.value)} placeholder="출처(사이트·링크)" style={miniFieldStyle} />
-              <textarea value={state.memeText || ''} onChange={e => actions.set('memeText', e.target.value)} placeholder="밈 원문 본문을 그대로 붙여넣기 (요약만으로는 카드가 안 나와요)" style={{ ...miniFieldStyle, height: 90, padding: 8, resize: 'vertical' }} />
+
+          {/* 채워져 있으면(트렌드에서든, 밈 고르기에서든) 접힌 채로 숨어있지 않게 기본으로 펼쳐 둔다. */}
+          <details open={memeDraftFilled} style={{ borderTop: `1px solid ${colors.cardBorder}`, paddingTop: 9 }}>
+            <summary style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: colors.textSub, cursor: 'pointer' }}>
+              <span style={{ color: colors.textFaint }}>＋</span>
+              밈 카드 직접 추가 (원문 붙여넣기)
+              {state.memeDraftFromTrend && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: colors.primarySoftText, background: colors.primarySoft, borderRadius: 999, padding: '2px 7px' }}>
+                  트렌드에서 가져옴
+                </span>
+              )}
+            </summary>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 8 }}>
+              <TextInput value={state.memeTitle || ''} onChange={e => actions.set('memeTitle', e.target.value)} placeholder="밈 이름" style={{ height: 42, fontSize: 14 }} />
+              <TextInput value={state.memeSource || ''} onChange={e => actions.set('memeSource', e.target.value)} placeholder="출처(사이트·링크)" style={{ height: 42, fontSize: 14 }} />
+              <TextArea value={state.memeText || ''} onChange={e => actions.set('memeText', e.target.value)} placeholder="밈 원문 본문을 그대로 붙여넣기 (요약만으로는 카드가 안 나와요)" style={{ height: 90, fontSize: 14 }} />
               <SoftButton onClick={actions.addMeme} disabled={!(state.memeTitle || '').trim() || (state.memeText || '').trim().length < 40 || state.sbThinking} style={{ height: 38, fontSize: 13 }}>
                 카드 만들기
               </SoftButton>

@@ -11,6 +11,11 @@ danbooru_lookup.verify_tags()로 실존·게시물수(2,000장 이상)를 검증
 폴백 경로: OPENAI_API_KEY가 없거나 GPT 호출이 실패하면 KEYWORD_TO_TAG 화이트리스트
 (출처: research/34·35, Jio7/danbooru-tags-classified 대조 확인)로 대체한다. 이쪽은
 사전에 없는 단어를 절대 지어내지 않고 버린다.
+
+**이 모듈이 내보내는 태그는 어느 경로로 나오든 영문이다.** Anima는 Danbooru 태그로
+학습돼 한국어를 못 읽는다 — 한국어가 프롬프트에 들어가면 도움이 아니라 잡음이다.
+프롬프트에 "영어로만"을 적는 것만으로는 안 지켜진다(스토리 문장 실측 통과율 9%).
+그래서 `_split_by_script()`로 잘라내고, 잘린 게 있으면 한 번 되묻는다.
 """
 
 from __future__ import annotations
@@ -85,7 +90,9 @@ def resolve_look_to_tags(look: str) -> tuple[list[str], list[str]]:
 _LLM_SYSTEM_PROMPT = (
     "You convert a short character description into Danbooru imageboard tags. "
     "Output ONLY a comma-separated list of real Danbooru tags in their exact tag "
-    "format (lowercase, spaces as underscores). No explanations, no natural-language "
+    "format (lowercase ENGLISH, spaces as underscores). Never output Korean words — "
+    "translate every Korean concept into the tag Danbooru actually uses, or drop it. "
+    "No explanations, no natural-language "
     "phrases. If a concept has no real Danbooru tag, omit it rather than inventing one. "
     "Danbooru's exact vocabulary is often not the literal translation — prefer the "
     "tag actually used on the site over a made-up compound, and keep color/size "
@@ -125,35 +132,105 @@ def _system_prompt(kind: str) -> str:
     return _SCENE_SYSTEM_PROMPT if kind == "scene" else _LLM_SYSTEM_PROMPT
 
 
+# 프롬프트로 "영어로만"을 아무리 적어도 GPT는 스토리 문장에서 한국어를 그대로 뱉는다.
+# 실측(gpt-4o-mini, temperature=0): 스토리 9문장에서 곰·주방·반죽·혼자·새벽·빵·웃음·
+# 눈을_감다 가 나왔고 검증 통과율이 9%였다. 그래서 되묻는다 — 무엇이 걸렸는지 알려주면
+# 대부분 한 번에 고쳐 온다.
+_RETRY_PROMPT = (
+    "These are not English Danbooru tags: {bad}. "
+    "Answer again with ONLY real English Danbooru tags (lowercase, underscores). "
+    "Translate every Korean concept into the tag Danbooru actually uses, or drop it."
+)
+
+
+def _split_tags(raw: str) -> list[str]:
+    return [t for t in (s.strip().strip(",") for s in (raw or "").replace("\n", ",").split(",")) if t]
+
+
+def _split_by_script(candidates: list[str]) -> tuple[list[str], list[str]]:
+    """(영문 태그, 그렇지 않은 것). Anima는 Danbooru 태그로 학습돼 한국어를 못 읽는다 —
+    넣어 봐야 도움이 아니라 프롬프트를 흐리는 잡음이다. 부탁이 아니라 여기서 자른다."""
+    english: list[str] = []
+    other: list[str] = []
+    for tag in candidates:
+        (english if tag.isascii() else other).append(tag)
+    return english, other
+
+
+def _ask_tags(messages: list[dict]) -> str:
+    client = OpenAI(api_key=settings.openai_api_key)
+    resp = client.chat.completions.create(
+        model=settings.openai_model, messages=messages, temperature=0,
+    )
+    return resp.choices[0].message.content or ""
+
+
+def english_candidates(look: str, kind: str = "character") -> list[str]:
+    """GPT가 낸 태그 후보 중 **영문인 것만**. 실존 검증은 하지 않는다.
+
+    비영문이 섞이면 한 번만 되묻는다. 잘라내기만 하면 컷이 거의 비어 버리기 때문이다 —
+    스토리 문장에서는 후보의 대부분이 한국어로 나온 적이 있다.
+    """
+    if not settings.openai_api_key or not (look or "").strip():
+        return []
+    messages = [
+        {"role": "system", "content": _system_prompt(kind)},
+        {"role": "user", "content": look},
+    ]
+    try:
+        raw = _ask_tags(messages)
+    except Exception:
+        logger.exception("GPT 태그 생성 실패 — 화이트리스트로 폴백")
+        return []
+
+    english, other = _split_by_script(_split_tags(raw))
+    if not other:
+        return english
+
+    logger.warning("태그에 비영문이 섞였습니다 — 재요청합니다: %s", ", ".join(other[:8]))
+    try:
+        retry_raw = _ask_tags(messages + [
+            {"role": "assistant", "content": raw},
+            {"role": "user", "content": _RETRY_PROMPT.format(bad=", ".join(other))},
+        ])
+    except Exception:
+        logger.exception("태그 재요청 실패 — 영문만 남기고 진행합니다")
+        return english
+
+    retried, still_other = _split_by_script(_split_tags(retry_raw))
+    if still_other:
+        logger.warning("재요청에도 비영문이 남아 버립니다: %s", ", ".join(still_other[:8]))
+    return english + [t for t in retried if t not in english]
+
+
 def generate_tags_via_llm(look: str, kind: str = "character") -> list[str]:
     """GPT로 묘사에서 Danbooru 태그 후보를 뽑고 실존·게시물수를 검증해 돌려준다.
     kind="character"는 외형 설명, "scene"은 네컷의 한 컷 문장(행동·소품·장소).
     OPENAI_API_KEY가 없거나 호출이 실패하면 빈 리스트(호출부가 화이트리스트로 폴백)."""
-    if not settings.openai_api_key or not (look or "").strip():
-        return []
-    try:
-        client = OpenAI(api_key=settings.openai_api_key)
-        resp = client.chat.completions.create(
-            model=settings.openai_model,
-            messages=[
-                {"role": "system", "content": _system_prompt(kind)},
-                {"role": "user", "content": look},
-            ],
-            temperature=0,
-        )
-        raw = resp.choices[0].message.content or ""
-    except Exception:
-        logger.exception("GPT 태그 생성 실패 — 화이트리스트로 폴백")
-        return []
-    candidates = [t.strip() for t in raw.replace("\n", ",").split(",") if t.strip()]
-    return verify_tags(candidates)
+    return verify_tags(english_candidates(look, kind))
 
 
 def tags_for_look(look: str, kind: str = "character") -> list[str]:
-    """묘사를 실존 Danbooru 태그 목록으로. GPT(검증 포함)가 1순위, 실패하면 화이트리스트.
-    화이트리스트는 캐릭터 외형 어휘라 kind="scene"에서는 거의 비어 돌아온다(호출부가 원문 폴백)."""
-    tags = generate_tags_via_llm(look, kind)
-    if tags:
-        return tags
+    """묘사를 Danbooru 태그 목록으로. **돌려주는 값은 언제나 영문이다.**
+
+    세 단계로 내려간다:
+
+    1. GPT 후보 중 **실존하고 2,000장 이상**인 태그 (`verify_tags`)
+    2. 화이트리스트(`KEYWORD_TO_TAG`) 매칭 — 캐릭터 외형 어휘라 kind="scene"에서는 거의 빈다
+    3. 검증은 못 통과했지만 **영문인** GPT 후보
+
+    3단계는 네컷의 컷 문장처럼 어휘가 화이트리스트 밖일 때 쓴다. 예전에는 여기서
+    호출부가 한국어 원문을 프롬프트에 그대로 넣었다. 지어낸 영문 태그(`salt_bread`)는
+    모델이 "salt bread"로 읽기라도 하지만 한국어는 아무것도 되지 않는다 — 둘 다
+    이상적이진 않아도 한쪽만 쓸모가 있다.
+    """
+    candidates = english_candidates(look, kind)
+    verified = verify_tags(candidates)
+    if verified:
+        return verified
     matched, _unmatched = resolve_look_to_tags(look)
-    return matched
+    if matched:
+        return matched
+    if candidates:
+        logger.info("검증을 통과한 태그가 없어 영문 후보를 그대로 씁니다: %s", ", ".join(candidates[:8]))
+    return candidates

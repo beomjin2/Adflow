@@ -27,7 +27,9 @@ _PROMPT = (
 def _client() -> OpenAI:
     if not settings.openai_api_key:
         raise RuntimeError("OPENAI_API_KEY가 비어 있어 추천을 만들 수 없어요")
-    return OpenAI(api_key=settings.openai_api_key)
+    # 타임아웃을 안 주면 SDK 기본값(훨씬 길다)에 맡겨져, OpenAI가 느려질 때 nginx의
+    # 60초 응답 대기보다 오래 걸려 친절한 에러 대신 그냥 502가 뜬다.
+    return OpenAI(api_key=settings.openai_api_key, timeout=settings.openai_timeout_seconds)
 
 
 def recommend_meme(situation: str, note: str, character_desc: str, candidates: list[dict]) -> dict:

@@ -195,12 +195,18 @@ export const HistoryAPI = {
 const mapTrendMeme = (m) => ({
   id: m.id, source: m.source, sourceLabel: m.source_label, name: m.name,
   url: m.url, image: m.image, origin: m.origin, summary: m.summary,
-  published: m.published, views: m.views, situation: m.situation || '',
+  published: m.published, periodStart: m.period_start || '', peakDate: m.peak_date || '',
+  views: m.views, situation: m.situation || '',
 });
 
 export const TrendAPI = {
   list: () => get('/api/trend').then((r) => ({
     trendItems: (r.items || []).map(mapTrendMeme),
     trendSites: r.sites || [],
+  })),
+  // situation 안에서 GPT가 밈 하나를 고르고 이유를 준다. note는 "오늘 알릴 내용"(선택, 빈 문자열 가능).
+  recommend: (situation, note) => post('/api/trend/recommend', { situation, note }).then((r) => ({
+    meme: mapTrendMeme(r.meme),
+    reason: r.reason,
   })),
 };

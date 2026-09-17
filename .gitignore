@@ -16,6 +16,7 @@ backend/.env
 # backend/app만 옮기고 이 폴더는 안 가져가서, 여기 없으면 VM에서 직접 옮겨야 한다).
 crawling/*
 !crawling/.gitkeep
-!crawling/memes_nested.json
+!crawling/memes_all.json
 !crawling/memes_classified.json
 !crawling/images/
+!crawling/*.py

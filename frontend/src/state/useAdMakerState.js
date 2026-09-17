@@ -60,6 +60,10 @@ function initialState() {
     // 트렌드 확인 — /api/trend가 준 밈 목록을 그대로 두고, 필터/검색/정렬/선택은 화면에서만 쓴다.
     trendItems: [], trendSites: [],
     trendFilter: '전체', trendSearch: '', trendSort: '최신순', trendSel: '',
+    // 활용 상황 안에서 GPT 추천 — note는 "오늘 알릴 내용"(선택). result는 {meme, reason} | null.
+    // popupOpen은 트렌드 화면에 들어올 때마다 Trend.jsx가 true로 켠다.
+    trendRecommendNote: '', trendRecommendLoading: false, trendRecommendResult: null,
+    trendRecommendPopupOpen: false,
 
     sbMsgs: [], sbInput: '', sbThinking: false,
     plan: [], sbProdLogged: false, sbSetOpen: false, sbProdOpen: false, pending: {},
@@ -224,6 +228,32 @@ export function useAdMakerState() {
     if (!stateRef.current.trendSel) { toast('먼저 밈을 골라주세요'); return; }
     goAd();
   }, [toast, goAd]);
+
+  /** 활용 상황 카테고리 안에서 GPT 추천을 받는다. "전체"는 범위가 너무 넓어서 막는다.
+   *  성공하면 추천 요청 팝업은 닫고 결과 팝업으로 넘어간다 — 실패하면 요청 팝업에 그대로
+   *  남겨서 사장님이 카테고리/한줄입력을 고쳐 다시 시도할 수 있게 한다. */
+  const recommendTrendMeme = useCallback(async () => {
+    const s = stateRef.current;
+    if (!s.trendFilter || s.trendFilter === '전체') { toast('먼저 활용 상황을 골라주세요'); return; }
+    update({ trendRecommendLoading: true });
+    try {
+      const result = await TrendAPI.recommend(s.trendFilter, s.trendRecommendNote.trim());
+      update({ trendRecommendResult: result, trendRecommendLoading: false, trendRecommendPopupOpen: false });
+    } catch (e) {
+      update({ trendRecommendLoading: false });
+      fail(e);
+    }
+  }, [update, toast, fail]);
+
+  const closeTrendRecommend = useCallback(() => update({ trendRecommendResult: null }), [update]);
+
+  /** 추천받은 밈을 그대로 고른 걸로 치고 광고 만들기로 넘어간다. */
+  const useTrendRecommendMeme = useCallback(() => {
+    const s = stateRef.current;
+    if (!s.trendRecommendResult) return;
+    update({ trendSel: s.trendRecommendResult.meme.id, trendRecommendResult: null });
+    goAd();
+  }, [update, goAd]);
 
   /** 홈의 "광고 만들기"는 곧바로 광고 화면으로 가지 않고, 트렌드를 참고할지부터 묻는다.
    *  잠금 확인은 여기서 한 번만 하면 된다 — 팝업의 두 선택지(goTrend/goAd) 모두 이미
@@ -578,6 +608,7 @@ export function useAdMakerState() {
     actions: {
       set, toast, go, back, goHome, reload,
       goStore, goChar, goAd, goMy, openProdTab, goData, goTrend, useTrendMeme,
+      recommendTrendMeme, closeTrendRecommend, useTrendRecommendMeme,
       openAdEntry, closeAdEntry, pickAdEntryTrend, pickAdEntryDirect,
       editStore, saveStore, toggleClosedDay, uploadStoreImage, deleteStoreImage,
       genCandidates, sendChar, selectCand, rerollCand, loadChar, resetChar, confirmChar, toggleCharEdit,

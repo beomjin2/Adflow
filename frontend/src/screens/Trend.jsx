@@ -450,19 +450,23 @@ export default function Trend({ state, actions }) {
             boxShadow: '0 20px 50px rgba(0,0,0,.22)',
           }}>
             <span style={{ fontSize: 11.5, fontWeight: 800, color: colors.primaryHover, letterSpacing: .02 }}>GPT 추천</span>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <button
+              onClick={actions.selectTrendRecommendMeme}
+              title="밈 리스트에서 이 밈 보기"
+              style={{ display: 'flex', gap: 12, alignItems: 'center', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left' }}
+            >
               <div style={{ flex: 'none', width: 56, height: 56, borderRadius: 12, background: colors.bg, overflow: 'hidden' }}>
                 {trendRecommendResult.meme.image ? (
                   <img src={trendRecommendResult.meme.image} alt={trendRecommendResult.meme.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 ) : null}
               </div>
               <div>
-                <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -.01 }}>{trendRecommendResult.meme.name}</div>
+                <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -.01, color: colors.text }}>{trendRecommendResult.meme.name}</div>
                 <span style={{ display: 'inline-block', marginTop: 3, fontSize: 11, fontWeight: 700, color: colors.textSub, background: colors.softBg, borderRadius: 999, padding: '3px 9px' }}>
                   {trendRecommendResult.meme.situation}
                 </span>
               </div>
-            </div>
+            </button>
             <span style={{ fontSize: 13, lineHeight: '20px', color: colors.textSub, background: colors.softBg, borderRadius: 10, padding: '10px 12px' }}>
               {trendRecommendResult.reason}
             </span>
@@ -470,9 +474,6 @@ export default function Trend({ state, actions }) {
               <PrimaryButton onClick={actions.useTrendRecommendMeme} style={{ flex: '1 1 140px', height: 44 }}>
                 이 밈으로 광고 만들기
               </PrimaryButton>
-              <SecondaryButton onClick={actions.recommendTrendMeme} disabled={trendRecommendLoading} style={{ flex: 'none', height: 44, padding: '0 16px' }}>
-                다시 추천
-              </SecondaryButton>
               <SecondaryButton onClick={actions.closeTrendRecommend} style={{ flex: 'none', height: 44, padding: '0 16px' }}>
                 닫기
               </SecondaryButton>

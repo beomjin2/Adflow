@@ -1,7 +1,7 @@
 import { colors } from '../theme.js';
 import { PrimaryButton, SecondaryButton, SoftButton } from '../components/ui/Button.jsx';
 import { buildAdText, adTextForClipboard, characterImage } from '../lib/adText.js';
-import ImageSlot from '../components/ImageSlot.jsx';
+import ComicPanels from '../components/ComicPanels.jsx';
 
 export default function Result({ state, actions }) {
   const { headline, lines, info, tags, empty } = buildAdText(state);
@@ -49,17 +49,8 @@ export default function Result({ state, actions }) {
           </div>
         </div>
         {(state.comicCuts || []).some((c) => c.status !== 'empty') && (
-          <div style={{ padding: '12px 16px 0', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-            {(state.comicCuts || []).map((c) => (
-              <div key={c.n} style={{ position: 'relative' }}>
-                <ImageSlot slot={c} size={150} eta={state.sbEta} onReroll={() => actions.rerollCut(c.n)} />
-                {c.line && c.status === 'done' && (
-                  <div style={{ position: 'absolute', left: 8, right: 8, top: 8, background: 'rgba(255,255,255,.92)', border: '1px solid rgba(0,0,0,.12)', borderRadius: 9, padding: '4px 7px', fontSize: 12, lineHeight: '16px', fontWeight: 700, color: '#1E2321', pointerEvents: 'none' }}>
-                    {c.line}
-                  </div>
-                )}
-              </div>
-            ))}
+          <div style={{ padding: '12px 12px 0' }}>
+            <ComicPanels cuts={state.comicCuts || []} eta={state.sbEta} onReroll={actions.rerollCut} />
           </div>
         )}
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>

@@ -51,7 +51,8 @@ npm run dev                                                     # http://localho
 ## 캐릭터 생성 흐름
 
 채팅 또는 왼쪽 폼에 외형을 쓴다 → **후보 3장**(백그라운드 생성, 프론트가 3초마다 폴링)
-→ 하나 선택 → **4방향(정면·좌측면·우측면·뒷면)** 생성 → 4장이 끝나면 확정.
+→ 하나 선택 → 확정. (예전의 4방향 생성은 09-17에 뺐다 — 네컷은 고른 그림 1장을
+IP-Adapter 참조로 써서 구도를 바꾸므로 4방향은 GPU만 쓰고 쓰이지 않았다. DB `views` 컬럼은 빈 채로 남는다.)
 생성 요청은 즉시 돌아오고 칸의 `status`가 `generating → done | failed`로 바뀐다
 (`app/services/jobs.py`). 그림은 파일로 저장되고 응답엔 URL만 실린다.
 
@@ -70,7 +71,7 @@ Anima는 Danbooru 태그로 학습된 모델이다. "통통한 하얀 토끼, �
 char.look (한국어)
    │
    ▼  app/services/chat_ai.py  character_prompt(char, hint)
-STYLE_TAGS  +  tags_for_look(look)  +  hint(4방향 구도 태그)
+STYLE_TAGS  +  tags_for_look(look)  +  hint(후보 리롤 시 "variation N")
                      │
                      ▼  app/services/danbooru_tags.py
         ① GPT(gpt-4o-mini, temperature 0)가 태그 후보를 뽑는다
@@ -87,9 +88,9 @@ STYLE_TAGS  +  tags_for_look(look)  +  hint(4방향 구도 태그)
 `masterpiece, best quality, score_7, safe, solo, (chibi:1.3), full body, simple background, plump, rabbit, white_fur, heterochromia, scarf, star_(symbol)`
 
 - `STYLE_TAGS`는 '연습용' 워크플로우와 함께 조정된 접두어라 그대로 둔다.
-- 4방향 힌트(`VIEW_HINTS`)는 실존 구도 태그다: 정면 `straight-on, looking_at_viewer`,
-  측면 `from_side, profile`, 뒷면 `from_behind`. Danbooru엔 좌/우를 가르는 태그가 없어
-  좌측면·우측면은 같은 태그를 쓴다(좌우는 참조 이미지·시드에 맡긴다).
+- 네컷의 구도는 스토리 제안(`meme_ai.py`)이 고른 `CAMERA_TAGS`(straight-on, close-up,
+  from_side, from_below, from_above, wide_shot — 전부 실존 태그)를 컷마다 붙여 바꾼다.
+  Danbooru엔 좌/우를 가르는 태그가 없다(좌우는 참조 이미지·시드에 맡긴다).
 
 ### 태그 검증용 parquet 준비
 
@@ -127,9 +128,9 @@ print(chat_ai.character_prompt(c))"
 - "짝눈(초록/보라)"처럼 **괄호 안 색은 태그로 잘 안 뽑힌다** → `heterochromia`만 남아 눈 색이 매번 달라진다. few-shot 보강 후보.
 - `striped_scarf` / `red_scarf` 같은 수식 태그가 GPT 호출마다 들쭉날쭉하다.
 - `STYLE_TAGS`에 `no humans`가 없어 동물 마스코트가 옷 입은 의인화로 흐를 때가 있다.
-- `character_prompt()`는 요청 스레드에서 GPT를 부른다(호출당 1–2초, 4방향 리롤마다). look이 바뀔 때만 태그를 계산해 두는 캐시가 후보.
+- `character_prompt()`는 요청 스레드에서 GPT를 부른다(호출당 1–2초, 후보 리롤마다). look이 바뀔 때만 태그를 계산해 두는 캐시가 후보.
 - NSFW 명시 negative 목록은 넣지 않았다(negative는 '연습용'과 함께 조정됐다는 주석을 존중, 팀 확인 후).
-- 왼쪽 폼의 값은 후보 생성·리롤 전에 서버로 보낸다(`useAdMakerState.js`의 `syncCharForm`). 4방향 리롤(`rerollView`)은 아직 같은 처리가 없다.
+- 왼쪽 폼의 값은 후보 생성·리롤 전에 서버로 보낸다(`useAdMakerState.js`의 `syncCharForm`).
 
 조사·결정 기록: 프로젝트 저장소 `.claude/brainstorm/research/48-adflow-upstream-merge-2026-09-16.md`.
 

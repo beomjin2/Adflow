@@ -1,7 +1,8 @@
 import { colors } from '../theme.js';
 import { Select } from '../components/ui/Field.jsx';
 import { PrimaryButton, SoftButton } from '../components/ui/Button.jsx';
-import ImageSlot, { formatEta } from '../components/ImageSlot.jsx';
+import { formatEta } from '../components/ImageSlot.jsx';
+import ComicPanels from '../components/ComicPanels.jsx';
 import ChatPanel from '../components/ChatPanel.jsx';
 
 const AD_TYPES = ['인스타 게시물', '포스터', '메뉴판'];
@@ -145,18 +146,8 @@ export default function Storyboard({ state, actions }) {
             <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>
               {state.sbGenerating ? `네컷을 그리는 중 — 약 ${formatEta(state.sbEta)}` : '네컷 그림'}
             </span>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
-              {(state.comicCuts || []).map((c) => (
-                <div key={c.n} style={{ position: 'relative' }}>
-                  <ImageSlot slot={c} size={120} eta={state.sbEta} onReroll={() => actions.rerollCut(c.n)} />
-                  {c.line && c.status === 'done' && (
-                    <div style={{ position: 'absolute', left: 6, right: 6, top: 6, background: 'rgba(255,255,255,.92)', border: '1px solid rgba(0,0,0,.12)', borderRadius: 8, padding: '3px 6px', fontSize: 11, lineHeight: '15px', fontWeight: 700, color: '#1E2321', pointerEvents: 'none' }}>
-                      {c.line}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+            {/* 여기선 작은 미리보기라 말풍선을 얹지 않는다 — 말풍선 달린 큰 네컷은 결과 화면. */}
+            <ComicPanels cuts={state.comicCuts || []} eta={state.sbEta} onReroll={actions.rerollCut} bubbles={false} gap={6} />
           </div>
         )}
         <SoftButton

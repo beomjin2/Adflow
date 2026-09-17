@@ -84,7 +84,9 @@ function initialState() {
     // 밈 카드 목록과 "밈으로 스토리 제안" 입력란
     memes: [], memeId: '', memeTitle: '', memeSource: '', memeText: '',
     // memeTitle/memeSource/memeText가 트렌드 밈에서 채워졌는지 — 스토리보드가 배지 표시에 쓴다.
-    memeDraftFromTrend: false,
+    // memeDraftTrendId는 그 채운 내용이 "어느 트렌드 밈" 것인지 — 트렌드에서 더 보기로 다른
+    // 밈을 새로 고르고 왔을 때 옛 내용인지 판단하는 데 쓴다(applyAd 참고).
+    memeDraftFromTrend: false, memeDraftTrendId: '',
 
     myTab: 'history', history: [],
 
@@ -286,7 +288,7 @@ export function useAdMakerState() {
    *  밈 카드 목록(memes)이나 그중 고른 카드(memeId)는 트렌드와 무관한 데이터라 안 건드린다
    *  — "스토리 제안받기" 버튼은 그대로 정상 동작(카드 고르면 활성화)한다. */
   const pickAdEntryDirect = useCallback(() => {
-    update({ adEntryOpen: false, trendSel: '', memeTitle: '', memeSource: '', memeText: '', memeDraftFromTrend: false });
+    update({ adEntryOpen: false, trendSel: '', memeTitle: '', memeSource: '', memeText: '', memeDraftFromTrend: false, memeDraftTrendId: '' });
     goAd();
   }, [update, goAd]);
 
@@ -439,10 +441,14 @@ export function useAdMakerState() {
       // 트렌드 확인 화면에서 밈을 고르고 왔으면, 스토리보드의 "밈으로 스토리 제안받기"
       // 원문 붙여넣기 칸을 미리 채워둔다 — 크롤링 원문을 다시 복붙 안 해도 되게.
       // 카드 자체는 자동으로 안 만든다 — "카드 만들기"는 사장님이 눌러야 한다(GPT 호출이라
-      // 화면 전환만으로 조용히 돌리지 않는다). 이미 직접 입력해 둔 게 있으면 안 덮어쓴다.
+      // 화면 전환만으로 조용히 돌리지 않는다). 이미 직접 입력해 둔 게 있으면 안 덮어쓴다 —
+      // 다만 그 내용이 "지난번 트렌드 선택"에서 자동으로 채워진 거고 이번엔 트렌드에서
+      // 더 보기로 다른 밈을 새로 골라 왔으면(memeDraftTrendId가 다름), 옛 내용이라 새로
+      // 채운다 — 옛 카드 선택(memeId)도 새 밈과 안 맞으니 같이 비운다.
       const trendMeme = s.trendItems.find((m) => m.id === s.trendSel);
-      const draft = trendMeme && !s.memeTitle && !s.memeText ? trendMemeDraft(trendMeme) : null;
-      if (draft) update({ ...draft, memeDraftFromTrend: true });
+      const staleTrendDraft = s.memeDraftFromTrend && s.memeDraftTrendId !== s.trendSel;
+      const draft = trendMeme && (!s.memeTitle || staleTrendDraft) ? trendMemeDraft(trendMeme) : null;
+      if (draft) update({ ...draft, memeId: '', memeDraftFromTrend: true, memeDraftTrendId: trendMeme.id });
 
       if (res?.message) toast(res.message);
       go('sb');
@@ -502,6 +508,7 @@ export function useAdMakerState() {
       memeSource: card ? card.source : '',
       memeText: '',
       memeDraftFromTrend: false,
+      memeDraftTrendId: '',
     });
   }, [update]);
 

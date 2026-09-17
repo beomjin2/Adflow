@@ -305,7 +305,7 @@ export default function Trend({ state, actions }) {
                   {[
                     { k: '사이트', v: selected.sourceLabel },
                     { k: '등록일', v: selected.published || '정보없음' },
-                    { k: '조회수', v: selected.views || '정보없음' },
+                    { k: '조회수', v: selected.views ? `${selected.views.toLocaleString()}회` : '정보없음' },
                   ].map((st) => (
                     <div key={st.k} style={{ background: colors.bg, borderRadius: 10, padding: '8px 11px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 92 }}>
                       <span style={{ fontSize: 10.5, fontWeight: 600, color: colors.textFaint }}>{st.k}</span>

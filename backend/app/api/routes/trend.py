@@ -14,11 +14,10 @@ SOURCE_LABELS = {
 
 
 def _sort_key(m: models.Meme) -> str:
-    """published_date/published_at 표기가 소스마다 달라서("2026. 08. 26" vs "2026.09.10")
-    문자열 그대로 비교하면 섞였을 때 순서가 어긋난다. 숫자만 남겨 YYYYMMDD로 맞춘다.
+    """published_date 표기가 소스마다 달라서("2026. 08. 26" vs "2026.09.10") 문자열
+    그대로 비교하면 섞였을 때 순서가 어긋난다. 숫자만 남겨 YYYYMMDD로 맞춘다.
     값이 없으면(위픽레터) 빈 문자열이 되어 맨 뒤로 간다."""
-    raw = m.published_date or m.published_at or ""
-    return "".join(ch for ch in raw if ch.isdigit())
+    return "".join(ch for ch in (m.published_date or "") if ch.isdigit())
 
 
 @router.get("", response_model=schemas.TrendOut)
@@ -36,12 +35,11 @@ def list_trend(db: Session = Depends(get_db)):
             source_label=SOURCE_LABELS.get(m.source, m.source),
             name=m.meme_name,
             url=m.url,
-            image=m.image or m.thumbnail or "",
+            image=m.image or "",
             origin=m.origin,
-            summary=m.description or m.usage or "",
-            published=m.published_date or m.published_at or "",
-            views=m.views or m.view_count or "",
-            category=m.category,
+            summary=m.usage_example or "",
+            published=m.published_date or "",
+            views=m.views,
             situation=m.situation or "",
             situation_score=m.situation_score,
             ad_safe=m.ad_safe,

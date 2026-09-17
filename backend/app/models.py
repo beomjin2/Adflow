@@ -123,11 +123,12 @@ class ProductionRecord(Base):
 
 
 class Meme(Base):
-    """밈 레퍼런스 크롤링 데이터 — meam/*.json 원본을 그대로 옮겨 담는다 (import_memes.py).
+    """밈 레퍼런스 크롤링 데이터 — crawling/memes_export.json을 그대로 옮겨 담는다
+    (import_memes.py). 그 파일이 사이트별 크롤링 결과에서 같은 내용의 밈을 이미
+    걸러낸(중복 제거) 산출물이라, 여기 컬럼도 소스별로 갈라지지 않고 하나로 통일돼 있다.
 
-    소스 3곳(gogumafarm, wepick_memepedia, maily_trendaword)이 컬럼 구성 자체가 서로 달라서,
-    한 소스에만 있는 필드는 다른 소스 행에서는 빈 값으로 남는다. id는 각 소스 원본의
-    id(maily는 post_id)를 그대로 쓴다.
+    같은 밈이 사이트마다 다르게 표현돼도(예: "일하기 전 제 모습이고요" / "일하기전제모습이고요")
+    canonical_id가 대표 행(대개 자기 자신)을 가리킨다 — image도 canonical_id 쪽 사진을 쓴다.
 
     MemeCard(위)와는 다른 테이블이다 — MemeCard는 스토리 제안용으로 GPT가 요약한 카드,
     Meme은 트렌드 확인 화면이 그대로 훑어보는 원본 크롤링 데이터다.
@@ -136,44 +137,22 @@ class Meme(Base):
 
     id = Column(String, primary_key=True)
     source = Column(String, default="")
-
-    # 세 소스 공통
     url = Column(String, default="")
     meme_name = Column(String, default="")
     origin = Column(String, default="")
+    usage_example = Column(String, default="")
+    published_date = Column(String, default="")
+    views = Column(Integer, nullable=True)
+    rank_in_source = Column(Integer, nullable=True)
+    canonical_id = Column(String, default="")
+    first_seen_at = Column(String, default="")
+    last_seen_at = Column(String, default="")
+    # crawling/images/의 로컬 사본 경로("/api/meme-images/meme-NN.jpg") — canonical_id
+    # 기준으로 정해진다. 대표 이미지가 없는 밈은 없다(canonical 25건이 31건을 전부 커버).
     image = Column(String, default="")
 
-    # gogumafarm, wepick_memepedia 공통
-    description = Column(String, default="")
-    images = Column(JSON, default=list)
-    tags = Column(JSON, default=list)
-    published_date = Column(String, default="")
-
-    # gogumafarm 전용
-    from_article = Column(String, default="")
-
-    # wepick_memepedia 전용
-    category = Column(String, default="")
-    author = Column(String, default="")
-    view_count = Column(String, default="")
-    videos = Column(JSON, default=list)
-    article_title = Column(String, default="")
-    collection_number = Column(String, default="")
-    usage_source = Column(String, default="")
-
-    # maily_trendaword 전용
-    title = Column(String, default="")
-    subtitle = Column(String, default="")
-    published_at = Column(String, default="")
-    thumbnail = Column(String, default="")
-    image_from = Column(String, default="")
-    origin_mode = Column(String, default="")
-    usage = Column(String, default="")
-    views = Column(String, default="")
-    image_fix_note = Column(String, default="")
-
-    # GPT 분류 결과 (meam/memes_classified.json, update_meme_situations.py) — 밈 필터가
-    # 쓰는 상황 카테고리. situation_score는 그 카테고리로 분류될 때의 신뢰도.
+    # GPT 분류 결과 (crawling/memes_classified.json) — 밈 필터가 쓰는 상황 카테고리.
+    # situation_score는 그 카테고리로 분류될 때의 신뢰도.
     situation = Column(String, default="")
     situation_score = Column(Float, nullable=True)
     ad_safe = Column(Boolean, nullable=True)

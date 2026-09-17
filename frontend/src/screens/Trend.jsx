@@ -79,10 +79,15 @@ export default function Trend({ state, actions }) {
   }, [trendItems, trendFilter, trendSearch]);
 
   const sorted = useMemo(() => {
-    // 백엔드가 이미 최신순으로 준다 — 과거순은 그 순서를 뒤집기만 하면 되고,
-    // 이름순만 여기서 다시 정렬한다.
     if (trendSort === '이름순') return filtered.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-    if (trendSort === '과거순') return filtered.slice().reverse();
+    if (trendSort === '과거순') {
+      // 배열을 그대로 뒤집으면 날짜 정보가 없는 밈(최신순 맨 끝)이 맨 앞으로 튀어나온다 —
+      // 날짜 없음은 어느 방향으로 정렬해도 맨 뒤에 있어야 하니, 날짜 숫자로 직접 오름차순
+      // 정렬하고 빈 값만 가장 큰 값으로 취급해 계속 맨 뒤에 둔다.
+      const dateKey = (m) => trendDate(m).replace(/\D/g, '') || '99999999';
+      return filtered.slice().sort((a, b) => dateKey(a).localeCompare(dateKey(b)));
+    }
+    // 백엔드가 이미 최신순으로 준다.
     return filtered;
   }, [filtered, trendSort]);
 
@@ -334,7 +339,7 @@ export default function Trend({ state, actions }) {
                   {[
                     { k: '사이트', v: selected.sourceLabel },
                     { k: '유행 시작일', v: trendDate(selected) || '정보없음' },
-                    { k: '조회수', v: selected.views ? `${selected.views.toLocaleString()}회` : '정보없음' },
+                    { k: '조회수', v: selected.views != null ? `${selected.views.toLocaleString()}회` : '정보없음' },
                   ].map((st) => (
                     <div key={st.k} style={{ background: colors.bg, borderRadius: 10, padding: '8px 11px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 92 }}>
                       <span style={{ fontSize: 10.5, fontWeight: 600, color: colors.textFaint }}>{st.k}</span>

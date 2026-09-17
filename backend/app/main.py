@@ -36,8 +36,8 @@ app.mount("/api/media", StaticFiles(directory=settings.media_path), name="media"
 # 내려받아 둔 사본을 그대로 쓴다(원본이 이미지를 내리거나 핫링크를 막아도 안 깨진다).
 # repo 루트의 crawling/images/를 직접 본다 — 배포 스크립트(deploy.sh)는 backend/app만
 # 옮기고 crawling/은 안 건드리므로, 배포 뒤 매번 .src/crawling을 운영 디렉터리로
-# 직접 옮겨줘야 이미지가 뜬다(USER_COMMANDS.md 참고). 경로 값은 import_memes.py가
-# crawling/memes_nested.json에 적어 둔 served_path를 그대로 따른다.
+# 직접 옮겨줘야 이미지가 뜬다(USER_COMMANDS.md 참고). 경로 값(/api/meme-images/파일명)은
+# import_memes.py가 crawling/memes_all.json을 읽어서 DB의 image 컬럼에 적어 둔다.
 app.mount("/api/meme-images", StaticFiles(directory=BACKEND_ROOT.parent / "crawling" / "images"), name="meme-images")
 
 

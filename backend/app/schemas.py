@@ -245,6 +245,10 @@ class MemeOut(BaseModel):
     origin: str
     summary: str
     published: str
+    # 네이버 트렌드 스파이크 구간 시작일/정점일("YYYY-MM-DD"). 스파이크를 못 찾은 밈은
+    # 둘 다 빈 문자열 — 화면은 period_start > peak_date > published(등록일) 순으로 보여준다.
+    period_start: str = ""
+    peak_date: str = ""
     views: int | None = None
     situation: str = ""
     situation_score: float | None = None
@@ -260,3 +264,13 @@ class TrendSiteOut(BaseModel):
 class TrendOut(BaseModel):
     items: list[MemeOut]
     sites: list[TrendSiteOut]
+
+
+class TrendRecommendIn(BaseModel):
+    situation: str
+    note: str = ""
+
+
+class TrendRecommendOut(BaseModel):
+    meme: MemeOut
+    reason: str

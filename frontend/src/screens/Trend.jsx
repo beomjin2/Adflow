@@ -1,19 +1,25 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { colors, cardBase } from '../theme.js';
 import { TextInput, Select } from '../components/ui/Field.jsx';
 import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
 
 /** 사이트별로 최근 3건씩 보여주는 요약 카드. 원본 디자인(fix_for_yeonjin/dashboard.html)엔
  *  막대그래프·순위를 "조회수"로 매겼지만 그건 목업용 가짜 숫자였다(README 참고) — 네이버
- *  계열 트렌드는 상대 검색량만 주지 절대 조회수를 안 준다. "최신유행일자" 데이터가 생기기
- *  전까지는, 실제로 있는 값인 등록일을 그 자리에 대신 쓴다 — 최신유행일자가 들어오면
- *  daysAgo()에 넘기는 값만 published→trendDate로 바꾸면 된다. */
+ *  계열 트렌드는 상대 검색량만 주지 절대 조회수를 안 준다. */
 function siteTopItems(items, source) {
   return items.filter((m) => m.source === source).slice(0, 3);
 }
 
-/** "2026. 08. 26" / "2026.09.10" 같은 표기에서 숫자만 뽑아 날짜로 만든다. 값이 없거나
- *  (위픽레터) 형식이 이상하면 null — 막대그래프에서 "정보없음"으로 최하 높이가 된다. */
+/** 화면에 보여줄 날짜 — periodStart(스파이크 구간 시작일) > peakDate(스파이크 정점일)
+ *  > published(등록일) 순으로 있는 값을 쓴다. 스파이크를 못 찾은 밈은 peakDate까지
+ *  비어 있을 수 있어 등록일로 대신하고, 위픽레터처럼 등록일도 없는 소스는 결국
+ *  "정보없음"으로 남는다. */
+function trendDate(m) {
+  return m.periodStart || m.peakDate || m.published || '';
+}
+
+/** "2026-08-26" / "2026. 08. 26" 같은 표기에서 숫자만 뽑아 날짜로 만든다. 값이 없으면
+ *  null — 막대그래프에서 "정보없음"으로 최하 높이가 된다. */
 function parsePublished(str) {
   const digits = (str || '').replace(/\D/g, '');
   if (digits.length < 8) return null;
@@ -31,7 +37,18 @@ function daysAgo(str) {
 }
 
 export default function Trend({ state, actions }) {
-  const { trendItems, trendSites, trendFilter, trendSearch, trendSort, trendSel } = state;
+  const {
+    trendItems, trendSites, trendFilter, trendSearch, trendSort, trendSel,
+    trendRecommendNote, trendRecommendLoading, trendRecommendResult, trendRecommendPopupOpen,
+  } = state;
+
+  // 트렌드 확인 화면에 들어올 때마다 추천 팝업을 먼저 보여준다 — 화면 안에 묻혀있던
+  // "카테고리 고르고 추천받기"가 눈에 안 띈다는 피드백을 반영. 화면을 나갔다 다시
+  // 들어오면(컴포넌트가 다시 마운트되면) 또 뜬다.
+  useEffect(() => {
+    actions.set('trendRecommendPopupOpen', true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 밈 필터 — meam/memes_classified.json의 situation(상황 카테고리)을 기준으로 고른다.
   // 값이 없는 항목은 필터 목록에 안 넣는다(분류가 안 된 구버전 데이터일 수 있으니).
@@ -62,25 +79,27 @@ export default function Trend({ state, actions }) {
   }, [trendItems, trendFilter, trendSearch]);
 
   const sorted = useMemo(() => {
-    // 백엔드가 이미 최신순으로 정렬해서 준다 — 이름순만 여기서 다시 정렬한다.
-    if (trendSort !== '이름순') return filtered;
-    return filtered.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    // 백엔드가 이미 최신순으로 준다 — 과거순은 그 순서를 뒤집기만 하면 되고,
+    // 이름순만 여기서 다시 정렬한다.
+    if (trendSort === '이름순') return filtered.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    if (trendSort === '과거순') return filtered.slice().reverse();
+    return filtered;
   }, [filtered, trendSort]);
 
   // 막대그래프 — 검색/정렬과 무관하게 "밈 필터"만 반영한다(목업의 barSource와 동일).
-  // trendItems는 백엔드가 이미 등록일 내림차순으로 준다.
+  // trendItems는 백엔드가 이미 트렌드 날짜(periodStart, 없으면 등록일) 내림차순으로 준다.
   const barSource = useMemo(() => {
     const byFilter = trendFilter === '전체' ? trendItems : trendItems.filter((m) => m.situation === trendFilter);
     return byFilter.slice(0, 5);
   }, [trendItems, trendFilter]);
 
   // 점수 = "얼마나 최근인가" — daysAgo가 작을수록(최근일수록) 점수가 크다.
-  // 날짜를 모르는 항목(위픽레터)은 0점으로 가장 짧은 막대가 된다.
+  // 날짜를 모르는 항목은 0점으로 가장 짧은 막대가 된다.
   const barScores = useMemo(() => {
-    const known = barSource.map((m) => daysAgo(m.published)).filter((d) => d != null);
+    const known = barSource.map((m) => daysAgo(trendDate(m))).filter((d) => d != null);
     const maxKnown = known.length ? Math.max(...known) : 0;
     return barSource.map((m) => {
-      const d = daysAgo(m.published);
+      const d = daysAgo(trendDate(m));
       return d == null ? 0 : maxKnown - d + 1;
     });
   }, [barSource]);
@@ -119,7 +138,16 @@ export default function Trend({ state, actions }) {
             ))}
           </div>
           <span style={{ flex: 1 }} />
-          <span style={{ fontSize: 11.5, color: colors.textFaint }}>등록일 기준 최근 5건 — 막대를 누르면 선택돼요</span>
+          <button
+            onClick={() => actions.set('trendRecommendPopupOpen', true)}
+            style={{
+              height: 40, padding: '0 18px', borderRadius: 999, border: 0, flex: 'none',
+              background: colors.primary, color: '#fff', boxShadow: '0 4px 10px rgba(22,160,107,.3)',
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            ✨ 밈 추천받기
+          </button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, height: 160 }}>
@@ -141,7 +169,7 @@ export default function Trend({ state, actions }) {
                     background: on ? colors.primary : colors.onboardBorder, height,
                   }}
                 />
-                <span style={{ fontSize: 12, fontWeight: 700, color: on ? colors.primaryHover : colors.primary }}>{m.published || '정보없음'}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: on ? colors.primaryHover : colors.primary }}>{trendDate(m) || '정보없음'}</span>
               </div>
             );
           })}
@@ -156,7 +184,7 @@ export default function Trend({ state, actions }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                 <span style={{ fontSize: 12.5, fontWeight: 700 }}>{s.label}</span>
                 <span style={{ flex: 1 }} />
-                <span style={{ fontSize: 10.5, fontWeight: 600, color: colors.textFaint }}>등록일 최신순</span>
+                <span style={{ fontSize: 10.5, fontWeight: 600, color: colors.textFaint }}>최신순</span>
               </div>
               {siteTopItems(trendItems, s.source).map((m, i) => {
                 const on = trendSel === m.id;
@@ -179,7 +207,7 @@ export default function Trend({ state, actions }) {
                       textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
                     }}>{m.name}</span>
                     <span style={{ flex: 1 }} />
-                    <span style={{ fontSize: 11, fontWeight: 700, color: colors.textFaint, flex: 'none' }}>{m.published || '-'}</span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: colors.textFaint, flex: 'none' }}>{trendDate(m) || '-'}</span>
                   </button>
                 );
               })}
@@ -225,6 +253,7 @@ export default function Trend({ state, actions }) {
                 style={{ height: 30, fontSize: 12, padding: '0 6px', width: 84, flex: 'none' }}
               >
                 <option value="최신순">최신순</option>
+                <option value="과거순">과거순</option>
                 <option value="이름순">이름순</option>
               </Select>
             </div>
@@ -258,7 +287,7 @@ export default function Trend({ state, actions }) {
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>{m.name}</span>
                   <span style={{ fontSize: 11.5, fontWeight: 700, color: colors.textFaint, flex: 'none', width: 72, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    {m.published || '-'}
+                    {trendDate(m) || '-'}
                   </span>
                 </button>
               );
@@ -304,7 +333,7 @@ export default function Trend({ state, actions }) {
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                   {[
                     { k: '사이트', v: selected.sourceLabel },
-                    { k: '등록일', v: selected.published || '정보없음' },
+                    { k: '유행 시작일', v: trendDate(selected) || '정보없음' },
                     { k: '조회수', v: selected.views ? `${selected.views.toLocaleString()}회` : '정보없음' },
                   ].map((st) => (
                     <div key={st.k} style={{ background: colors.bg, borderRadius: 10, padding: '8px 11px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 92 }}>
@@ -341,6 +370,111 @@ export default function Trend({ state, actions }) {
           </div>
         )}
       </div>
+
+      {trendRecommendPopupOpen && !trendRecommendResult && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) actions.set('trendRecommendPopupOpen', false); }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,17,19,.42)', zIndex: 100,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <div style={{
+            width: '100%', maxWidth: 380, background: '#fff', borderRadius: 18, padding: 22,
+            display: 'flex', flexDirection: 'column', gap: 14, animation: 'pop .18s ease',
+            boxShadow: '0 20px 50px rgba(0,0,0,.22)',
+          }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: -.3 }}>✨ 밈 추천받기</span>
+              <span style={{ fontSize: 13, lineHeight: '19px', color: colors.textSub }}>
+                어떤 상황에 쓸 밈인지 골라주시면, 그 안에서 캐릭터랑 잘 맞는 걸 하나 골라드려요.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: colors.textFaint }}>활용 상황</span>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {situations.map((s) => filterChip(
+                  `${s.situation} (${s.count})`,
+                  trendFilter === s.situation,
+                  () => actions.set('trendFilter', s.situation),
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: colors.textFaint }}>오늘 알릴 내용 (선택)</span>
+              <TextInput
+                value={trendRecommendNote}
+                onChange={(e) => actions.set('trendRecommendNote', e.target.value)}
+                placeholder="예) 오늘 소금빵 신메뉴 나왔어요"
+                style={{ height: 44 }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <PrimaryButton
+                onClick={actions.recommendTrendMeme}
+                disabled={trendFilter === '전체' || trendRecommendLoading}
+                style={{ flex: '1 1 160px', height: 46 }}
+              >
+                {trendRecommendLoading ? '추천 중…' : trendFilter === '전체' ? '먼저 활용 상황을 골라주세요' : '추천받기'}
+              </PrimaryButton>
+              <SecondaryButton
+                onClick={() => actions.set('trendRecommendPopupOpen', false)}
+                style={{ flex: 'none', height: 46, padding: '0 16px' }}
+              >
+                괜찮아요, 둘러볼게요
+              </SecondaryButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {trendRecommendResult && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) actions.closeTrendRecommend(); }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,17,19,.42)', zIndex: 100,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <div style={{
+            width: '100%', maxWidth: 380, background: '#fff', borderRadius: 18, padding: 22,
+            display: 'flex', flexDirection: 'column', gap: 16, animation: 'pop .18s ease',
+            boxShadow: '0 20px 50px rgba(0,0,0,.22)',
+          }}>
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: colors.primaryHover, letterSpacing: .02 }}>GPT 추천</span>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{ flex: 'none', width: 56, height: 56, borderRadius: 12, background: colors.bg, overflow: 'hidden' }}>
+                {trendRecommendResult.meme.image ? (
+                  <img src={trendRecommendResult.meme.image} alt={trendRecommendResult.meme.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                ) : null}
+              </div>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 700, letterSpacing: -.01 }}>{trendRecommendResult.meme.name}</div>
+                <span style={{ display: 'inline-block', marginTop: 3, fontSize: 11, fontWeight: 700, color: colors.textSub, background: colors.softBg, borderRadius: 999, padding: '3px 9px' }}>
+                  {trendRecommendResult.meme.situation}
+                </span>
+              </div>
+            </div>
+            <span style={{ fontSize: 13, lineHeight: '20px', color: colors.textSub, background: colors.softBg, borderRadius: 10, padding: '10px 12px' }}>
+              {trendRecommendResult.reason}
+            </span>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <PrimaryButton onClick={actions.useTrendRecommendMeme} style={{ flex: '1 1 140px', height: 44 }}>
+                이 밈으로 광고 만들기
+              </PrimaryButton>
+              <SecondaryButton onClick={actions.recommendTrendMeme} disabled={trendRecommendLoading} style={{ flex: 'none', height: 44, padding: '0 16px' }}>
+                다시 추천
+              </SecondaryButton>
+              <SecondaryButton onClick={actions.closeTrendRecommend} style={{ flex: 'none', height: 44, padding: '0 16px' }}>
+                닫기
+              </SecondaryButton>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

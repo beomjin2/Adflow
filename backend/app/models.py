@@ -123,12 +123,10 @@ class ProductionRecord(Base):
 
 
 class Meme(Base):
-    """밈 레퍼런스 크롤링 데이터 — crawling/memes_export.json을 그대로 옮겨 담는다
+    """밈 레퍼런스 크롤링 데이터 — crawling/memes_all.json을 그대로 옮겨 담는다
     (import_memes.py). 그 파일이 사이트별 크롤링 결과에서 같은 내용의 밈을 이미
     걸러낸(중복 제거) 산출물이라, 여기 컬럼도 소스별로 갈라지지 않고 하나로 통일돼 있다.
-
-    같은 밈이 사이트마다 다르게 표현돼도(예: "일하기 전 제 모습이고요" / "일하기전제모습이고요")
-    canonical_id가 대표 행(대개 자기 자신)을 가리킨다 — image도 canonical_id 쪽 사진을 쓴다.
+    같은 밈이 사이트마다 다르게 표현돼도 merged_from에 나머지 출처가 그대로 남는다.
 
     MemeCard(위)와는 다른 테이블이다 — MemeCard는 스토리 제안용으로 GPT가 요약한 카드,
     Meme은 트렌드 확인 화면이 그대로 훑어보는 원본 크롤링 데이터다.
@@ -137,6 +135,7 @@ class Meme(Base):
 
     id = Column(String, primary_key=True)
     source = Column(String, default="")
+    source_label = Column(String, default="")
     url = Column(String, default="")
     meme_name = Column(String, default="")
     origin = Column(String, default="")
@@ -144,12 +143,22 @@ class Meme(Base):
     published_date = Column(String, default="")
     views = Column(Integer, nullable=True)
     rank_in_source = Column(Integer, nullable=True)
-    canonical_id = Column(String, default="")
-    first_seen_at = Column(String, default="")
-    last_seen_at = Column(String, default="")
-    # crawling/images/의 로컬 사본 경로("/api/meme-images/meme-NN.jpg") — canonical_id
-    # 기준으로 정해진다. 대표 이미지가 없는 밈은 없다(canonical 25건이 31건을 전부 커버).
+    # crawling/images/의 로컬 사본 경로("/api/meme-images/xxx.jpg").
     image = Column(String, default="")
+
+    # 네이버 검색량 기반 트렌드 구간 (crawling/memes_all.json의 trend). method가
+    # "none"이면 스파이크를 못 찾은 경우라 나머지 필드가 비어 있다 — 화면은 이때
+    # published_date로 대신 보여준다(트렌드 확인 화면 날짜 표시 우선순위: period_start > published_date).
+    period_start = Column(String, default="")
+    period_end = Column(String, default="")
+    peak_date = Column(String, default="")
+    trend_method = Column(String, default="")
+    pre_existing = Column(Boolean, nullable=True)
+    blog_total = Column(Integer, nullable=True)
+
+    search_terms = Column(JSON, default=list)
+    links = Column(JSON, default=list)
+    merged_from = Column(JSON, default=list)
 
     # GPT 분류 결과 (crawling/memes_classified.json) — 밈 필터가 쓰는 상황 카테고리.
     # situation_score는 그 카테고리로 분류될 때의 신뢰도.

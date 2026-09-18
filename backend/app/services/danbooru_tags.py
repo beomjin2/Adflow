@@ -39,18 +39,19 @@ KEYWORD_TO_TAG: dict[str, str] = {
     # 귀
     "동물귀": "animal ears", "짐승귀": "animal ears",
 
-    # 털색
+    # 털색 — Danbooru엔 밀색·베이지 털 태그가 없다(`tan_fur` 0장). `tan`은 사람 피부색이라
+    # 동물 털에 쓰면 엉뚱해진다. 실존하는 색 중 가장 가까운 brown_fur로 보낸다.
     "하얀": "white fur", "흰": "white fur", "white": "white fur",
-    "밀색": "tan fur", "베이지": "tan fur",
+    "밀색": "brown fur", "베이지": "brown fur",
     "갈색": "brown fur",
     "검은": "black fur", "검정": "black fur",
 
-    # 눈
+    # 눈 — '둥근눈'은 뺐다. `round_eyes` 0장이고 대체할 눈모양 태그도 없다.
+    # 치비 화풍이 이미 둥근 눈을 만들므로 억지로 넣지 않는다.
     "짝눈": "heterochromia", "이색눈": "heterochromia",
     "초록눈": "green eyes", "녹색눈": "green eyes",
     "보라눈": "purple eyes", "자주눈": "purple eyes",
     "파란눈": "blue eyes",
-    "둥근눈": "round eyes",
 
     # 체형/화풍
     "통통한": "plump", "뚱뚱한": "plump",
@@ -63,7 +64,8 @@ KEYWORD_TO_TAG: dict[str, str] = {
     "반창고": "bandaid", "밴드": "bandaid",
     "별무늬": "star (symbol)", "별": "star (symbol)",
     "앞치마": "apron",
-    "밀가루": "flour",  # 확인 필요 — post count 미검증, 사용 전 재확인 권장
+    # '밀가루'는 뺐다 — `flour` 354장으로 기준 미달이고 대체 태그도 없다.
+    # (주석에 "확인 필요"라고 적어둔 채 남아 있던 항목이다.)
 }
 
 
@@ -107,7 +109,24 @@ _LLM_SYSTEM_PROMPT = (
     "'star-shaped mark' -> star_(symbol) (NOT star_pattern/star_mark); "
     "'small cute proportions' -> chibi; "
     "'bandage/plaster on skin' -> bandaid (NOT bandage); "
-    "'red scarf' -> scarf, red_scarf (keep both, do not drop the color)."
+    "'red scarf' -> scarf, red_scarf (keep both, do not drop the color). "
+    # 실측(2026-09-18, 시드 3개): 앞치마만 주면 모델이 밑에 입을 옷을 지어내는데 그 색이 검정이다.
+    # 상·하의를 함께 지정하면 검은 옷이 사라진다. 그래서 '혼자 입을 수 없는 옷'은 아래·위를 같이 낸다.
+    "IMPORTANT rule about clothing, apply it strictly: "
+    "(a) If the description names a garment that cannot be worn alone — apron, vest, overalls, "
+    "jacket, coat — then ALSO emit an explicit top and bottom garment with colors, because the "
+    "model invents them in black when they are missing. Use white_shirt and brown_pants unless "
+    "the user named other clothes. "
+    "(b) If the description names NO such garment — only accessories like scarf, bandaid, hat, "
+    "ribbon, glasses, bag, star_(symbol), or no clothing at all — then emit NO clothing tags "
+    "whatsoever. Never add white_shirt or brown_pants in that case. The character is an animal "
+    "and looks right with bare fur. "
+    "Examples: "
+    "'white apron' -> apron, white_apron, white_shirt, brown_pants; "
+    "'red apron and chef hat' -> apron, red_apron, chef_hat, white_shirt, brown_pants; "
+    "'blue vest' -> vest, blue_vest, white_shirt, brown_pants; "
+    "'only a red scarf' -> scarf, red_scarf (NO shirt, NO pants); "
+    "'a bandaid and a star mark' -> bandaid, star_(symbol) (NO shirt, NO pants)."
 )
 
 # 네컷의 한 컷 문장(장면) 전용. 캐릭터용 프롬프트를 그대로 쓰면 GPT가 한국어 단어를

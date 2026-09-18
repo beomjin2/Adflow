@@ -60,7 +60,10 @@ def list_trend(db: Session = Depends(get_db)):
     ]
     sites.sort(key=lambda s: s.label)
 
-    return schemas.TrendOut(items=items, sites=sites)
+    # 수집 시점이 섞여 있으면(사이트별로 따로 돌린 경우) 가장 최근 것을 기준으로 삼는다.
+    collected_at = max((m.collected_at or "" for m in rows), default="")
+
+    return schemas.TrendOut(items=items, sites=sites, collected_at=collected_at)
 
 
 @router.post("/recommend", response_model=schemas.TrendRecommendOut)

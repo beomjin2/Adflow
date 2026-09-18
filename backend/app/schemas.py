@@ -267,6 +267,9 @@ class TrendSiteOut(BaseModel):
 class TrendOut(BaseModel):
     items: list[MemeOut]
     sites: list[TrendSiteOut]
+    # 이 목록이 어느 시점의 수집 결과인지("2026-09-17"). 화면은 "유행 중" 판정을
+    # 실행 시각이 아니라 이 날짜를 기준으로 하고, 하단에 그대로 표시한다.
+    collected_at: str = ""
 
 
 class TrendRecommendIn(BaseModel):

@@ -248,6 +248,9 @@ class MemeOut(BaseModel):
     # 네이버 트렌드 스파이크 구간 시작일/정점일("YYYY-MM-DD"). 스파이크를 못 찾은 밈은
     # 둘 다 빈 문자열 — 화면은 period_start > peak_date > published(등록일) 순으로 보여준다.
     period_start: str = ""
+    # 마지막으로 검색 신호가 잡힌 날. 이 값이 오늘에 가까우면 아직 유행 중이다 —
+    # 화면의 "유행 중 / 유행 종료" 배지와 "N일째" 표기가 이 값 없이는 만들어지지 않는다.
+    period_end: str = ""
     peak_date: str = ""
     views: int | None = None
     situation: str = ""

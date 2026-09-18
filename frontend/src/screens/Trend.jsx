@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { colors, cardBase } from '../theme.js';
 import { TextInput, Select } from '../components/ui/Field.jsx';
 import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
@@ -37,6 +37,12 @@ function daysAgo(str) {
 }
 
 export default function Trend({ state, actions }) {
+  // 밈 대표 이미지 확대 보기. 썸네일이 150px 정사각으로 잘려 있어 원본 구도가 안 보인다 —
+  // 눌러서 원본 비율 그대로 크게 볼 수 있게 한다. 열려 있는 이미지 URL만 담는다(null이면 닫힘).
+  const [zoomImage, setZoomImage] = useState(null);
+  // 썸네일 호버 여부. 인라인 스타일이라 :hover 를 못 쓰고 상태로 들고 있는다.
+  const [thumbHover, setThumbHover] = useState(false);
+
   const {
     trendItems, trendSites, trendFilter, trendSearch, trendSort, trendSel,
     trendRecommendNote, trendRecommendLoading, trendRecommendResult, trendRecommendPopupOpen,
@@ -303,9 +309,36 @@ export default function Trend({ state, actions }) {
         {selected && (
           <div style={{ flex: '1.25 1 340px', minWidth: 0, background: '#fff', border: `1.5px solid ${colors.onboardBorder}`, borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-              <div style={{ flex: 'none', width: 150, height: 150, borderRadius: 13, border: `1px solid ${colors.cardBorder}`, background: colors.bg, overflow: 'hidden' }}>
+              <div
+                onClick={() => selected.image && setZoomImage(selected.image)}
+                onMouseEnter={() => setThumbHover(true)}
+                onMouseLeave={() => setThumbHover(false)}
+                style={{ flex: 'none', width: 150, height: 150, borderRadius: 13, border: `1px solid ${colors.cardBorder}`, background: colors.bg, overflow: 'hidden', cursor: selected.image ? 'zoom-in' : 'default', position: 'relative' }}
+              >
                 {selected.image ? (
-                  <img src={selected.image} alt={selected.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <>
+                    <img src={selected.image} alt={selected.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    {/* 올려놨을 때만 반투명하게 덮고 가운데 돋보기를 띄운다 — 눌러서 크게 볼 수 있다는 신호 */}
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'rgba(17,19,22,.42)', opacity: thumbHover ? 1 : 0,
+                        transition: 'opacity .16s ease', pointerEvents: 'none',
+                      }}
+                    >
+                      <svg
+                        width="34" height="34" viewBox="0 0 24 24" fill="none"
+                        stroke="#fff" strokeWidth="2" strokeLinecap="round"
+                        style={{ transform: thumbHover ? 'scale(1)' : 'scale(.85)', transition: 'transform .16s ease' }}
+                      >
+                        <circle cx="10.5" cy="10.5" r="6.5" />
+                        <line x1="15.5" y1="15.5" x2="21" y2="21" />
+                        <line x1="10.5" y1="7.8" x2="10.5" y2="13.2" />
+                        <line x1="7.8" y1="10.5" x2="13.2" y2="10.5" />
+                      </svg>
+                    </div>
+                  </>
                 ) : (
                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: colors.textFaint, textAlign: 'center', padding: 8 }}>
                     이미지 없음
@@ -479,6 +512,49 @@ export default function Trend({ state, actions }) {
               </SecondaryButton>
             </div>
           </div>
+        </div>
+      )}
+
+      {zoomImage && (
+        <div
+          onClick={() => setZoomImage(null)}
+          role="dialog"
+          aria-label="밈 이미지 확대 보기"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(17,19,22,.72)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, cursor: 'zoom-out',
+          }}
+        >
+          {/* 원본이 긴 변 480px 라 <img> 를 그냥 두면 실제 크기대로만 나와서 "확대"가 체감되지 않는다.
+              고정 크기 상자 안에서 object-fit: contain 으로 채워 비율은 지키면서 키운다. */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(92vw, 780px)', height: 'min(84vh, 780px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'default',
+            }}
+          >
+            <img
+              src={zoomImage}
+              alt=""
+              style={{
+                width: '100%', height: '100%', objectFit: 'contain', display: 'block',
+                borderRadius: 12, filter: 'drop-shadow(0 20px 60px rgba(0,0,0,.45))',
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setZoomImage(null)}
+            aria-label="닫기"
+            style={{
+              position: 'fixed', top: 20, right: 24, width: 40, height: 40, borderRadius: 999,
+              border: 'none', background: 'rgba(255,255,255,.92)', color: '#111316',
+              fontSize: 20, lineHeight: '40px', cursor: 'pointer',
+            }}
+          >
+            ×
+          </button>
         </div>
       )}
     </div>

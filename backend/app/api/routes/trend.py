@@ -33,6 +33,7 @@ def _to_meme_out(m: models.Meme) -> schemas.MemeOut:
         summary=m.usage_example or "",
         published=m.published_date or "",
         period_start=m.period_start or "",
+        period_end=m.period_end or "",
         peak_date=m.peak_date or "",
         views=m.views,
         situation=m.situation or "",

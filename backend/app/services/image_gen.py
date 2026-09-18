@@ -32,11 +32,34 @@ _PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 # '연습용' 워크플로우의 네거티브 프롬프트를 그대로 쓴다. 사람·실사·글자를 배제하는 쪽으로
 # 이미 조정돼 있어서, 마스코트를 뽑을 때 이걸 바꾸면 결과가 나빠진다.
+# 네거티브는 **실존하는 Danbooru 태그로만** 적는다. 옛 목록은 사람·성인물을 막으려고
+# human · human hands · nsfw · text 를 넣어 뒀는데, parquet로 대조해 보니 넷 다 죽은 말이었다
+# (human 0장·폐기 / human hands 아예 없음 / nsfw 0장·폐기 / text 0장·폐기). 즉 지난 몇 주 동안
+# 사람과 노출을 막는 장치가 **하나도 작동하지 않았다**. 실제로 "통통한 토끼"만 줬을 때
+# 토끼귀 달린 사람이 수영복 차림으로 나왔다(2026-09-18 실측).
+#
+# 아래 태그는 전부 실존·2,000장 이상·일반 분류를 확인한 것이다. 바꾼 뒤 같은 시드로 재생성해
+# 사람 형태가 동물로 돌아오는 것을 확인했다.
+#
+# 한계 두 가지 — ① 네컷 워크플로우(capanima_turbo, cfg 1.0)에서는 네거티브가 사실상 무효다.
+# 이 목록은 캐릭터 후보 단계(cfg 5)에서만 듣는다. ② 특정 태그가 끌고 오는 의상 연상은
+# 네거티브로 못 지운다 — bowtie를 넣으면 레오타드·손목 커프스가 같이 따라온다(아래 참고).
 NEGATIVE_PROMPT = (
     "worst quality, low quality, score_1, score_2, score_3, artist name, blurry, "
-    "jpeg artifacts, chromatic aberration, realistic, human, human hands, "
-    "text, watermark, multiple views, nsfw"
+    "jpeg artifacts, chromatic aberration, realistic, multiple_views, watermark, "
+    # 사람 형태 — 마스코트는 동물이어야 한다
+    "1girl, 1boy, fake_animal_ears, long_hair, breasts, cleavage, navel, "
+    "bare_shoulders, collarbone, thighs, "
+    # 노출·성인 의상
+    "leotard, playboy_bunny, detached_collar, wrist_cuffs, swimsuit, one-piece_swimsuit, "
+    "bikini, underwear, panties, lingerie, revealing_clothes, nude, nipples, "
+    "thighhighs, pantyhose"
 )
+
+# 캐릭터를 '동물'로 못 박는 접두어. 토끼는 Danbooru에서 동물 토끼와 '토끼귀 소녀'가
+# 섞여 있는 태그라, 털색(*_fur)이나 이 태그들이 없으면 사람 쪽으로 흐른다.
+# 팀 공용 STYLE_TAGS에는 아직 없어 여기 상수로만 둔다 — 붙일지는 팀과 협의 후.
+ANIMAL_ANCHOR_TAGS = "no_humans, animal_focus, furry"
 
 # ComfyUI에서 Export(API format)한 그래프를 그대로 이 폴더에 넣어두면 코드 수정 없이 워크플로우를
 # 교체할 수 있다 — 샘플러 노드의 positive/negative가 가리키는 CLIPTextEncode 노드를 찾아 자동으로

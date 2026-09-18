@@ -84,6 +84,8 @@ def main() -> None:
     init_db()
     data = json.loads(ALL_PATH.read_text(encoding="utf-8"))
     memes = data["memes"]
+    # "2026-09-17T17:54:15" -> "2026-09-17". 이 파일을 만든 시점이 곧 수집 기준일이다.
+    collected_at = ((data.get("_meta") or {}).get("generated_at") or "")[:10]
 
     classified_by_id = _load_classification()
     classified_suffix_index = _gogumafarm_suffix_index(
@@ -127,10 +129,18 @@ def main() -> None:
                 search_terms=item.get("search_terms") or [],
                 links=item.get("links") or [],
                 merged_from=item.get("merged_from") or [],
-                situation=classification.get("situation") or "",
-                situation_score=classification.get("situation_score"),
-                ad_safe=classification.get("ad_safe"),
+                collected_at=collected_at,
             )
+            # 분류 결과는 파일이 있을 때만 덮어쓴다.
+            # classify_memes_situation.py가 memes 테이블을 직접 읽는 방식으로 바뀌면서
+            # memes_classified.json은 더 이상 저장소에 없다(커밋 cd2b386). 그 상태로 여기서
+            # ""를 밀어 넣으면 DB에 이미 들어 있는 분류가 통째로 지워진다.
+            if classified_by_id:
+                fields.update(
+                    situation=classification.get("situation") or "",
+                    situation_score=classification.get("situation_score"),
+                    ad_safe=classification.get("ad_safe"),
+                )
             row = db.get(models.Meme, fields["id"])
             if row is None:
                 db.add(models.Meme(**fields))

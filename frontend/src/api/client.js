@@ -196,12 +196,14 @@ export const HistoryAPI = {
 const mapTrendMeme = (m) => ({
   id: m.id, source: m.source, sourceLabel: m.source_label, name: m.name,
   url: m.url, image: m.image, origin: m.origin, summary: m.summary,
-  published: m.published, periodStart: m.period_start || '', peakDate: m.peak_date || '',
+  published: m.published, periodStart: m.period_start || '', periodEnd: m.period_end || '',
+  peakDate: m.peak_date || '',
   views: m.views, situation: m.situation || '',
 });
 
 export const TrendAPI = {
   list: () => get('/api/trend').then((r) => ({
+    trendCollectedAt: r.collected_at || '',
     trendItems: (r.items || []).map(mapTrendMeme),
     trendSites: r.sites || [],
   })),

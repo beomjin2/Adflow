@@ -88,6 +88,20 @@ export default function AppShell({ state, actions, missingProdsCount, children }
           {(state.screen === 'store' && state.storeReadOnly) || state.screen === 'myStore' ? (
             <span style={{ fontSize: 12, fontWeight: 700, background: colors.primarySoft, color: colors.primarySoftText, borderRadius: 999, padding: '6px 12px' }}>조회 모드</span>
           ) : null}
+          {/* 트렌드 확인 화면의 주 동작. 본문에 두면 목록 위에 버튼만 있는 빈 줄이 하나 생겨서
+              헤더의 남는 오른쪽 공간으로 올렸다. */}
+          {state.screen === 'trend' && (
+            <button
+              onClick={() => actions.set('trendRecommendPopupOpen', true)}
+              style={{
+                height: 38, padding: '0 16px', borderRadius: 999, border: 0, flex: 'none',
+                background: colors.primary, color: '#fff', boxShadow: '0 4px 10px rgba(22,160,107,.3)',
+                fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              ✨ 밈 추천받기
+            </button>
+          )}
         </div>
 
         {children}

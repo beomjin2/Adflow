@@ -156,6 +156,11 @@ class Meme(Base):
     pre_existing = Column(Boolean, nullable=True)
     blog_total = Column(Integer, nullable=True)
 
+    # 이 행을 어느 시점의 수집 결과로 채웠는지(crawling/memes_all.json 의 _meta.generated_at).
+    # "유행 중" 판정의 기준일이다 — 실행 시각(오늘)을 쓰면 크롤링이 몇 주에 한 번 도는 동안
+    # 살아 있던 밈이 전부 종료로 바뀐다(밈이 끝난 게 아니라 우리가 안 훑은 건데도).
+    collected_at = Column(String, default="")
+
     search_terms = Column(JSON, default=list)
     links = Column(JSON, default=list)
     merged_from = Column(JSON, default=list)

@@ -1,14 +1,7 @@
-import { useEffect, useMemo } from 'react';
-import { colors, cardBase } from '../theme.js';
+import { useEffect, useMemo, useState } from 'react';
+import { colors } from '../theme.js';
 import { TextInput, Select } from '../components/ui/Field.jsx';
 import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
-
-/** 사이트별로 최근 3건씩 보여주는 요약 카드. 원본 디자인(fix_for_yeonjin/dashboard.html)엔
- *  막대그래프·순위를 "조회수"로 매겼지만 그건 목업용 가짜 숫자였다(README 참고) — 네이버
- *  계열 트렌드는 상대 검색량만 주지 절대 조회수를 안 준다. */
-function siteTopItems(items, source) {
-  return items.filter((m) => m.source === source).slice(0, 3);
-}
 
 /** 화면에 보여줄 날짜 — periodStart(스파이크 구간 시작일) > peakDate(스파이크 정점일)
  *  > published(등록일) 순으로 있는 값을 쓴다. 스파이크를 못 찾은 밈은 peakDate까지
@@ -30,15 +23,32 @@ function parsePublished(str) {
   return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
-function daysAgo(str) {
-  const dt = parsePublished(str);
-  if (!dt) return null;
-  return Math.max(0, Math.floor((Date.now() - dt.getTime()) / 86400000));
+/** 유행 상태 — periodStart/periodEnd 가 둘 다 있을 때만 "유행 중 / 유행 종료"와 기간을 낸다.
+ *  검색 신호를 못 잡아 날짜를 정점일·등록일로 대신한 밈(estimated)은 지금도 쓰이는지 알 수
+ *  없으므로 배지도 기간도 만들지 않는다 — 시작일을 대신할 수는 있어도 "아직 유행 중인가"는
+ *  대신할 수 없다. */
+/** 유행 상태 — periodStart/periodEnd 가 둘 다 있을 때만 낸다.
+ *  검색 신호를 못 잡아 날짜를 정점일·등록일로 대신한 밈(estimated)은 지금도 쓰이는지
+ *  알 수 없으므로 판정하지 않는다 — 시작일은 대신할 수 있어도 "아직 유행 중인가"는
+ *  대신할 수 없다.
+ *  base 는 수집 기준일. 그날로부터 3일 안까지 신호가 잡혔으면 아직 쓰이는 중으로 본다. */
+function trendStatus(m, base) {
+  const s = parsePublished(m.periodStart);
+  const e = parsePublished(m.periodEnd);
+  if (!s || !e || !base) return { estimated: true, ongoing: false };
+  const ongoing = (base.getTime() - e.getTime()) / 86400000 <= 3;
+  return { estimated: false, ongoing };
 }
 
 export default function Trend({ state, actions }) {
+  // 밈 대표 이미지 확대 보기. 썸네일이 150px 정사각으로 잘려 있어 원본 구도가 안 보인다 —
+  // 눌러서 원본 비율 그대로 크게 볼 수 있게 한다. 열려 있는 이미지 URL만 담는다(null이면 닫힘).
+  const [zoomImage, setZoomImage] = useState(null);
+  // 썸네일 호버 여부. 인라인 스타일이라 :hover 를 못 쓰고 상태로 들고 있는다.
+  const [thumbHover, setThumbHover] = useState(false);
+
   const {
-    trendItems, trendSites, trendFilter, trendSearch, trendSort, trendSel,
+    trendItems, trendCollectedAt, trendFilter, trendSearch, trendSort, trendSel, trendOnlyOngoing,
     trendRecommendNote, trendRecommendLoading, trendRecommendResult, trendRecommendPopupOpen,
   } = state;
 
@@ -69,14 +79,21 @@ export default function Trend({ state, actions }) {
     return list.sort((a, b) => situationRank(a.situation) - situationRank(b.situation) || b.count - a.count);
   }, [trendItems]);
 
+  // 수집 기준일 — 서버가 준 collected_at(crawling/memes_all.json 의 _meta.generated_at).
+  // "유행 중" 판정과 하단 표기가 같은 값을 쓴다. 실행 시각(오늘)을 쓰면 크롤링 주기가
+  // 길 때 살아 있던 밈이 전부 종료로 바뀌고, periodEnd 의 최댓값으로 추정하면 최근에
+  // 뜬 밈이 하나도 없는 달에 기준일이 통째로 과거로 밀린다.
+  const baseDate = useMemo(() => parsePublished(trendCollectedAt), [trendCollectedAt]);
+
   const filtered = useMemo(() => {
     const q = trendSearch.trim();
     return trendItems.filter((m) => {
       if (trendFilter !== '전체' && m.situation !== trendFilter) return false;
+      if (trendOnlyOngoing && !trendStatus(m, baseDate).ongoing) return false;
       if (!q) return true;
       return m.name.includes(q) || m.origin.includes(q) || m.summary.includes(q);
     });
-  }, [trendItems, trendFilter, trendSearch]);
+  }, [trendItems, trendFilter, trendSearch, trendOnlyOngoing, baseDate]);
 
   const sorted = useMemo(() => {
     if (trendSort === '이름순') return filtered.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko'));
@@ -91,26 +108,20 @@ export default function Trend({ state, actions }) {
     return filtered;
   }, [filtered, trendSort]);
 
-  // 막대그래프 — 검색/정렬과 무관하게 "밈 필터"만 반영한다(목업의 barSource와 동일).
-  // trendItems는 백엔드가 이미 트렌드 날짜(periodStart, 없으면 등록일) 내림차순으로 준다.
-  const barSource = useMemo(() => {
-    const byFilter = trendFilter === '전체' ? trendItems : trendItems.filter((m) => m.situation === trendFilter);
-    return byFilter.slice(0, 5);
-  }, [trendItems, trendFilter]);
 
-  // 점수 = "얼마나 최근인가" — daysAgo가 작을수록(최근일수록) 점수가 크다.
-  // 날짜를 모르는 항목은 0점으로 가장 짧은 막대가 된다.
-  const barScores = useMemo(() => {
-    const known = barSource.map((m) => daysAgo(trendDate(m))).filter((d) => d != null);
-    const maxKnown = known.length ? Math.max(...known) : 0;
-    return barSource.map((m) => {
-      const d = daysAgo(trendDate(m));
-      return d == null ? 0 : maxKnown - d + 1;
-    });
-  }, [barSource]);
-  const barMax = Math.max(1, ...barScores);
+  // 처음 들어오면 오른쪽이 비어 있어 화면이 허전하다. 목록 맨 위 밈을 자동으로 연다.
+  // 필터·검색·정렬로 목록이 바뀌어 고른 밈이 사라지면 다시 맨 위로 옮긴다.
+  useEffect(() => {
+    if (!sorted.length) {
+      if (trendSel) actions.set('trendSel', '');
+      return;
+    }
+    if (!sorted.some((m) => m.id === trendSel)) actions.set('trendSel', sorted[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sorted, trendSel]);
 
   const selected = trendItems.find((m) => m.id === trendSel) || null;
+  const selStatus = selected ? trendStatus(selected, baseDate) : null;
   const selectMeme = (id) => actions.set('trendSel', id);
 
   const filterChip = (label, on, onClick) => (
@@ -131,99 +142,10 @@ export default function Trend({ state, actions }) {
 
   return (
     <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ ...cardBase, gap: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: colors.textSub }}>활용 상황</span>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {filterChip(`전체 (${trendItems.length})`, trendFilter === '전체', () => actions.set('trendFilter', '전체'))}
-            {situations.map((s) => filterChip(
-              `${s.situation} (${s.count})`,
-              trendFilter === s.situation,
-              () => actions.set('trendFilter', s.situation),
-            ))}
-          </div>
-          <span style={{ flex: 1 }} />
-          <button
-            onClick={() => actions.set('trendRecommendPopupOpen', true)}
-            style={{
-              height: 40, padding: '0 18px', borderRadius: 999, border: 0, flex: 'none',
-              background: colors.primary, color: '#fff', boxShadow: '0 4px 10px rgba(22,160,107,.3)',
-              fontSize: 14, fontWeight: 700, cursor: 'pointer',
-            }}
-          >
-            ✨ 밈 추천받기
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, height: 160 }}>
-          {barSource.map((m, i) => {
-            const on = (trendSel || '') === m.id;
-            const height = Math.max(14, Math.round(barScores[i] / barMax * 104));
-            return (
-              <div key={m.id} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, justifyContent: 'flex-end', height: '100%' }}>
-                <span style={{
-                  fontSize: 11.5, fontWeight: on ? 700 : 600, color: on ? colors.text : colors.textSub,
-                  textAlign: 'center', lineHeight: '15px', overflow: 'hidden', textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap', width: '100%',
-                }}>{m.name}</span>
-                <button
-                  onClick={() => selectMeme(m.id)}
-                  title={m.name}
-                  style={{
-                    width: '100%', border: 0, padding: 0, cursor: 'pointer', borderRadius: '8px 8px 4px 4px',
-                    background: on ? colors.primary : colors.onboardBorder, height,
-                  }}
-                />
-                <span style={{ fontSize: 12, fontWeight: 700, color: on ? colors.primaryHover : colors.primary }}>{trendDate(m) || '정보없음'}</span>
-              </div>
-            );
-          })}
-          {barSource.length === 0 && (
-            <span style={{ fontSize: 12.5, color: colors.textFaint, alignSelf: 'center' }}>이 필터에 해당하는 밈이 없어요.</span>
-          )}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10 }}>
-          {trendSites.map((s) => (
-            <div key={s.source} style={{ background: colors.bg, borderRadius: 13, padding: '12px 13px', display: 'flex', flexDirection: 'column', gap: 9 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span style={{ fontSize: 12.5, fontWeight: 700 }}>{s.label}</span>
-                <span style={{ flex: 1 }} />
-                <span style={{ fontSize: 10.5, fontWeight: 600, color: colors.textFaint }}>최신순</span>
-              </div>
-              {siteTopItems(trendItems, s.source).map((m, i) => {
-                const on = trendSel === m.id;
-                return (
-                  <button
-                    key={m.id}
-                    onClick={() => selectMeme(m.id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
-                      cursor: 'pointer', border: `1.5px solid ${on ? colors.primary : colors.cardBorder}`,
-                      background: on ? colors.primarySoft : '#fff', borderRadius: 10, padding: '8px 10px',
-                    }}
-                  >
-                    <span style={{
-                      fontSize: 10.5, fontWeight: 800, color: i === 0 ? colors.primarySoftText : colors.textFaint,
-                      background: i === 0 ? colors.primarySoft : colors.softBg, borderRadius: 6, padding: '3px 6px', flex: 'none',
-                    }}>{i + 1}위</span>
-                    <span style={{
-                      fontSize: 12.5, fontWeight: 600, color: colors.text, overflow: 'hidden',
-                      textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
-                    }}>{m.name}</span>
-                    <span style={{ flex: 1 }} />
-                    <span style={{ fontSize: 11, fontWeight: 700, color: colors.textFaint, flex: 'none' }}>{trendDate(m) || '-'}</span>
-                  </button>
-                );
-              })}
-              {siteTopItems(trendItems, s.source).length === 0 && (
-                <span style={{ fontSize: 12, color: colors.textFaint }}>아직 없어요.</span>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
+      {/* 상단에 있던 막대그래프·사이트별 요약과, 아래 목록과 똑같던 필터 칩 줄을 걷어냈다.
+          막대 높이로 쓸 수 있는 값이 없었고(네이버는 절대 검색량을 주지 않는다),
+          사이트별 카드는 아래 목록과 같은 밈을 순서만 바꿔 한 번 더 보여주고 있었다.
+          추천 버튼은 AppShell 헤더 오른쪽으로 옮겼다. */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
         <div style={{ flex: '1 1 300px', minWidth: 0, background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: 16, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           <div style={{ padding: '13px 14px', borderBottom: `1px solid ${colors.cardBorder}`, display: 'flex', flexDirection: 'column', gap: 9, background: colors.bg }}>
@@ -235,7 +157,11 @@ export default function Trend({ state, actions }) {
                 style={{ flex: 1, minWidth: 0, height: 40 }}
               />
               <SecondaryButton
-                onClick={() => { actions.set('trendSearch', ''); actions.set('trendFilter', '전체'); }}
+                onClick={() => {
+                  actions.set('trendSearch', '');
+                  actions.set('trendFilter', '전체');
+                  actions.set('trendOnlyOngoing', false);
+                }}
                 style={{ flex: 'none', height: 40, padding: '0 13px', fontSize: 13 }}
               >
                 초기화
@@ -252,6 +178,24 @@ export default function Trend({ state, actions }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 11.5, color: colors.textFaint, whiteSpace: 'nowrap', flex: 'none' }}>{sorted.length}개 밈</span>
               <span style={{ flex: 1 }} />
+              <label
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, flex: 'none', cursor: 'pointer',
+                  fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
+                  color: trendOnlyOngoing ? colors.primarySoftText : colors.textSub,
+                  background: trendOnlyOngoing ? colors.primarySoft : colors.softBg,
+                  border: `1px solid ${trendOnlyOngoing ? colors.primary : colors.cardBorder}`,
+                  borderRadius: 999, padding: '4px 10px',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={trendOnlyOngoing}
+                  onChange={(e) => actions.set('trendOnlyOngoing', e.target.checked)}
+                  style={{ width: 13, height: 13, margin: 0, accentColor: colors.primary, cursor: 'pointer' }}
+                />
+                유행 중만
+              </label>
               <Select
                 value={trendSort}
                 onChange={(e) => actions.set('trendSort', e.target.value)}
@@ -287,6 +231,12 @@ export default function Trend({ state, actions }) {
                     background: on ? colors.primarySoft : colors.softBg, borderRadius: 7, padding: '4px 2px',
                     flex: 'none', width: 92, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>{m.situation || '미분류'}</span>
+                  {trendStatus(m, baseDate).ongoing && (
+                    <span
+                      title="아직 유행 중"
+                      style={{ flex: 'none', width: 6, height: 6, borderRadius: 999, background: colors.primary }}
+                    />
+                  )}
                   <span style={{
                     flex: 1, minWidth: 0, textAlign: 'left', fontSize: 13.5, fontWeight: 700, color: colors.text,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -303,9 +253,36 @@ export default function Trend({ state, actions }) {
         {selected && (
           <div style={{ flex: '1.25 1 340px', minWidth: 0, background: '#fff', border: `1.5px solid ${colors.onboardBorder}`, borderRadius: 16, padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-              <div style={{ flex: 'none', width: 150, height: 150, borderRadius: 13, border: `1px solid ${colors.cardBorder}`, background: colors.bg, overflow: 'hidden' }}>
+              <div
+                onClick={() => selected.image && setZoomImage(selected.image)}
+                onMouseEnter={() => setThumbHover(true)}
+                onMouseLeave={() => setThumbHover(false)}
+                style={{ flex: 'none', width: 150, height: 150, borderRadius: 13, border: `1px solid ${colors.cardBorder}`, background: colors.bg, overflow: 'hidden', cursor: selected.image ? 'zoom-in' : 'default', position: 'relative' }}
+              >
                 {selected.image ? (
-                  <img src={selected.image} alt={selected.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <>
+                    <img src={selected.image} alt={selected.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    {/* 올려놨을 때만 반투명하게 덮고 가운데 돋보기를 띄운다 — 눌러서 크게 볼 수 있다는 신호 */}
+                    <div
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        background: 'rgba(17,19,22,.42)', opacity: thumbHover ? 1 : 0,
+                        transition: 'opacity .16s ease', pointerEvents: 'none',
+                      }}
+                    >
+                      <svg
+                        width="34" height="34" viewBox="0 0 24 24" fill="none"
+                        stroke="#fff" strokeWidth="2" strokeLinecap="round"
+                        style={{ transform: thumbHover ? 'scale(1)' : 'scale(.85)', transition: 'transform .16s ease' }}
+                      >
+                        <circle cx="10.5" cy="10.5" r="6.5" />
+                        <line x1="15.5" y1="15.5" x2="21" y2="21" />
+                        <line x1="10.5" y1="7.8" x2="10.5" y2="13.2" />
+                        <line x1="7.8" y1="10.5" x2="13.2" y2="10.5" />
+                      </svg>
+                    </div>
+                  </>
                 ) : (
                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: colors.textFaint, textAlign: 'center', padding: 8 }}>
                     이미지 없음
@@ -319,6 +296,17 @@ export default function Trend({ state, actions }) {
                   <span style={{ fontSize: 11, fontWeight: 700, color: colors.textSub, background: colors.softBg, borderRadius: 999, padding: '4px 9px' }}>
                     {selected.sourceLabel}
                   </span>
+                  {/* 아직 쓰이는 밈만 표시한다. "유행 종료"까지 배지로 달면 회색 배지가 목록의
+                      절반을 덮어 초록 배지의 강조가 죽는다 — 끝났다는 건 아래 "유행 기간" 칸이
+                      과거형(N일간)과 흐린 색으로 알려준다. */}
+                  {selStatus && !selStatus.estimated && selStatus.ongoing && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '4px 9px',
+                      color: colors.primarySoftText, background: colors.primarySoft,
+                    }}>
+                      ● 유행 중
+                    </span>
+                  )}
                 </div>
 
                 {selected.origin && (
@@ -337,9 +325,13 @@ export default function Trend({ state, actions }) {
 
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                   {[
+                    // 조회수는 목업용 가짜 숫자였다(README) — 네이버는 절대 검색량을 안 준다.
+                    // 그 자리에 "유행 기간"을 넣어봤지만 뺐다: period_start~period_end 는 검색
+                    // 신호가 잡힌 구간이지 밈이 그 기간 내내 유행했다는 뜻이 아니라서, 숫자로
+                    // 박아두면 재지 않은 걸 잰 것처럼 보인다(냐냐냥 196일째 같은 값이 나온다).
+                    // 지금 쓸 수 있는 밈인지는 제목 옆 "유행 중" 배지가 답한다.
                     { k: '사이트', v: selected.sourceLabel },
                     { k: '유행 시작일', v: trendDate(selected) || '정보없음' },
-                    { k: '조회수', v: selected.views != null ? `${selected.views.toLocaleString()}회` : '정보없음' },
                   ].map((st) => (
                     <div key={st.k} style={{ background: colors.bg, borderRadius: 10, padding: '8px 11px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 92 }}>
                       <span style={{ fontSize: 10.5, fontWeight: 600, color: colors.textFaint }}>{st.k}</span>
@@ -375,6 +367,15 @@ export default function Trend({ state, actions }) {
           </div>
         )}
       </div>
+
+      {/* 날짜의 출처를 한 줄로 밝힌다. 검색으로 시점을 못 잡은 밈은 원문 등록일을 대신
+          보여주고 있어서, 이 문장이 없으면 화면이 모든 날짜를 "유행 시작일"이라고
+          말하는 셈이 된다. 수집 기준일도 같이 적는다 — 유행 중 판정이 오늘이 아니라
+          이 날짜를 기준으로 돌아가기 때문이다. */}
+      <span style={{ fontSize: 11.5, lineHeight: '18px', color: colors.textFaint, padding: '0 2px' }}>
+        유행 시작일은 네이버 검색어트렌드 기준이며, 검색 데이터가 없는 일부 밈은 원문 등록일로 대신 표시합니다.
+        {baseDate && ` · 최근 수집 ${baseDate.getFullYear()}.${String(baseDate.getMonth() + 1).padStart(2, '0')}.${String(baseDate.getDate()).padStart(2, '0')}`}
+      </span>
 
       {trendRecommendPopupOpen && !trendRecommendResult && (
         <div
@@ -479,6 +480,49 @@ export default function Trend({ state, actions }) {
               </SecondaryButton>
             </div>
           </div>
+        </div>
+      )}
+
+      {zoomImage && (
+        <div
+          onClick={() => setZoomImage(null)}
+          role="dialog"
+          aria-label="밈 이미지 확대 보기"
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(17,19,22,.72)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, cursor: 'zoom-out',
+          }}
+        >
+          {/* 원본이 긴 변 480px 라 <img> 를 그냥 두면 실제 크기대로만 나와서 "확대"가 체감되지 않는다.
+              고정 크기 상자 안에서 object-fit: contain 으로 채워 비율은 지키면서 키운다. */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(92vw, 780px)', height: 'min(84vh, 780px)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'default',
+            }}
+          >
+            <img
+              src={zoomImage}
+              alt=""
+              style={{
+                width: '100%', height: '100%', objectFit: 'contain', display: 'block',
+                borderRadius: 12, filter: 'drop-shadow(0 20px 60px rgba(0,0,0,.45))',
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setZoomImage(null)}
+            aria-label="닫기"
+            style={{
+              position: 'fixed', top: 20, right: 24, width: 40, height: 40, borderRadius: 999,
+              border: 'none', background: 'rgba(255,255,255,.92)', color: '#111316',
+              fontSize: 20, lineHeight: '40px', cursor: 'pointer',
+            }}
+          >
+            ×
+          </button>
         </div>
       )}
     </div>

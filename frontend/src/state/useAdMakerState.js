@@ -70,8 +70,11 @@ function initialState() {
     adEntryOpen: false,
 
     // 트렌드 확인 — /api/trend가 준 밈 목록을 그대로 두고, 필터/검색/정렬/선택은 화면에서만 쓴다.
-    trendItems: [], trendSites: [],
+    trendItems: [], trendSites: [], trendCollectedAt: '',
     trendFilter: '전체', trendSearch: '', trendSort: '최신순', trendSel: '',
+    // 상황 카테고리(무엇에 대한 밈이냐)와는 다른 축이라 칩이 아니라 별도 토글로 둔다 —
+    // "재미·밈놀이 중에 지금도 유행 중인 것"처럼 두 조건을 같이 걸 수 있어야 한다.
+    trendOnlyOngoing: false,
     // 활용 상황 안에서 GPT 추천 — note는 "오늘 알릴 내용"(선택). result는 {meme, reason} | null.
     // popupOpen은 트렌드 화면에 들어올 때마다 Trend.jsx가 true로 켠다.
     trendRecommendNote: '', trendRecommendLoading: false, trendRecommendResult: null,

@@ -109,7 +109,24 @@ _LLM_SYSTEM_PROMPT = (
     "'star-shaped mark' -> star_(symbol) (NOT star_pattern/star_mark); "
     "'small cute proportions' -> chibi; "
     "'bandage/plaster on skin' -> bandaid (NOT bandage); "
-    "'red scarf' -> scarf, red_scarf (keep both, do not drop the color)."
+    "'red scarf' -> scarf, red_scarf (keep both, do not drop the color). "
+    # 실측(2026-09-18, 시드 3개): 앞치마만 주면 모델이 밑에 입을 옷을 지어내는데 그 색이 검정이다.
+    # 상·하의를 함께 지정하면 검은 옷이 사라진다. 그래서 '혼자 입을 수 없는 옷'은 아래·위를 같이 낸다.
+    "IMPORTANT rule about clothing, apply it strictly: "
+    "(a) If the description names a garment that cannot be worn alone — apron, vest, overalls, "
+    "jacket, coat — then ALSO emit an explicit top and bottom garment with colors, because the "
+    "model invents them in black when they are missing. Use white_shirt and brown_pants unless "
+    "the user named other clothes. "
+    "(b) If the description names NO such garment — only accessories like scarf, bandaid, hat, "
+    "ribbon, glasses, bag, star_(symbol), or no clothing at all — then emit NO clothing tags "
+    "whatsoever. Never add white_shirt or brown_pants in that case. The character is an animal "
+    "and looks right with bare fur. "
+    "Examples: "
+    "'white apron' -> apron, white_apron, white_shirt, brown_pants; "
+    "'red apron and chef hat' -> apron, red_apron, chef_hat, white_shirt, brown_pants; "
+    "'blue vest' -> vest, blue_vest, white_shirt, brown_pants; "
+    "'only a red scarf' -> scarf, red_scarf (NO shirt, NO pants); "
+    "'a bandaid and a star mark' -> bandaid, star_(symbol) (NO shirt, NO pants)."
 )
 
 # 네컷의 한 컷 문장(장면) 전용. 캐릭터용 프롬프트를 그대로 쓰면 GPT가 한국어 단어를

@@ -36,6 +36,23 @@ function daysAgo(str) {
   return Math.max(0, Math.floor((Date.now() - dt.getTime()) / 86400000));
 }
 
+/** 유행 상태 — periodStart/periodEnd 가 둘 다 있을 때만 "유행 중 / 유행 종료"와 기간을 낸다.
+ *  검색 신호를 못 잡아 날짜를 정점일·등록일로 대신한 밈(estimated)은 지금도 쓰이는지 알 수
+ *  없으므로 배지도 기간도 만들지 않는다 — 시작일을 대신할 수는 있어도 "아직 유행 중인가"는
+ *  대신할 수 없다. */
+/** 유행 상태 — periodStart/periodEnd 가 둘 다 있을 때만 낸다.
+ *  검색 신호를 못 잡아 날짜를 정점일·등록일로 대신한 밈(estimated)은 지금도 쓰이는지
+ *  알 수 없으므로 판정하지 않는다 — 시작일은 대신할 수 있어도 "아직 유행 중인가"는
+ *  대신할 수 없다.
+ *  base 는 수집 기준일. 그날로부터 3일 안까지 신호가 잡혔으면 아직 쓰이는 중으로 본다. */
+function trendStatus(m, base) {
+  const s = parsePublished(m.periodStart);
+  const e = parsePublished(m.periodEnd);
+  if (!s || !e || !base) return { estimated: true, ongoing: false };
+  const ongoing = (base.getTime() - e.getTime()) / 86400000 <= 3;
+  return { estimated: false, ongoing };
+}
+
 export default function Trend({ state, actions }) {
   // 밈 대표 이미지 확대 보기. 썸네일이 150px 정사각으로 잘려 있어 원본 구도가 안 보인다 —
   // 눌러서 원본 비율 그대로 크게 볼 수 있게 한다. 열려 있는 이미지 URL만 담는다(null이면 닫힘).
@@ -44,7 +61,7 @@ export default function Trend({ state, actions }) {
   const [thumbHover, setThumbHover] = useState(false);
 
   const {
-    trendItems, trendSites, trendFilter, trendSearch, trendSort, trendSel,
+    trendItems, trendSites, trendCollectedAt, trendFilter, trendSearch, trendSort, trendSel, trendOnlyOngoing,
     trendRecommendNote, trendRecommendLoading, trendRecommendResult, trendRecommendPopupOpen,
   } = state;
 
@@ -75,14 +92,21 @@ export default function Trend({ state, actions }) {
     return list.sort((a, b) => situationRank(a.situation) - situationRank(b.situation) || b.count - a.count);
   }, [trendItems]);
 
+  // 수집 기준일 — 서버가 준 collected_at(crawling/memes_all.json 의 _meta.generated_at).
+  // "유행 중" 판정과 하단 표기가 같은 값을 쓴다. 실행 시각(오늘)을 쓰면 크롤링 주기가
+  // 길 때 살아 있던 밈이 전부 종료로 바뀌고, periodEnd 의 최댓값으로 추정하면 최근에
+  // 뜬 밈이 하나도 없는 달에 기준일이 통째로 과거로 밀린다.
+  const baseDate = useMemo(() => parsePublished(trendCollectedAt), [trendCollectedAt]);
+
   const filtered = useMemo(() => {
     const q = trendSearch.trim();
     return trendItems.filter((m) => {
       if (trendFilter !== '전체' && m.situation !== trendFilter) return false;
+      if (trendOnlyOngoing && !trendStatus(m, baseDate).ongoing) return false;
       if (!q) return true;
       return m.name.includes(q) || m.origin.includes(q) || m.summary.includes(q);
     });
-  }, [trendItems, trendFilter, trendSearch]);
+  }, [trendItems, trendFilter, trendSearch, trendOnlyOngoing, baseDate]);
 
   const sorted = useMemo(() => {
     if (trendSort === '이름순') return filtered.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko'));
@@ -116,7 +140,9 @@ export default function Trend({ state, actions }) {
   }, [barSource]);
   const barMax = Math.max(1, ...barScores);
 
+
   const selected = trendItems.find((m) => m.id === trendSel) || null;
+  const selStatus = selected ? trendStatus(selected, baseDate) : null;
   const selectMeme = (id) => actions.set('trendSel', id);
 
   const filterChip = (label, on, onClick) => (
@@ -241,7 +267,11 @@ export default function Trend({ state, actions }) {
                 style={{ flex: 1, minWidth: 0, height: 40 }}
               />
               <SecondaryButton
-                onClick={() => { actions.set('trendSearch', ''); actions.set('trendFilter', '전체'); }}
+                onClick={() => {
+                  actions.set('trendSearch', '');
+                  actions.set('trendFilter', '전체');
+                  actions.set('trendOnlyOngoing', false);
+                }}
                 style={{ flex: 'none', height: 40, padding: '0 13px', fontSize: 13 }}
               >
                 초기화
@@ -258,6 +288,24 @@ export default function Trend({ state, actions }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 11.5, color: colors.textFaint, whiteSpace: 'nowrap', flex: 'none' }}>{sorted.length}개 밈</span>
               <span style={{ flex: 1 }} />
+              <label
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 5, flex: 'none', cursor: 'pointer',
+                  fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap',
+                  color: trendOnlyOngoing ? colors.primarySoftText : colors.textSub,
+                  background: trendOnlyOngoing ? colors.primarySoft : colors.softBg,
+                  border: `1px solid ${trendOnlyOngoing ? colors.primary : colors.cardBorder}`,
+                  borderRadius: 999, padding: '4px 10px',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={trendOnlyOngoing}
+                  onChange={(e) => actions.set('trendOnlyOngoing', e.target.checked)}
+                  style={{ width: 13, height: 13, margin: 0, accentColor: colors.primary, cursor: 'pointer' }}
+                />
+                유행 중만
+              </label>
               <Select
                 value={trendSort}
                 onChange={(e) => actions.set('trendSort', e.target.value)}
@@ -293,6 +341,12 @@ export default function Trend({ state, actions }) {
                     background: on ? colors.primarySoft : colors.softBg, borderRadius: 7, padding: '4px 2px',
                     flex: 'none', width: 92, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   }}>{m.situation || '미분류'}</span>
+                  {trendStatus(m, baseDate).ongoing && (
+                    <span
+                      title="아직 유행 중"
+                      style={{ flex: 'none', width: 6, height: 6, borderRadius: 999, background: colors.primary }}
+                    />
+                  )}
                   <span style={{
                     flex: 1, minWidth: 0, textAlign: 'left', fontSize: 13.5, fontWeight: 700, color: colors.text,
                     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -352,6 +406,17 @@ export default function Trend({ state, actions }) {
                   <span style={{ fontSize: 11, fontWeight: 700, color: colors.textSub, background: colors.softBg, borderRadius: 999, padding: '4px 9px' }}>
                     {selected.sourceLabel}
                   </span>
+                  {/* 아직 쓰이는 밈만 표시한다. "유행 종료"까지 배지로 달면 회색 배지가 목록의
+                      절반을 덮어 초록 배지의 강조가 죽는다 — 끝났다는 건 아래 "유행 기간" 칸이
+                      과거형(N일간)과 흐린 색으로 알려준다. */}
+                  {selStatus && !selStatus.estimated && selStatus.ongoing && (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, borderRadius: 999, padding: '4px 9px',
+                      color: colors.primarySoftText, background: colors.primarySoft,
+                    }}>
+                      ● 유행 중
+                    </span>
+                  )}
                 </div>
 
                 {selected.origin && (
@@ -370,9 +435,13 @@ export default function Trend({ state, actions }) {
 
                 <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
                   {[
+                    // 조회수는 목업용 가짜 숫자였다(README) — 네이버는 절대 검색량을 안 준다.
+                    // 그 자리에 "유행 기간"을 넣어봤지만 뺐다: period_start~period_end 는 검색
+                    // 신호가 잡힌 구간이지 밈이 그 기간 내내 유행했다는 뜻이 아니라서, 숫자로
+                    // 박아두면 재지 않은 걸 잰 것처럼 보인다(냐냐냥 196일째 같은 값이 나온다).
+                    // 지금 쓸 수 있는 밈인지는 제목 옆 "유행 중" 배지가 답한다.
                     { k: '사이트', v: selected.sourceLabel },
                     { k: '유행 시작일', v: trendDate(selected) || '정보없음' },
-                    { k: '조회수', v: selected.views != null ? `${selected.views.toLocaleString()}회` : '정보없음' },
                   ].map((st) => (
                     <div key={st.k} style={{ background: colors.bg, borderRadius: 10, padding: '8px 11px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 92 }}>
                       <span style={{ fontSize: 10.5, fontWeight: 600, color: colors.textFaint }}>{st.k}</span>
@@ -408,6 +477,15 @@ export default function Trend({ state, actions }) {
           </div>
         )}
       </div>
+
+      {/* 날짜의 출처를 한 줄로 밝힌다. 검색으로 시점을 못 잡은 밈은 원문 등록일을 대신
+          보여주고 있어서, 이 문장이 없으면 화면이 모든 날짜를 "유행 시작일"이라고
+          말하는 셈이 된다. 수집 기준일도 같이 적는다 — 유행 중 판정이 오늘이 아니라
+          이 날짜를 기준으로 돌아가기 때문이다. */}
+      <span style={{ fontSize: 11.5, lineHeight: '18px', color: colors.textFaint, padding: '0 2px' }}>
+        유행 시작일은 네이버 검색어트렌드 기준이며, 검색 데이터가 없는 일부 밈은 원문 등록일로 대신 표시합니다.
+        {baseDate && ` · 최근 수집 ${baseDate.getFullYear()}.${String(baseDate.getMonth() + 1).padStart(2, '0')}.${String(baseDate.getDate()).padStart(2, '0')}`}
+      </span>
 
       {trendRecommendPopupOpen && !trendRecommendResult && (
         <div

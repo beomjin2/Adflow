@@ -1,6 +1,6 @@
 import { colors } from '../theme.js';
 import { PrimaryButton, SecondaryButton, SoftButton } from '../components/ui/Button.jsx';
-import { buildAdText, adTextForClipboard, characterImage } from '../lib/adText.js';
+import { buildAdText, adTextForClipboard, copyToClipboard, characterImage } from '../lib/adText.js';
 
 export default function Save({ state, actions }) {
   const { headline, lines, info, tags } = buildAdText(state);
@@ -10,12 +10,8 @@ export default function Save({ state, actions }) {
   const copy = async () => {
     const text = adTextForClipboard(state);
     if (!text) { actions.toast('복사할 문구가 없어요'); return; }
-    try {
-      await navigator.clipboard.writeText(text);
-      actions.toast('문구를 복사했어요');
-    } catch {
-      actions.toast('복사가 안 돼요 — 위 문구를 길게 눌러 직접 복사해주세요');
-    }
+    const ok = await copyToClipboard(text);
+    actions.toast(ok ? '문구를 복사했어요' : '복사가 안 돼요 — 위 문구를 길게 눌러 직접 복사해주세요');
   };
 
   return (

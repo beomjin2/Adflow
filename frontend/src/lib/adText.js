@@ -53,6 +53,39 @@ export function adTextForClipboard(state) {
   return [lines.join('\n'), info, tags.join(' ')].filter(Boolean).join('\n\n');
 }
 
+/** navigator.clipboard(HTTPS·localhost 같은 보안 컨텍스트에서만 있음)가 없거나 실패하면
+ *  임시 textarea + document.execCommand('copy')로 한 번 더 시도한다 — 이 서비스가 지금
+ *  HTTP로 떠 있어서 navigator.clipboard 자체가 없는 경우가 많다(Result·Save 화면 공용).
+ *  @returns {Promise<boolean>} 복사에 성공했는지. */
+export async function copyToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // 아래 폴백으로 넘어간다.
+    }
+  }
+
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  // 화면 밖으로 보내되 display:none은 안 된다 — 그러면 select()가 아무것도 못 고른다.
+  textarea.style.position = 'fixed';
+  textarea.style.top = '-1000px';
+  textarea.style.left = '-1000px';
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  let ok = false;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  document.body.removeChild(textarea);
+  return ok;
+}
+
 /** 확정된 캐릭터 그림 한 장 — 사장님이 고른 후보 그 장이다. */
 export function characterImage(state) {
   const picked = (state.charCands || [])[state.charSelected];

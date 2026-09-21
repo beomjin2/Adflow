@@ -1,6 +1,6 @@
 import { colors } from '../theme.js';
 import { PrimaryButton, SecondaryButton, SoftButton } from '../components/ui/Button.jsx';
-import { buildAdText, adTextForClipboard, characterImage } from '../lib/adText.js';
+import { buildAdText, adTextForClipboard, copyToClipboard, characterImage } from '../lib/adText.js';
 import ComicPanels from '../components/ComicPanels.jsx';
 
 export default function Result({ state, actions }) {
@@ -10,13 +10,8 @@ export default function Result({ state, actions }) {
   const copy = async () => {
     const text = adTextForClipboard(state);
     if (!text) { actions.toast('복사할 문구가 없어요'); return; }
-    try {
-      await navigator.clipboard.writeText(text);
-      actions.toast('문구를 복사했어요 — 인스타에 붙여 넣으세요');
-    } catch {
-      // https가 아니거나 브라우저가 막으면 클립보드를 못 쓴다. 그럴 땐 직접 고르시게 안내한다.
-      actions.toast('복사가 안 돼요 — 아래 문구를 길게 눌러 직접 복사해주세요');
-    }
+    const ok = await copyToClipboard(text);
+    actions.toast(ok ? '문구를 복사했어요 — 인스타에 붙여 넣으세요' : '복사가 안 돼요 — 아래 문구를 길게 눌러 직접 복사해주세요');
   };
 
   if (empty) {
@@ -85,7 +80,10 @@ export default function Result({ state, actions }) {
 
         <SoftButton onClick={copy} style={{ height: 48, fontSize: 15 }}>문구 복사하기</SoftButton>
         <SecondaryButton onClick={actions.backToSb} style={{ height: 52, fontSize: 16 }}>대화로 돌아가 고치기</SecondaryButton>
-        <PrimaryButton onClick={actions.confirmResult}>이대로 저장</PrimaryButton>
+        {/* 보관함에서 옛 항목을 보는 중이면 이미 저장된 것이라 또 저장할 필요가 없다 — 중복 저장 방지. */}
+        {!state.viewingHistory && (
+          <PrimaryButton onClick={actions.confirmResult}>이대로 저장</PrimaryButton>
+        )}
       </div>
     </div>
   );

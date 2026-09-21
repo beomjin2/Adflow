@@ -177,6 +177,42 @@ const CONFIRM_COPY = {
   plan: { title: '스토리 변경 제안', yes: '이대로 바꾸기', no: '그대로 두기' },
 };
 
+/** 우리가 대신 정해준 값일 때, **무엇을 보고 정했는지**를 보여준다.
+ *
+ *  이게 없으면 사장님은 근거 없이 떨어진 값을 받는다 — 실제로 어느 가게든 같은
+ *  캐릭터가 제안되던 시절엔 그게 "정해진 답을 띄운다"로 읽혔다. 인용한 말은
+ *  백엔드가 가게 정보·시트 원문에 대고 맞춰 본 것만 내려온다(sheet_llm.evidence_from).
+ *
+ *  사장님이 직접 말한 수정에는 근거가 없다 — 그때는 이 블록이 통째로 안 나온다. */
+function BasisBlock({ basis, why }) {
+  const rows = basis || [];
+  if (!rows.length && !why) return null;
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 6,
+      background: colors.onboardBg, borderRadius: 10, padding: '9px 11px',
+    }}>
+      <span style={{ fontSize: 11.5, fontWeight: 800, color: colors.primarySoftText, letterSpacing: .3 }}>
+        이걸 보고 정했어요
+      </span>
+      {rows.map((b, i) => (
+        <div key={i} style={{ display: 'flex', gap: 7, alignItems: 'baseline', minWidth: 0 }}>
+          <span style={{
+            flex: 'none', fontSize: 11, fontWeight: 700, color: colors.textFaint,
+            background: '#fff', borderRadius: 999, padding: '2px 7px',
+          }}>{b.label}</span>
+          <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, lineHeight: '18px', color: colors.textSub }}>
+            “{b.quote}”
+          </span>
+        </div>
+      ))}
+      {why && (
+        <span style={{ fontSize: 12.5, lineHeight: '18px', color: colors.text }}>→ {why}</span>
+      )}
+    </div>
+  );
+}
+
 export function ConfirmBubble({ pending, onConfirm, onDecline }) {
   if (!pending) return null;
   const open = pending.status === 'open';
@@ -191,14 +227,19 @@ export function ConfirmBubble({ pending, onConfirm, onDecline }) {
           <span style={{ fontSize: 14, lineHeight: '20px', color: colors.text, fontWeight: 600 }}>{d.to}</span>
         </div>
       ))}
+      <BasisBlock basis={pending.basis} why={pending.why} />
       {open ? (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={onConfirm} style={{ flex: '1 1 160px', height: 48, borderRadius: 11, border: 0, background: colors.primary, color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', boxShadow: '0 5px 10px rgba(22,160,107,.28)' }}>{yes}</button>
           <button onClick={onDecline} style={{ flex: '0 1 auto', height: 48, padding: '0 18px', borderRadius: 11, border: `1.5px solid ${colors.inputBorder}`, background: '#fff', color: colors.text, fontSize: 15, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>{no}</button>
         </div>
       ) : (
+        // superseded — 답을 안 한 사이에 같은 칸을 새로 정한 카드다. '바꾸지 않았어요'로
+        // 묶어 두면 사장님이 거절한 것처럼 읽힌다. 거절한 적은 없고 지나갔을 뿐이다.
         <span style={{ fontSize: 12.5, fontWeight: 700, color: pending.status === 'applied' ? colors.primary : colors.textFaint }}>
-          {pending.status === 'applied' ? '이 내용으로 바꿨어요' : '바꾸지 않았어요'}
+          {pending.status === 'applied' ? '이 내용으로 바꿨어요'
+            : pending.status === 'superseded' ? '이 제안 대신 아래에서 새로 정했어요'
+            : '바꾸지 않았어요'}
         </span>
       )}
     </div>

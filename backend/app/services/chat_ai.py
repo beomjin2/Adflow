@@ -46,10 +46,9 @@ def character_prompt(char, hint: str = "") -> str:
     (CLAUDE.md 5-1, v4 12컷 실험). 설명을 실존 Danbooru 태그로 바꿔 넣고, 태그를
     하나도 못 뽑았을 때만 원문으로 폴백한다. STYLE_TAGS 접두어는 그대로 둔다.
 
-    시트에서 무엇을 읽을지는 character_sheet.IMAGE_FIELDS 한 곳에서만 정한다 —
-    외형·아웃핏·설명·나이·이름 다섯 칸. 능력·성별·퍼스널 키워드는 시트에만 남고
-    그림 쪽으로 넘어가지 않는다. 라우터가 시트가 다 찬 뒤에만 여기까지 오게 막으므로
-    described가 비는 경우는 없다(비면 태그도 프롬프트도 STYLE_TAGS뿐이다).
+    시트에서 무엇을 읽을지는 character_sheet.IMAGE_FIELDS 한 곳에서만 정한다.
+    라우터가 시트가 다 찬 뒤에만 여기까지 오게 막으므로 described가 비는 경우는 없다
+    (비면 태그도 프롬프트도 STYLE_TAGS뿐이다).
     """
     pieces = [STYLE_TAGS]
     part = character_part(char)
@@ -60,24 +59,95 @@ def character_prompt(char, hint: str = "") -> str:
     return ", ".join(pieces)
 
 
-def character_part(char) -> str:
-    """시트의 IMAGE_FIELDS 다섯 칸 → 실존 Danbooru 태그 문자열.
+# 시트 칸 → 태그 변환기에 줄 영문 라벨. 칸을 쉼표로 이어 붙여 한 덩어리로 넘기면
+# GPT가 어느 말이 생김새이고 어느 말이 성격인지 가르지 못한다 — 실제로 이름("구웅이")과
+# 설명 문장이 외형 묘사에 섞여 들어가 프롬프트를 흐렸다. 라벨을 붙여 칸마다 무엇으로
+# 바꿀지 알려주면 시트에 적힌 게 빠짐없이 태그가 된다.
+_IMAGE_LABEL = {
+    "look": "APPEARANCE",
+    "outfit": "CLOTHING",
+    "age": "AGE",
+    "desc": "PERSONALITY",
+    "abilities": "SKILL",
+    "keywords": "MOOD",
+}
+
+
+# 혼자 입을 수 없는 겉옷. 이것만 있고 속에 입을 옷이 없으면 그림 모델이 밑에 입을 옷을
+# 알아서 채워 넣는데, 실측(2026-09-18, 시드 3개)으로는 그 색이 검정이다.
+_LAYER_GARMENTS = ("apron", "vest", "overalls", "jacket", "coat", "cardigan", "cape", "suspenders")
+# 속에 입는 옷. 이 계열이 하나라도 있으면 **사장님이 이미 정한 것**이라 건드리지 않는다.
+_INNER_GARMENTS = ("shirt", "pants", "shorts", "skirt", "dress", "sweater", "blouse",
+                   "trousers", "jeans", "robe", "kimono", "uniform")
+
+# 사장님이 "그냥 털 위에 앞치마만"을 고른 셈일 때, 모델이 지어내려는 옷을 막는 말.
+_INVENTED_INNER = "shirt, pants, shorts, skirt, dress, black_shirt, black_pants"
+
+
+def clothing_negative(tag_text: str) -> str:
+    """겉옷만 정해졌을 때 그림 모델이 **속에 입을 옷을 지어내지 못하게** 막는 네거티브.
+
+    사장님이 "앞치마"만 말했으면 앞치마만 그려야 한다. 그런데 앞치마·조끼처럼 혼자 입을
+    수 없는 옷만 주면 모델이 밑에 입을 옷을 채워 넣고 그 색이 검정이다.
+
+    예전에는 이걸 **positive에 흰 셔츠와 갈색 바지를 박아 넣어** 막았다. 그러면 사장님이
+    말한 적 없는 옷이 캐릭터에 그대로 붙는다 — 정하는 건 사장님 몫인데 우리가 정해 버린
+    것이다. 여기서는 옷을 더하지 않고 **막기만** 한다. 결과는 털 위에 앞치마만 두른
+    모습이고, 그게 사장님이 적은 그대로다.
+
+    속에 입을 옷을 이미 말했으면 아무것도 하지 않는다 — 그건 사장님이 정한 것이다.
+    (무엇을 입을지 물어보는 건 대화 쪽 몫이다: character_sheet.QUESTIONS['outfit'])
+
+    네컷에는 쓰지 않는다. 그쪽 워크플로우는 cfg 1.0이라 네거티브가 사실상 안 듣고,
+    옷은 확정한 캐릭터 그림을 참조(IP-Adapter)해서 따라온다.
+    """
+    tags = tag_text or ""
+    if not any(word in tags for word in _LAYER_GARMENTS):
+        return ""
+    if any(word in tags for word in _INNER_GARMENTS):
+        return ""
+    return _INVENTED_INNER
+
+
+# 네컷에서 캐릭터를 고정할 때 쓰는 칸. 성격·능력·키워드는 뺀다 — 컷마다 표정과 행동이
+# 따로 정해지는데(comic_prompt의 scene 태그) 캐릭터 태그에 고정 표정이 섞이면 두 지시가
+# 부딪쳐 슬픈 컷에서도 웃는다. 네컷에서 정체성은 생김새·옷·나이로 잡고, 나머지는
+# 참조 이미지(IP-Adapter)가 잡는다.
+COMIC_IDENTITY_FIELDS = ["look", "outfit", "age"]
+
+
+def character_sheet_text(char, fields: list[str] | None = None) -> str:
+    """시트 칸을 라벨 붙은 여러 줄로. 빈 칸은 줄 자체를 내지 않는다."""
+    from app.services.character_sheet import IMAGE_FIELDS, value_of
+
+    lines = []
+    for field in (fields or IMAGE_FIELDS):
+        label = _IMAGE_LABEL.get(field)
+        value = value_of(char, field)
+        if label and value:
+            lines.append(f"{label}: {value}")
+    return "\n".join(lines)
+
+
+def character_part(char, fields: list[str] | None = None) -> str:
+    """시트 칸 → 실존 Danbooru 태그 문자열.
 
     태그를 하나도 못 뽑으면 **빈 문자열**이다. 예전에는 한국어 원문을 그대로 넣었는데,
     Anima는 Danbooru 태그로 학습돼 한국어를 못 읽는다 — 설명이 아니라 잡음이 하나 더
-    붙을 뿐이었다. 캐릭터 후보 프롬프트와 네컷 프롬프트(comic_prompt)가 같은 캐릭터
-    태그를 쓰도록 여기 한 곳에서만 계산한다.
-    """
-    from app.services.character_sheet import IMAGE_FIELDS
+    붙을 뿐이었다.
 
-    described = ", ".join(
-        value for value in ((getattr(char, f, "") or "").strip() for f in IMAGE_FIELDS) if value
-    )
+    fields를 안 주면 시트의 IMAGE_FIELDS 전부(캐릭터 후보용)다. 네컷은
+    COMIC_IDENTITY_FIELDS를 넘겨 표정·소품을 빼고 부른다.
+    """
+    described = character_sheet_text(char, fields)
     tags = tags_for_look(described) if described else []
     if tags:
         return ", ".join(tags)
     if described:
-        logger.warning("캐릭터 태그를 하나도 못 뽑았습니다 — 설명 없이 갑니다: %s", described[:60])
+        logger.warning(
+            "캐릭터 태그를 하나도 못 뽑았습니다 — 설명 없이 갑니다: %s",
+            described.replace("\n", " / ")[:80],
+        )
     return ""
 
 

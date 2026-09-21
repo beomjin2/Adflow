@@ -87,13 +87,18 @@ def _load_workflow(name: str | None = None) -> dict:
 
 
 def _build_prompt_graph(text: str, seed: int, batch_size: int = 1,
-                        workflow_file: str | None = None, reference_name: str | None = None) -> dict:
+                        workflow_file: str | None = None, reference_name: str | None = None,
+                        negative_extra: str = "") -> dict:
     graph = _load_workflow(workflow_file)
+
+    # 캐릭터마다 덧붙는 네거티브가 있다 — 사장님이 겉옷만 말했을 때 모델이 속에 입을
+    # 옷을 지어내지 못하게 막는 용도다(chat_ai.clothing_negative). 공용 목록 뒤에 붙인다.
+    negative = f"{NEGATIVE_PROMPT}, {negative_extra}" if negative_extra else NEGATIVE_PROMPT
 
     # 샘플러 노드의 positive/negative가 가리키는 노드를 따라가 그 노드의 text를 치환한다.
     for node in graph.values():
         inputs = node.get("inputs", {})
-        for key, value in (("positive", text), ("negative", NEGATIVE_PROMPT)):
+        for key, value in (("positive", text), ("negative", negative)):
             ref = inputs.get(key)
             if isinstance(ref, list) and len(ref) == 2:
                 target = graph.get(str(ref[0]))
@@ -159,7 +164,8 @@ def _upload_reference(path: Path) -> str | None:
 
 
 def generate_images(prompt: str, count: int = 1, seed: int | None = None,
-                    workflow_file: str | None = None, reference_path: Path | None = None) -> list[str | None]:
+                    workflow_file: str | None = None, reference_path: Path | None = None,
+                    negative_extra: str = "") -> list[str | None]:
     """ComfyUI로 이미지 count장을 생성해 **URL 목록**을 반환한다 (`/api/media/<uuid>.png`).
 
     PNG는 디스크(settings.media_path)에 저장하고 응답엔 경로만 담는다 — 예전처럼
@@ -182,7 +188,8 @@ def generate_images(prompt: str, count: int = 1, seed: int | None = None,
     try:
         submit = _comfy_request("POST", "/prompt", json={
             "client_id": client_id,
-            "prompt": _build_prompt_graph(prompt, seed, count, workflow_file, reference_name),
+            "prompt": _build_prompt_graph(prompt, seed, count, workflow_file, reference_name,
+                                          negative_extra),
         })
         submit.raise_for_status()
         prompt_id = submit.json()["prompt_id"]

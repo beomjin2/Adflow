@@ -90,12 +90,27 @@ def resolve_look_to_tags(look: str) -> tuple[list[str], list[str]]:
 
 
 _LLM_SYSTEM_PROMPT = (
-    "You convert a short character description into Danbooru imageboard tags. "
+    "You convert a character description into Danbooru imageboard tags. "
     "Output ONLY a comma-separated list of real Danbooru tags in their exact tag "
     "format (lowercase ENGLISH, spaces as underscores). Never output Korean words — "
     "translate every Korean concept into the tag Danbooru actually uses, or drop it. "
     "No explanations, no natural-language "
     "phrases. If a concept has no real Danbooru tag, omit it rather than inventing one. "
+    # 시트 칸을 라벨 붙은 줄로 받는다(chat_ai.character_sheet_text). 한 덩어리로 주면
+    # 성격 문장이 생김새로, 능력이 배경으로 새어 들어간다. 칸마다 쓰임을 못 박는다.
+    "The description may arrive as LABELED LINES: APPEARANCE, CLOTHING, AGE, "
+    "PERSONALITY, SKILL, MOOD. When it does, read EVERY line and cover all of them — "
+    "the shop owner wrote each one and expects to see it in the drawing: "
+    "APPEARANCE -> species, body type, fur/skin color, eye color, facial features; "
+    "CLOTHING -> garment and accessory tags with their colors; "
+    "AGE -> a body-type tag only when it clearly means young or old (e.g. young, old); "
+    "PERSONALITY and MOOD -> facial-expression and posture tags "
+    "(smile, light_smile, closed_eyes, open_mouth, head_tilt, sleepy); "
+    "SKILL -> at most ONE small handheld prop tag, and NEVER a background, location, "
+    "or scenery tag — this image is a solo character sheet on a plain background. "
+    "Ignore any line that is a proper name; there is no Danbooru tag for a pet name. "
+    "Emit as many accurate tags as the description supports — do not stop at three or "
+    "four when the description gives more detail. "
     "Danbooru's exact vocabulary is often not the literal translation — prefer the "
     "tag actually used on the site over a made-up compound, and keep color/size "
     "modifiers as separate tags rather than dropping them. "
@@ -110,23 +125,21 @@ _LLM_SYSTEM_PROMPT = (
     "'small cute proportions' -> chibi; "
     "'bandage/plaster on skin' -> bandaid (NOT bandage); "
     "'red scarf' -> scarf, red_scarf (keep both, do not drop the color). "
-    # 실측(2026-09-18, 시드 3개): 앞치마만 주면 모델이 밑에 입을 옷을 지어내는데 그 색이 검정이다.
-    # 상·하의를 함께 지정하면 검은 옷이 사라진다. 그래서 '혼자 입을 수 없는 옷'은 아래·위를 같이 낸다.
-    "IMPORTANT rule about clothing, apply it strictly: "
-    "(a) If the description names a garment that cannot be worn alone — apron, vest, overalls, "
-    "jacket, coat — then ALSO emit an explicit top and bottom garment with colors, because the "
-    "model invents them in black when they are missing. Use white_shirt and brown_pants unless "
-    "the user named other clothes. "
-    "(b) If the description names NO such garment — only accessories like scarf, bandaid, hat, "
-    "ribbon, glasses, bag, star_(symbol), or no clothing at all — then emit NO clothing tags "
-    "whatsoever. Never add white_shirt or brown_pants in that case. The character is an animal "
-    "and looks right with bare fur. "
+    # 옷은 **사장님이 적은 것만** 낸다. 예전에는 앞치마가 보이면 흰 셔츠와 갈색 바지를
+    # 자동으로 붙였다(모델이 안 채우면 검은 옷을 지어내서). 그러면 사장님이 정한 적 없는
+    # 옷이 캐릭터에 붙는다 — 정하는 건 사장님 몫이다. 지금은 두 곳에서 따로 푼다:
+    # 무엇을 입을지는 대화가 물어보고(character_sheet.QUESTIONS['outfit']), 그래도
+    # 겉옷만 남으면 chat_ai.clothing_negative()가 네거티브로 지어내기를 막는다.
+    "IMPORTANT rule about clothing: emit ONLY the garments the description actually names, "
+    "with their colors. Never add a garment the description does not mention — no invented "
+    "shirt, pants, skirt or dress, not even to 'complete' an outfit. An animal mascot wearing "
+    "only an apron over bare fur is a correct and complete result. "
     "Examples: "
-    "'white apron' -> apron, white_apron, white_shirt, brown_pants; "
-    "'red apron and chef hat' -> apron, red_apron, chef_hat, white_shirt, brown_pants; "
-    "'blue vest' -> vest, blue_vest, white_shirt, brown_pants; "
-    "'only a red scarf' -> scarf, red_scarf (NO shirt, NO pants); "
-    "'a bandaid and a star mark' -> bandaid, star_(symbol) (NO shirt, NO pants)."
+    "'white apron' -> apron, white_apron (nothing else); "
+    "'red apron and chef hat' -> apron, red_apron, chef_hat; "
+    "'blue vest over a yellow shirt' -> vest, blue_vest, shirt, yellow_shirt; "
+    "'only a red scarf' -> scarf, red_scarf; "
+    "'a bandaid and a star mark' -> bandaid, star_(symbol)."
 )
 
 # 네컷의 한 컷 문장(장면) 전용. 캐릭터용 프롬프트를 그대로 쓰면 GPT가 한국어 단어를

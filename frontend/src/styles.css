@@ -245,3 +245,11 @@ summary.ad-acc-sum::marker{content:''}
 .ad-msg{max-width:80%;padding:12px 16px;border-radius:18px;font-size:15px;line-height:22px;white-space:pre-line;animation:pop .2s ease}
 .ad-msg.ai{background:var(--soft);color:var(--ink);border-bottom-left-radius:6px;align-self:flex-start}
 .ad-msg.me{background:var(--green);color:#fff;border-bottom-right-radius:6px;align-self:flex-end}
+
+/* My/ProductionTab의 날짜별 접이줄 — 이 폴더는 ad-* 디자인 시스템이 아니라 theme.js 색을
+   그대로 쓰므로(인라인 style), 여기서 필요한 최소한(<summary> 기본 삼각형 제거)만 둔다. */
+.prod-summary{list-style:none}
+.prod-summary::-webkit-details-marker{display:none}
+.prod-summary::marker{content:''}
+.prod-summary .arr{transition:transform .15s}
+details[open] > .prod-summary .arr{transform:rotate(180deg)}

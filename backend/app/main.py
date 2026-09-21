@@ -1,3 +1,5 @@
+import threading
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -6,7 +8,7 @@ from app.api.routes import ad, character, history, meme, production, storyboard,
 from app.core.config import BACKEND_ROOT, settings
 from app.core.database import SessionLocal, init_db
 from app.db.seed import ensure_rows
-from app.services import jobs
+from app.services import danbooru_lookup, jobs
 
 app = FastAPI(
     title="AI 광고 만들기 API",
@@ -52,6 +54,12 @@ def on_startup():
         jobs.recover_interrupted(db)
     finally:
         db.close()
+
+    # Danbooru 태그 사전(79MB)을 미리 읽어둔다. 요청이 올 때 읽으면 그 요청이 17초를
+    # 통째로 뒤집어쓰고, 동시에 여러 건이 오면 그만큼 겹쳐 60초를 넘긴다(실측 66.6초 → 502).
+    # 백그라운드로 읽어 서버 기동 자체는 늦추지 않는다 — 다 읽기 전에 요청이 오더라도
+    # danbooru_lookup의 잠금이 중복 읽기를 막아준다.
+    threading.Thread(target=danbooru_lookup.warm_cache, name="warm-tags", daemon=True).start()
 
 
 @app.get("/api/health")

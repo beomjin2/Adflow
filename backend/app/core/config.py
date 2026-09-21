@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     # 비워둬도 서비스는 그대로 돈다. 키는 .env에만 두고 저장소에 넣지 않는다.
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    # 대사 작가만 큰 모델. mini 는 3편 중 고른 번호와 이유가 어긋나고 '백사장' 같은 엉뚱한 장소를 지어냈다(09-21).
+    # 광고 하나에 한 번 부르니 비용 차이는 작다.
+    openai_writer_model: str = "gpt-4o"
     # sheet_llm이 쓴다. danbooru_tags는 openai SDK를 쓰므로 base_url을 보지 않는다.
     openai_base_url: str = "https://api.openai.com/v1"
     openai_timeout_seconds: int = 20

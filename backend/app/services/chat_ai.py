@@ -100,6 +100,11 @@ SHOT_SIZE = {   # 캐릭터가 화면에서 얼마나 크게 보이나
 SHOT_ANGLE = {"정면": "straight-on", "위에서": "from_above", "아래에서": "from_below",
               "옆에서": "from_side", "뒤에서": "from_behind"}
 SHOT_COUNT = {"혼자": "solo", "여럿": "multiple_others"}
+# 시선. 정면(카메라 응시)만 쓰면 증명사진이 된다 — 네 컷 중 한 컷만 카메라를 보게 연출이 고른다.
+GAZE = {"정면": "looking_at_viewer", "옆": "looking_to_the_side", "아래": "looking_down",
+        "상대": "looking_at_another", "눈감음": "closed_eyes"}
+# 위치(왼쪽·가운데·오른쪽)는 태그가 없다(09-18 실측 33%, 사전에 없음). 프롬프트가 아니라 **넓게 뽑아 자르는**
+# 방식으로 푼다 — image_gen 쪽. 여기선 기록만 남긴다.
 OPEN_SLOTS = ("expression", "pose", "place", "props", "light")   # 컷 문장에서 오는 열린 슬롯
 
 
@@ -122,6 +127,13 @@ def comic_prompt_slots(char_part_text: str, slots: dict) -> tuple[str, dict]:
         trace["closed"][f"shot.{key}"] = {"in": val, "tag": tag, "ok": bool(tag)}
         if tag:
             parts.append(tag)
+    gaze_in = str(slots.get("gaze") or "").strip()
+    gaze_tag = GAZE.get(gaze_in, "")
+    trace["closed"]["gaze"] = {"in": gaze_in, "tag": gaze_tag, "ok": bool(gaze_tag)}
+    if gaze_tag:
+        parts.append(gaze_tag)
+    pos = str(shot.get("position") or "").strip()
+    trace["closed"]["shot.position"] = {"in": pos, "tag": "", "ok": bool(pos), "how": "넓게 뽑아 자름" if pos else ""}
 
     for key in OPEN_SLOTS:
         raw = slots.get(key)

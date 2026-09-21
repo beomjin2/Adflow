@@ -60,70 +60,78 @@ SHOT_SIZE_CHOICES = ("아주작게", "작게", "보통", "크게", "아주크게
 SHOT_ANGLE_CHOICES = ("정면", "위에서", "아래에서", "옆에서", "뒤에서")
 SHOT_COUNT_CHOICES = ("혼자", "여럿")
 
-# 스토리 GPT가 컷마다 **팀장 슬롯 시트의 컷 층**을 직접 채운다. 예전엔 자유 문장(action)을 내고 그걸
-# 또 한 번 GPT가 태그로 바꿨다 — 두 번 거치며 두 번 샜다. 슬롯으로 내면 한 번으로 끝나고,
-# 특히 shot.size가 컷마다 달라져 "캐릭터가 매 컷 화면을 채우는" 문제가 풀린다.
-# 형식·어휘는 규칙 대신 **예시 두 편**으로 가르친다(09-21 실측: 예시가 규칙보다 글자당 3.4배 효과).
-_STORY_PROMPT = (
-    "당신은 동네 빵집의 SNS 네컷 만화를 기획하는 작가다. 주어진 밈 카드·가게 정보·광고 느낌으로 4컷 스토리를 JSON 하나로 출력한다.\n"
-    "주인공은 가게 마스코트 한 마리다. 사람 손님은 그리지 않는다 — 손님이 필요하면 동물 손님으로 적는다. "
-    "가게 정보에 없는 가격·할인은 지어내지 않는다. 카드의 avoid 를 어기지 않는다.\n\n"
-    "밈 카드의 칸: template(말 틀 — 자리표시를 이 가게의 것으로 채워 쓴다) · why(웃음 포인트) · visual(그림 요소). "
-    "**어느 정도로 쓰는지는 [광고 느낌]의 레시피가 정한다** — 유쾌함은 밈이 주인공, 담백함은 말 틀 한 번뿐이다.\n"
-    "네 컷의 역할: 1컷 상황 → 2컷 키우기 → 3컷 핵심(느낌이 가장 드러나는 컷) → 4컷 마무리 — "
-    "마지막 컷은 가게 이름·영업시간 같은 실제 정보로 끝낸다.\n"
-    "마지막에 concept_check 한 줄로 '고른 느낌이 몇 컷에서 어떻게 드러나는가'를 스스로 적는다 — "
-    "이 줄을 쓰다가 드러나는 데가 없으면 3컷을 다시 짠다.\n\n"
-    "컷마다 아래 칸을 채운다. shot의 세 칸은 반드시 주어진 선택지 중 하나만 쓴다.\n"
-    "  line        대사 — 말풍선에 들어갈 짧은 한국어 한 문장\n"
-    "  action      한 줄 요약 — 사람이 읽는 용도(그림엔 안 씀)\n"
-    f"  shot.size   {' | '.join(SHOT_SIZE_CHOICES)}  (캐릭터가 화면에서 얼마나 크게)\n"
-    f"  shot.angle  {' | '.join(SHOT_ANGLE_CHOICES)}\n"
-    f"  shot.count  {' | '.join(SHOT_COUNT_CHOICES)}\n"
-    "  expression  표정 — 짧은 한국어 구 (예: 놀람, 활짝 웃음, 지침)\n"
-    "  pose        동작 — 짧은 한국어 구 (예: 쟁반 들기, 손 흔들기, 팔짱)\n"
-    "  place       장소 — 한 단어 (예: 가게 안, 주방, 가게 앞)\n"
-    "  props       소품 — 단어 배열 (예: [\"빵\", \"쟁반\"])\n"
-    "  light       빛 — 한 단어 또는 빈 문자열 (예: 아침 햇살, 밤)\n\n"
-    # 예시는 형식과 레시피를 보여주는 용도라 앱에 저장된 밈과 겹치지 않는 밈으로 짠다 — 같은 밈이 예시에
-    # 있으면 GPT가 예시를 그대로 베낀다(09-21 실측: 100드립 예시 → 100드립 회차 컷 1·2 슬롯값 동일).
-    # 예시는 **빵집이 아닌 가게**(분식집·꽃집)로 짠다. 빵집 예시를 주면 GPT가 대사·소품을 그대로 베낀다
-    # (09-21 실측: 같은 유머 종류 예시의 컷 2·3·4 를 소품만 바꿔 복사). 업종이 다르면 옮겨 쓸 수밖에 없다.
-    "예시 1 — 분식집. 밈 '○○각'(말 끝에 '~각'을 붙여 확신하는 말장난), 광고 느낌 유쾌함, 김밥 15줄, 마스코트 고슴도치:\n"
-    "{\"title\": \"매진각\", \"cuts\": [\n"
-    " {\"n\": 1, \"line\": \"오늘 김밥 열다섯 줄. 이건 매진각\", \"action\": \"김밥 접시 들고 확신\", "
-    "\"shot\": {\"size\": \"보통\", \"angle\": \"정면\", \"count\": \"혼자\"}, \"expression\": \"확신, 반짝이는 눈\", "
-    "\"pose\": \"접시 들기\", \"place\": \"가게 안\", \"props\": [\"김밥\", \"접시\"], \"light\": \"\"},\n"
-    " {\"n\": 2, \"line\": \"비 오네... 이것도 매진각\", \"action\": \"창밖 비를 보는 텅 빈 가게\", "
-    "\"shot\": {\"size\": \"아주작게\", \"angle\": \"옆에서\", \"count\": \"혼자\"}, \"expression\": \"굳은 미소\", "
-    "\"pose\": \"창밖 보기\", \"place\": \"가게 안\", \"props\": [\"창문\", \"비\"], \"light\": \"흐림\"},\n"
-    " {\"n\": 3, \"line\": \"우산 쓴 손님 한 마리. 매진각각각\", \"action\": \"손님 하나에 과하게 감격\", "
-    "\"shot\": {\"size\": \"아주크게\", \"angle\": \"아래에서\", \"count\": \"여럿\"}, \"expression\": \"감격, 눈물\", "
-    "\"pose\": \"두 손 모으기\", \"place\": \"가게 앞\", \"props\": [\"우산\", \"고양이 손님\"], \"light\": \"흐림\"},\n"
-    " {\"n\": 4, \"line\": \"내일은 맑음각. 김밥 열다섯 줄 또 쌉니다\", \"action\": \"김밥 말며 멋쩍게\", "
-    "\"shot\": {\"size\": \"작게\", \"angle\": \"정면\", \"count\": \"혼자\"}, \"expression\": \"멋쩍은 웃음, 땀\", "
-    "\"pose\": \"김밥 말기\", \"place\": \"주방\", \"props\": [\"김밥\", \"김\"], \"light\": \"\"}],\n"
-    " \"concept_check\": \"유쾌함 — 3컷에서 '매진각'이 갈수록 근거 없는 자리에 붙다가 손님 한 마리에 '각각각'으로 터진다\"}\n\n"
-    "예시 2 — 꽃집. 밈 '그게 되네'(안 될 것 같은 게 되는 반전), 광고 느낌 유쾌함, 장미 40송이 입고, 마스코트 두더지:\n"
-    "{\"title\": \"그게 되네\", \"cuts\": [\n"
-    " {\"n\": 1, \"line\": \"장미 마흔 송이는 무리지...\", \"action\": \"꽃통 앞에서 걱정\", "
-    "\"shot\": {\"size\": \"크게\", \"angle\": \"옆에서\", \"count\": \"혼자\"}, \"expression\": \"걱정, 땀\", "
-    "\"pose\": \"턱 짚기\", \"place\": \"가게 안\", \"props\": [\"장미\", \"꽃통\"], \"light\": \"\"},\n"
-    " {\"n\": 2, \"line\": \"반이라도 팔리면 다행\", \"action\": \"장미를 한 송이씩 조심스레 꽂음\", "
-    "\"shot\": {\"size\": \"보통\", \"angle\": \"정면\", \"count\": \"혼자\"}, \"expression\": \"긴장\", "
-    "\"pose\": \"꽃 꽂기\", \"place\": \"가게 안\", \"props\": [\"장미\", \"꽃병\"], \"light\": \"아침 햇살\"},\n"
-    " {\"n\": 3, \"line\": \"\", \"action\": \"한 시간 뒤, 가게 밖까지 줄 선 동물 손님들과 텅 빈 꽃통\", "
-    "\"shot\": {\"size\": \"아주작게\", \"angle\": \"정면\", \"count\": \"여럿\"}, \"expression\": \"멍함\", "
-    "\"pose\": \"빈 꽃통 들기\", \"place\": \"가게 앞\", \"props\": [\"고양이 손님\", \"강아지 손님\", \"빈 꽃통\"], \"light\": \"아침 햇살\"},\n"
-    " {\"n\": 4, \"line\": \"...그게 되네. 내일은 여든 송이\", \"action\": \"팔 걷어붙이고 결의\", "
-    "\"shot\": {\"size\": \"작게\", \"angle\": \"아래에서\", \"count\": \"혼자\"}, \"expression\": \"불타는 눈\", "
-    "\"pose\": \"주먹 불끈\", \"place\": \"가게 안\", \"props\": [\"꽃통\"], \"light\": \"\"}],\n"
-    " \"concept_check\": \"유쾌함 — 1·2컷은 걱정하며 작게 잡고, 3컷은 대사를 비우고 줄과 빈 꽃통(visual)만으로 규모를 보여줘 대비가 터진다\"}\n\n"
-    "위 두 예시는 유쾌함이다. 감성·정보형·담백함을 골랐을 땐 같은 형식으로 쓰되 그 느낌의 레시피를 따른다 — "
-    "감성은 웃기지 않고, 정보형은 숫자·시간이 대사에 있고, 담백함은 열 자 안팎이다.\n\n"
-    "위 예시는 다른 업종이다 — 형식과 레시피만 가져오고 대사·소품·장소는 **이 빵집과 생산 기록**으로 새로 쓴다. "
-    "네 컷의 shot.size는 서로 다르게 섞어 리듬을 만든다. 대사를 비운 컷은 한 컷까지만. 같은 형식의 JSON 하나만 출력한다."
+# 스토리는 두 사람이 만든다 — **작가**(대사 먼저, 3편 쓰고 고른다) → **연출**(고른 대사를 슬롯으로).
+# 한 번에 10칸을 채우게 하면 GPT가 형식 맞추는 데 힘을 다 써서 대사가 남는 힘으로 나왔다(09-21 사용자:
+# "대사가 재미도 감동도 없다"). 대사를 먼저, 그림 지시는 나중에. 작가는 temperature 0.9, 연출은 0.3.
+_SCRIPT_PROMPT = (
+    "당신은 동네 빵집 SNS 네컷 만화의 **대사 작가**다. 대사만 쓴다 — 그림 지시는 다음 사람(연출)이 한다.\n\n"
+    "[주인공] 마스코트 시트가 주어진다. 말투는 시트의 성격·나이·취미·능력에서 나온다 — 느긋하면 느리게 끊어 말하고, "
+    "세 살이면 세 살처럼, 새벽에 굽는 게 자랑이면 그게 튀어나온다. 네 컷 내내 같은 사람이 말한다.\n\n"
+    "[밈 적합성 — 맨 먼저 한다] template 의 자리표시에 넣을 것을 가게 정보에서 찾는다. 밈이 기대하는 규모·상황과 가게 숫자가 "
+    "안 맞으면(예: '100개 넘겠지?'는 아주 많은 것에 쓰는 말인데 빵은 20개) 숫자를 억지로 넣지 않는다. 규모가 맞는 다른 대상으로 "
+    "옮긴다 — 새벽 4시부터 선 시간, 골목 끝까지 선 줄, 동네에 퍼진 냄새, 반죽을 치댄 횟수, 사장님의 다크서클. "
+    "옮긴 이유를 fit.note 에, 옮긴 대상을 fit.target 에 적는다. 도저히 안 맞으면 fit.ok=false 로 표시하고 그래도 가장 덜 어색한 방식으로 쓴다. "
+    "옮기기 보기: 빵 20개에 '100개 넘겠지?' ✗ → 새벽 4시부터 선 사장님에게 '오늘 100분은 잤겠지?' ✓ / 골목 끝 줄에 '100명은 넘겠지?' ✓ / "
+    "반죽 치댄 횟수에 '100번은 쳤겠지?' ✓.\n\n"
+    "[장소] beats 의 장소는 주방·가게 안·가게 앞·골목·창가 중에서만. 가게 밖 먼 곳(해변·공원)은 쓰지 않는다.\n\n"
+    "[광고 느낌] 주어진 레시피를 따른다. 유쾌함이면 4컷이 펀치라인, 감성이면 4컷이 여운, 정보형이면 4컷이 숫자, 담백함이면 4컷이 한 마디.\n\n"
+    "[하지 말 것] 주소·영업시간·'내일도 오세요' 같은 광고 문구를 대사에 넣지 않는다 — 그건 그림 아래 캡션이 따로 맡는다. "
+    "가격·할인을 지어내지 않는다. 사람 손님은 동물 손님으로. 카드의 avoid 를 어기지 않는다.\n\n"
+    "[쓰는 법] 초안을 **3편** 쓴다. 편마다 title, lines(대사 4개 — 컷 하나는 비워도 된다, 한 컷 15자 안팎), "
+    "beats(컷마다 무슨 일이 일어나는지 한 줄 — 어디서·무엇을·누가 있나), voice(이 편에서 말투가 드러나는 대사 하나). "
+    "세 편을 '읽고 웃기거나 뭉클한가 / 밈이 억지 없이 붙었나 / 4컷이 끝을 맺는가 / 말투가 있는가'로 비교해 why 에 편마다 한 줄씩 "
+    "평을 먼저 쓰고, 그 평과 맞는 번호를 best(0·1·2)에 적는다. voice 가 '없음'인 편은 고르지 않는다.\n\n"
+    "출력 JSON: {\"fit\": {\"ok\": bool, \"note\": str, \"target\": str}, \"drafts\": [{\"title\", \"lines\": [4], \"beats\": [4], \"voice\"} ×3], "
+    "\"why\": str, \"best\": int}\n\n"
+    "예시 — 분식집, 밈 '그게 되네'(안 될 것 같은 게 되는 반전), 유쾌함, 마스코트 고슴도치 '콩이'(소심함, 취미 낮잠, 김밥 40줄):\n"
+    "{\"fit\": {\"ok\": true, \"note\": \"'안 될 것 같은 일'이 필요한데 40줄은 소심한 콩이에겐 충분히 무리다\", \"target\": \"김밥 40줄\"},\n"
+    " \"drafts\": [\n"
+    "  {\"title\": \"그게 되네\", \"lines\": [\"마흔 줄은... 좀 무리 아닐까\", \"반만 팔려도 낮잠 잘 수 있어\", \"\", \"...그게 되네. 낮잠은 내일\"], "
+    "\"beats\": [\"주방, 김밥 산더미 앞에서 움츠림\", \"진열대에 한 줄씩 조심스레 놓음\", \"한 시간 뒤, 가게 밖까지 줄 선 동물 손님과 빈 접시\", \"빈 접시 안고 멍하니 서 있음\"], "
+    "\"voice\": \"'반만 팔려도 낮잠 잘 수 있어' — 소심하고 낮잠이 목표인 콩이\"},\n"
+    "  {\"title\": \"낮잠각\", \"lines\": [\"오늘 마흔 줄 쌌다\", \"...나 왜 그랬지\", \"손님: 다 주세요\", \"그게 되네?\"], "
+    "\"beats\": [\"김밥 줄 세는 콩이\", \"창밖 텅 빈 거리\", \"고양이 손님이 접시째 가리킴\", \"콩이 눈 동그래짐\"], \"voice\": \"'...나 왜 그랬지' — 소심함\"},\n"
+    "  {\"title\": \"40줄\", \"lines\": [\"김밥 40줄 준비\", \"팔릴까\", \"팔렸다\", \"내일도 40줄\"], \"beats\": [\"주방\", \"가게\", \"빈 접시\", \"주방\"], \"voice\": \"없음\"}],\n"
+    " \"best\": 0, \"why\": \"0번만 3컷을 대사 없이 그림으로 터뜨리고, 4컷 '낮잠은 내일'이 콩이 말투로 끝맺는다. 2번은 밈이 붙었을 뿐 인물이 없다\"}\n\n"
+    "예시는 다른 업종이다 — 형식만 가져오고 대사는 이 가게·이 마스코트로 새로 쓴다. JSON 하나만 출력한다."
 )
+
+# 컷 층의 닫힌 슬롯 선택지. chat_ai 의 표와 키가 같아야 한다.
+SHOT_POSITION_CHOICES = ("왼쪽", "가운데", "오른쪽")   # 캐릭터를 화면 어느 쪽에 두나 — 태그가 아니라 넓게 뽑아 자른다
+GAZE_CHOICES = ("정면", "옆", "아래", "상대", "눈감음")
+
+_DIRECT_PROMPT = (
+    "당신은 네컷 만화의 **연출**이다. 작가가 고른 대사(lines)와 컷 상황(beats)을 받아 컷마다 그림 슬롯을 채운다. "
+    "대사는 바꾸지 않는다.\n\n"
+    "컷마다 아래 칸을 채운다. shot 과 gaze 는 반드시 주어진 선택지 중 하나만 쓴다.\n"
+    f"  shot.size      {' | '.join(SHOT_SIZE_CHOICES)}  (캐릭터가 화면에서 얼마나 크게)\n"
+    f"  shot.angle     {' | '.join(SHOT_ANGLE_CHOICES)}\n"
+    f"  shot.count     {' | '.join(SHOT_COUNT_CHOICES)}\n"
+    f"  shot.position  {' | '.join(SHOT_POSITION_CHOICES)}  (캐릭터를 어느 쪽에 두고 반대쪽을 비우나)\n"
+    f"  gaze           {' | '.join(GAZE_CHOICES)}  (시선 — 정면은 카메라를 본다)\n"
+    "  expression     표정 — 짧은 한국어 구\n"
+    "  pose           동작 — 짧은 한국어 구\n"
+    "  place          장소 — 한 단어\n"
+    "  props          소품 — 단어 배열\n"
+    "  light          빛 — 한 단어 또는 빈 문자열\n\n"
+    "만화 구도의 기본 — 예시가 보여주는 대로:\n"
+    "  · 대사가 있는 컷은 캐릭터를 **왼쪽이나 오른쪽**에 두고 반대쪽을 비운다(말풍선 자리). 가운데는 대사 없는 컷이나 여럿 컷에만.\n"
+    "  · 정면(angle)은 네 컷 중 최대 두 컷, 카메라를 보는 시선(gaze 정면)은 최대 한 컷. 나머지는 옆·아래·상대(손님이나 빵)를 본다.\n"
+    "  · size 는 네 컷이 서로 다르게. beats 에 '멀리서·줄·거리'가 있으면 아주작게, 표정 하나에 거는 컷은 아주크게.\n"
+    "  · 감성이면 light 를 네 컷 다 채운다. 담백함이면 props 하나뿐이어도 그중 하나는 빵.\n\n"
+    "예시 — 분식집 '그게 되네'(유쾌함), lines [\"마흔 줄은... 좀 무리 아닐까\", \"반만 팔려도 낮잠 잘 수 있어\", \"\", \"...그게 되네. 낮잠은 내일\"]:\n"
+    "{\"cuts\": [\n"
+    " {\"n\": 1, \"shot\": {\"size\": \"크게\", \"angle\": \"옆에서\", \"count\": \"혼자\", \"position\": \"왼쪽\"}, \"gaze\": \"아래\", "
+    "\"expression\": \"걱정, 땀\", \"pose\": \"움츠리기\", \"place\": \"주방\", \"props\": [\"김밥\", \"접시\"], \"light\": \"\"},\n"
+    " {\"n\": 2, \"shot\": {\"size\": \"보통\", \"angle\": \"위에서\", \"count\": \"혼자\", \"position\": \"오른쪽\"}, \"gaze\": \"옆\", "
+    "\"expression\": \"긴장\", \"pose\": \"접시 놓기\", \"place\": \"가게 안\", \"props\": [\"김밥\", \"진열대\"], \"light\": \"아침 햇살\"},\n"
+    " {\"n\": 3, \"shot\": {\"size\": \"아주작게\", \"angle\": \"정면\", \"count\": \"여럿\", \"position\": \"가운데\"}, \"gaze\": \"상대\", "
+    "\"expression\": \"멍함\", \"pose\": \"빈 접시 들기\", \"place\": \"가게 앞\", \"props\": [\"고양이 손님\", \"강아지 손님\", \"빈 접시\"], \"light\": \"아침 햇살\"},\n"
+    " {\"n\": 4, \"shot\": {\"size\": \"아주크게\", \"angle\": \"아래에서\", \"count\": \"혼자\", \"position\": \"왼쪽\"}, \"gaze\": \"정면\", "
+    "\"expression\": \"멍한 미소\", \"pose\": \"빈 접시 안기\", \"place\": \"가게 안\", \"props\": [\"빈 접시\"], \"light\": \"\"}]}\n\n"
+    "예시는 다른 업종이다 — 형식과 구도 원칙만 가져온다. JSON 하나만 출력한다."
+)
+
 
 def _client() -> OpenAI:
     if not settings.openai_api_key:
@@ -131,9 +139,9 @@ def _client() -> OpenAI:
     return OpenAI(api_key=settings.openai_api_key)
 
 
-def _json_chat(system: str, user: str, temperature: float) -> dict:
+def _json_chat(system: str, user: str, temperature: float, model: str | None = None) -> dict:
     resp = _client().chat.completions.create(
-        model=settings.openai_model,
+        model=model or settings.openai_model,
         temperature=temperature,
         response_format={"type": "json_object"},
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -157,23 +165,12 @@ def make_meme_card(title: str, source: str, original: str) -> dict:
     return card
 
 
-def story_user_message(card: dict, meme_title: str, store: dict, prods: list[dict], ad: dict, mascot: str) -> str:
-    """스토리 GPT에 보내는 유저 메시지. 보고서에서 그대로 보여주려고 따로 뺐다."""
-    prod_lines = [
+def _prod_lines(prods: list[dict]) -> list[str]:
+    return [
         f"- {p.get('name')} {p.get('qty') or ''} ({p.get('date') or ''} {p.get('time') or ''}"
         + (f", 매진 {p['sold_out']}" if p.get("sold_out") else "") + ")"
         for p in prods
     ] or ["- (기록 없음)"]
-    concept = concept_of(ad)
-    return (
-        f"[밈 카드: {meme_title}]\n{json.dumps(card, ensure_ascii=False, indent=1)}\n\n"
-        f"[광고 느낌] {concept}\n레시피: {CONCEPT_RECIPES[concept]}\n\n"
-        f"[가게]\n업종: {store.get('category') or '빵집'}\n주소: {store.get('address') or ''}\n"
-        f"영업시간: {store.get('hours') or ''}\n소개: {store.get('desc') or ''}\n"
-        f"[생산 기록]\n" + "\n".join(prod_lines) + "\n\n"
-        f"[광고] 종류: {ad.get('ad_type') or ''}\n"
-        f"[마스코트] {mascot or '가게 마스코트'}"
-    )
 
 
 def concept_of(ad: dict) -> str:
@@ -182,31 +179,94 @@ def concept_of(ad: dict) -> str:
     return c if c in CONCEPT_RECIPES else "유쾌함"
 
 
-def propose_story(card: dict, meme_title: str, store: dict, prods: list[dict], ad: dict, mascot: str) -> dict:
-    """카드 + 가게 정보 + 광고 느낌 → {title, concept, concept_check, cuts[4]}. 컷은 line/action/slots 를 갖는다."""
-    user = story_user_message(card, meme_title, store, prods, ad, mascot)
-    data = _json_chat(_STORY_PROMPT, user, temperature=0.5)
+def caption_of(store: dict) -> str:
+    """그림 아래 캡션 — 가게 정보는 대사가 아니라 여기로. 비어 있는 칸은 건너뛴다."""
+    parts = [store.get("desc"), store.get("hours"), store.get("address")]
+    return " · ".join(str(p).strip() for p in parts if p and str(p).strip())
+
+
+def script_user_message(card: dict, meme_title: str, store: dict, prods: list[dict], ad: dict, character: dict) -> str:
+    """작가 GPT에 보내는 것. 마스코트 시트(성격·나이·취미·능력·키워드)를 통째로 준다 — 말투의 재료."""
+    concept = concept_of(ad)
+    ch = {k: v for k, v in character.items() if v}
+    return (
+        f"[밈 카드: {meme_title}]\n{json.dumps(card, ensure_ascii=False, indent=1)}\n\n"
+        f"[광고 느낌] {concept}\n레시피: {CONCEPT_RECIPES[concept]}\n\n"
+        f"[가게]\n업종: {store.get('category') or '빵집'}\n소개: {store.get('desc') or ''}\n"
+        f"[생산 기록]\n" + "\n".join(_prod_lines(prods)) + "\n\n"
+        f"[마스코트 시트]\n{json.dumps(ch, ensure_ascii=False, indent=1)}"
+    )
+
+
+def direct_user_message(script: dict, ad: dict) -> str:
+    concept = concept_of(ad)
+    return (f"[광고 느낌] {concept}\n레시피: {CONCEPT_RECIPES[concept]}\n\n"
+            f"[작가가 고른 대본]\n{json.dumps({'title': script['title'], 'lines': script['lines'], 'beats': script['beats']}, ensure_ascii=False, indent=1)}")
+
+
+def _pick(val, choices, default):
+    v = str(val or "").strip()
+    return v if v in choices else default
+
+
+def propose_story(card: dict, meme_title: str, store: dict, prods: list[dict], ad: dict, character: dict | str) -> dict:
+    """카드 + 가게 + 느낌 + 마스코트 시트 → {title, cuts[4], caption, fit, drafts, best, why, concept}.
+
+    두 단계: 작가(대사 3편 → 하나 고름, temperature 0.9) → 연출(고른 대사를 슬롯으로, 0.3).
+    character 는 시트 dict. 옛 호출처럼 이름 문자열만 오면 이름만 쓴다."""
+    if isinstance(character, str):
+        character = {"name": character}
+    concept = concept_of(ad)
+
+    # 1) 작가
+    s_user = script_user_message(card, meme_title, store, prods, ad, character)
+    sdata = _json_chat(_SCRIPT_PROMPT, s_user, temperature=0.9, model=settings.openai_writer_model)
+    drafts = [d for d in (sdata.get("drafts") or []) if isinstance(d, dict) and isinstance(d.get("lines"), list)]
+    if not drafts:
+        raise RuntimeError("스토리 형식이 어긋났어요 — 다시 제안받아 주세요")
+    try:
+        best = int(sdata.get("best", 0))
+    except (TypeError, ValueError):
+        best = 0
+    best = best if 0 <= best < len(drafts) else 0
+    chosen = drafts[best]
+    lines = [str(x or "").strip() for x in chosen["lines"]][:4]
+    beats = [str(x or "").strip() for x in (chosen.get("beats") or [])][:4]
+    while len(lines) < 4:
+        lines.append("")
+    while len(beats) < 4:
+        beats.append("")
+    script = {"title": str(chosen.get("title") or meme_title), "lines": lines, "beats": beats,
+              "voice": str(chosen.get("voice") or "")}
+    if sum(1 for x in lines if x) < 2:
+        raise RuntimeError("스토리 형식이 어긋났어요 — 다시 제안받아 주세요")
+
+    # 2) 연출
+    d_user = direct_user_message(script, ad)
+    ddata = _json_chat(_DIRECT_PROMPT, d_user, temperature=0.3)
+    raw_cuts = list(ddata.get("cuts") or [])
     cuts = []
-    for i, c in enumerate(list(data.get("cuts") or [])[:4]):
+    for i in range(4):
+        c = raw_cuts[i] if i < len(raw_cuts) and isinstance(raw_cuts[i], dict) else {}
         shot = c.get("shot") if isinstance(c.get("shot"), dict) else {}
-
-        def pick(val, choices, default):
-            v = str(val or "").strip()
-            return v if v in choices else default
-
         props = c.get("props") or []
+        line = lines[i]
         cuts.append({
             "n": i + 1,
-            "line": str(c.get("line") or "").strip(),
-            "action": str(c.get("action") or "").strip(),   # 화면 표시용 한 줄 요약
-            "short": str(c.get("line") or "")[:14],
-            # 팀장 슬롯 시트의 컷 층. 닫힌 세 칸은 선택지 밖이면 안전한 기본값으로.
+            "line": line,
+            "action": beats[i],   # 화면 표시용 한 줄 요약(작가의 beat)
+            "short": line[:14],
+            "caption": caption_of(store),   # 그림 아래 캡션 — 가게 정보는 대사가 아니라 여기로
             "slots": {
                 "shot": {
-                    "size": pick(shot.get("size"), SHOT_SIZE_CHOICES, "작게"),
-                    "angle": pick(shot.get("angle"), SHOT_ANGLE_CHOICES, "정면"),
-                    "count": pick(shot.get("count"), SHOT_COUNT_CHOICES, "혼자"),
+                    "size": _pick(shot.get("size"), SHOT_SIZE_CHOICES, "작게"),
+                    "angle": _pick(shot.get("angle"), SHOT_ANGLE_CHOICES, "정면"),
+                    "count": _pick(shot.get("count"), SHOT_COUNT_CHOICES, "혼자"),
+                    # 대사 있는 컷의 기본은 홀수 오른쪽·짝수 왼쪽(말풍선 반대편), 대사 없으면 가운데
+                    "position": _pick(shot.get("position"), SHOT_POSITION_CHOICES,
+                                      "가운데" if not line else ("오른쪽" if i % 2 == 0 else "왼쪽")),
                 },
+                "gaze": _pick(c.get("gaze"), GAZE_CHOICES, "옆"),
                 "expression": str(c.get("expression") or "").strip(),
                 "pose": str(c.get("pose") or "").strip(),
                 "place": str(c.get("place") or "").strip(),
@@ -214,10 +274,6 @@ def propose_story(card: dict, meme_title: str, store: dict, prods: list[dict], a
                 "light": str(c.get("light") or "").strip(),
             },
         })
-    # 대사가 빈 컷은 허용한다 — 반전 레시피가 "3컷은 대사 없이 그림으로"라 일부러 비운다(말풍선은 안 그려진다).
-    # 대사·동작이 둘 다 빈 컷이나, 대사 있는 컷이 둘 미만이면 형식 오류.
-    if len(cuts) < 2 or any(not c["line"] and not c["action"] for c in cuts) \
-            or sum(1 for c in cuts if c["line"]) < 2:
-        raise RuntimeError("스토리 형식이 어긋났어요 — 다시 제안받아 주세요")
-    return {"title": str(data.get("title") or meme_title), "cuts": cuts,
-            "concept": concept_of(ad), "concept_check": str(data.get("concept_check") or "").strip()}
+    return {"title": script["title"], "cuts": cuts, "caption": caption_of(store), "concept": concept,
+            "fit": sdata.get("fit") or {}, "drafts": drafts, "best": best, "why": str(sdata.get("why") or ""),
+            "voice": script["voice"], "script_user": s_user, "direct_user": d_user}

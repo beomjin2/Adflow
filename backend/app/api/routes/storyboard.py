@@ -177,12 +177,14 @@ def _fill_cuts(indexes: list[int], scenes: list[dict], char_part_text: str, refe
     슬롯이 있으면 comic_prompt_slots로, 없으면(직접 쓴 옛 컷) 옛 경로로 조립한다."""
     for index, scene in zip(indexes, scenes):
         trace = None
+        position = None
         if scene.get("slots"):
             prompt, trace = comic_prompt_slots(char_part_text, scene["slots"])
+            position = (scene["slots"].get("shot") or {}).get("position")   # 왼쪽·가운데·오른쪽 → 넓게 뽑아 자름
         else:
             prompt = comic_prompt(char_part_text, scene.get("text", ""), scene.get("camera", ""))
         images = generate_images(prompt, 1, workflow_file=settings.comfy_comic_workflow_file,
-                                 reference_path=reference)
+                                 reference_path=reference, position=position)
         image = images[0] if images else None
 
         def write(db: Session, index=index, image=image, prompt=prompt, trace=trace):
@@ -241,7 +243,9 @@ def propose(body: schemas.ProposeIn, db: Session = Depends(get_db)):
             {"category": store.category, "address": store.address, "hours": store.hours, "desc": store.desc} if store else {},
             [{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time, "sold_out": p.sold_out} for p in prods],
             {"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {},
-            (char.name if char else "") or "",
+            # 마스코트 시트 전부 — 작가 GPT가 말투를 여기서 뽑는다(전엔 이름만 보내 목소리가 없었다)
+            {"name": char.name, "age": char.age, "gender": char.gender, "desc": char.desc, "hobby": char.hobby,
+             "abilities": char.abilities, "keywords": list(char.keywords or [])} if char else {},
         )
     except RuntimeError as e:
         raise HTTPException(400, str(e))
@@ -289,6 +293,7 @@ def make_comic(db: Session = Depends(get_db)):
         {"n": c["n"], "short": c.get("short", ""), "line": c.get("line", ""),
          "action": c.get("action", ""), "camera": c.get("camera", ""),
          "slots": c.get("slots"),   # 팀장 시트의 컷 슬롯. 옛 plan엔 없다(→ 옛 경로)
+         "caption": c.get("caption", ""),   # 그림 아래 캡션(가게 정보)
          "label": f"{c['n']}컷", "image": None, "status": "generating"}
         for c in plan
     ]

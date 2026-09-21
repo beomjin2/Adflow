@@ -383,9 +383,11 @@ def _handle_non_answer(char, messages: list, text: str, asked: str, store,
                           if current else sheet.QUESTIONS.get(following, "")),
             ))
             return
+        # 카드에 무엇을 왜 정했는지(why)가 실린다. 여기에 되묻는 말까지 얹으면
+        # "제안해 놓고 다시 뭘 원하냐고 묻는" 꼴이 된다 — 그게 대화를 설문지로 만든다.
         _open_suggestion(
             char, messages, {following: proposal["value"]}, phase="filling",
-            lead=sheet_llm.reply(char, text, {}, following, store),
+            lead="" if proposal.get("why") else sheet_llm.reply(char, text, {}, following, store),
             basis=proposal.get("basis"), why=proposal.get("why"),
         )
         return
@@ -398,7 +400,7 @@ def _handle_non_answer(char, messages: list, text: str, asked: str, store,
         # 무엇을 보고 정했는지(basis)도 카드에 같이 싣는다.
         _open_suggestion(
             char, messages, {following: proposal["value"]}, phase="filling",
-            lead=sheet_llm.reply(char, text, {}, following, store),
+            lead="" if proposal.get("why") else sheet_llm.reply(char, text, {}, following, store),
             basis=proposal.get("basis"), why=proposal.get("why"),
         )
         return

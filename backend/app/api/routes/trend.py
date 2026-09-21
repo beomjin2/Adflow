@@ -62,6 +62,13 @@ def list_trend(db: Session = Depends(get_db)):
 
     # 수집 시점이 섞여 있으면(사이트별로 따로 돌린 경우) 가장 최근 것을 기준으로 삼는다.
     collected_at = max((m.collected_at or "" for m in rows), default="")
+    # collected_at 은 import_memes.py 가 채운다. 배포 뒤 그걸 안 돌리면 전부 빈 값이라
+    # 화면이 기준일을 못 구해 "유행 중" 배지가 에러 없이 통째로 사라진다(실제로 한 번 겪었다).
+    # 그럴 때만 밈들의 마지막 신호일(period_end) 중 가장 늦은 날로 대신한다.
+    # 정상 경로로 쓰지 않는 이유: 최근에 뜬 밈이 하나도 없는 달엔 이 값이 과거로 밀린다.
+    # 비상용이라 import 를 다시 돌리면 자동으로 정상 값으로 돌아간다.
+    if not collected_at:
+        collected_at = max((m.period_end or "" for m in rows), default="")
 
     return schemas.TrendOut(items=items, sites=sites, collected_at=collected_at)
 

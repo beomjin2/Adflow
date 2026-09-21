@@ -80,7 +80,10 @@ export default function Result({ state, actions }) {
 
         <SoftButton onClick={copy} style={{ height: 48, fontSize: 15 }}>문구 복사하기</SoftButton>
         <SecondaryButton onClick={actions.backToSb} style={{ height: 52, fontSize: 16 }}>대화로 돌아가 고치기</SecondaryButton>
-        <PrimaryButton onClick={actions.confirmResult}>이대로 저장</PrimaryButton>
+        {/* 보관함에서 옛 항목을 보는 중이면 이미 저장된 것이라 또 저장할 필요가 없다 — 중복 저장 방지. */}
+        {!state.viewingHistory && (
+          <PrimaryButton onClick={actions.confirmResult}>이대로 저장</PrimaryButton>
+        )}
       </div>
     </div>
   );

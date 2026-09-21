@@ -95,6 +95,9 @@ function initialState() {
     memeDraftFromTrend: false, memeDraftTrendId: '',
 
     myTab: 'history', history: [],
+    // Result 화면이 "새로 만든 광고 끝"인지 "보관함에서 옛 항목을 보는 중"인지 구분한다 —
+    // 후자면 "이대로 저장"을 보여주지 않는다(이미 저장된 걸 또 저장하면 중복이 생긴다).
+    viewingHistory: false,
 
     items: [], prods: [],
     newItem: '', draftItem: '', draftQty: '', draftDate: today(), draftTime: '', draftSold: '',
@@ -555,8 +558,11 @@ export function useAdMakerState() {
   // ---------- 결과 / 저장 ----------
   const openResult = useCallback(() => {
     if (!stateRef.current.plan.length) { toast('먼저 대화로 컷 구성을 만들어주세요'); return; }
+    // 히스토리에서 옛 항목을 봤을 때(viewingHistory) 켜둔 값이 남아있을 수 있으니,
+    // 새로 만드는 흐름으로 들어올 땐 항상 꺼둔다 — "이대로 저장" 버튼이 이 값으로 갈린다.
+    update({ viewingHistory: false });
     go('result');
-  }, [go, toast]);
+  }, [go, toast, update]);
   const backToSb = useCallback(() => update((s) => ({ screen: 'sb', stack: s.stack.filter((x) => x !== 'result') })), [update]);
   const confirmResult = useCallback(() => go('save'), [go]);
 
@@ -565,10 +571,20 @@ export function useAdMakerState() {
     if (!s.plan.length) { toast('저장할 구성이 없어요'); return; }
     if (s.savedThisAd) { toast('이미 보관함에 저장했어요'); return; }
     try {
+      // plan은 컷 문장만 갖고 있다 — 실제로 그려진 네컷 그림(comicCuts)을 n으로 맞춰
+      // 같이 넣어야, 나중에 히스토리에서 다시 열었을 때 그림까지 보인다.
+      const comicByN = new Map((s.comicCuts || []).map((c) => [c.n, c]));
       const entry = await HistoryAPI.add({
         title: `${s.adType} · ${s.adConcept}`,
         meta: `${s.plan.length}컷 구성`,
-        cuts: s.plan.map((c) => ({ n: c.n, short: c.short || '', line: c.line || '' })),
+        cuts: s.plan.map((c) => {
+          const drawn = comicByN.get(c.n);
+          return {
+            n: c.n, short: c.short || '', line: c.line || '',
+            image: drawn?.status === 'done' ? drawn.image : null,
+            status: drawn?.status || 'empty',
+          };
+        }),
       });
       update((st) => ({ history: [entry, ...st.history], savedThisAd: true }));
       toast('구성을 보관함에 저장했어요');
@@ -584,7 +600,18 @@ export function useAdMakerState() {
   }, [toast, go]);
   const editStoreFromMy = useCallback(() => { update({ storeReadOnly: false }); go('store'); }, [update, go]);
   const openHistoryItem = useCallback((h) => {
-    update({ plan: (h.cuts || []).map((c, i) => ({ n: c.n ?? i + 1, short: c.short || '', line: c.line || '' })) });
+    const cuts = h.cuts || [];
+    update({
+      plan: cuts.map((c, i) => ({ n: c.n ?? i + 1, short: c.short || '', line: c.line || '' })),
+      // 저장할 때 comicCuts(그린 그림)를 cuts에 같이 넣어 뒀으니, 다시 열 때도 그대로
+      // 복원한다 — image 유무로 status를 다시 판단한다(옛 항목엔 status 자체가 없을 수 있어서).
+      comicCuts: cuts.map((c, i) => ({
+        n: c.n ?? i + 1, short: c.short || '', line: c.line || '',
+        image: c.image || null, status: c.image ? 'done' : 'empty',
+      })),
+      // 이미 저장된 항목을 보는 것뿐이라 "이대로 저장"은 필요 없다 — Result.jsx가 이 값으로 숨긴다.
+      viewingHistory: true,
+    });
     go('result');
   }, [update, go]);
 

@@ -161,13 +161,22 @@ _PROPOSE_SYSTEM = """\
 6. why — basis에 적은 것에서 이 값이 어떻게 나왔는지 사장님에게 설명한다. 존댓말.
    basis가 비어 있으면 그냥 어떤 느낌을 노렸는지 말한다.
 7. proposal — 위 둘을 정한 **뒤에** 쓴다.
+8. say — 이 제안을 사장님에게 건네며 **말로 하는 한두 문장**이다. 화면에는 이 말이
+   먼저 나오고 그 아래에 제안 카드가 붙는다.
+   - 사장님이 방금 한 말에 **먼저 사람처럼 반응한다.** 같은 말을 되풀이하고 있으면
+     못 알아들었다는 걸 인정하고 이번엔 말한 대로 한다.
+   - **되묻지 않는다.** 제안을 내놓고 "어떤 걸 원하시나요?"를 덧붙이면, 제안해 놓고
+     다시 뭘 원하냐고 묻는 꼴이다. 카드에 값이 있으니 보고 정하는 건 사장님 몫이다.
+   - 선택지를 나열하지 않는다. 지금 고른 것 하나를 말한다.
+   - 존댓말로, 동네 가게 사장님에게 말하듯 쉽게.
 
 출력은 이 모양의 JSON만 (이 순서 그대로):
 {"reasoning": "...",
  "intent": "help",
  "basis": [{"label": "...", "quote": "..."}],
  "why": "...",
- "proposal": "..."}
+ "proposal": "...",
+ "say": "..."}
 """
 
 _REPLY_SYSTEM = """\
@@ -580,7 +589,9 @@ def propose_field(char, field: str, text: str, store=None) -> dict:
     # 정하는 건 사장님 몫이다 — 시트의 외형·아웃핏·설명·능력은 여러 줄 입력 칸이다.
     if not value:
         return {}
-    return {"value": value, **evidence_from(parsed, char, store)}
+    spoken = parsed.get("say")
+    spoken = spoken.strip() if isinstance(spoken, str) else ""
+    return {"value": value, "say": spoken, **evidence_from(parsed, char, store)}
 
 
 def _proposal_from(parsed: dict) -> str:

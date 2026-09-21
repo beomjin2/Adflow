@@ -18,6 +18,10 @@ const TITLES = {
 // 단계 화면에서 "지금 어디쯤인지"를 머리말 위에 적는다.
 const CRUMB = { store: '1단계', char: '2단계', ad: '3단계', sb: '3단계', result: '3단계', save: '3단계' };
 
+// 흰 카드(.ad-body) 안에 넣지 않는 화면. 개선안에서 이 두 화면은 카드 여러 장이
+// 배경 위에 나란히 놓인 모양이라, 큰 카드로 한 번 더 감싸면 테두리가 두 겹이 된다.
+const FULL_BLEED = new Set(['ad', 'sb']);
+
 export default function AppShell({ state, actions, missingProdsCount, children }) {
   const titleEntry = TITLES[state.screen] || TITLES.home;
   const [title, subtitle] = typeof titleEntry === 'function' ? titleEntry(state) : titleEntry;
@@ -96,7 +100,7 @@ export default function AppShell({ state, actions, missingProdsCount, children }
                 </button>
               )}
             </div>
-            <div className="ad-body">{children}</div>
+            {FULL_BLEED.has(state.screen) ? children : <div className="ad-body">{children}</div>}
           </>
         )}
       </div>

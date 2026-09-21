@@ -2,19 +2,12 @@ import { useState } from 'react';
 import { colors } from '../../theme.js';
 import ImageSlot, { formatEta } from '../ImageSlot.jsx';
 import Lightbox from '../Lightbox.jsx';
-import ComicPanels from '../ComicPanels.jsx';
 
+
+/** 말풍선. 모양은 styles.css 의 `.ad-msg` 가 정한다 — 개선안에서 캐릭터 대화와
+ *  광고 대화가 같은 모양이라 두 화면이 이 한 클래스를 같이 쓴다. */
 export function TextBubble({ role, text }) {
-  const mine = role === 'me';
-  return (
-    <div style={{ display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' }}>
-      <div style={mine
-        ? { maxWidth: '80%', background: colors.chatMeBg, color: '#fff', borderRadius: '14px 14px 4px 14px', padding: '10px 14px', fontSize: 15, lineHeight: '22px', fontWeight: 500, whiteSpace: 'pre-line' }
-        : { maxWidth: '86%', background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: '14px 14px 14px 4px', padding: '10px 14px', fontSize: 15, lineHeight: '22px', whiteSpace: 'pre-line' }}>
-        {text}
-      </div>
-    </div>
-  );
+  return <div className={`ad-msg ${role === 'me' ? 'me' : 'ai'}`}>{text}</div>;
 }
 
 export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 }) {
@@ -65,12 +58,13 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 
   );
 }
 
-/** 네컷 그림. 그림이 대화 밖에서 나오면 사장님은 무엇 때문에 나온 건지 놓친다 —
- *  "네컷 그리기"를 누른 자리 바로 아래에서 칸이 하나씩 채워지게 둔다.
+/** 네컷 그림. 대화 안의 **한 장짜리 말풍선**이다 — 캐릭터 후보와 똑같이 작은 칸 몇 개로
+ *  놓고, 크게 보려면 눌러서 본다. 대화창 폭을 통째로 먹는 큰 그림판을 끼워 넣으면
+ *  그건 대화가 아니라 화면이 하나 더 열린 것이고, 스크롤도 그만큼 길어진다.
  *
- *  여기선 말풍선을 얹지 않는다. 대화창 폭에서 2×2로 줄이면 대사 글씨가 그림을 덮는다.
- *  대사가 얹힌 큰 네컷은 더블클릭한 확대 화면과 결과 화면의 몫이다. */
+ *  대사가 얹힌 큰 네컷은 결과 화면의 몫이다. */
 export function ComicBubble({ cuts, eta = 0, onReroll }) {
+  const [preview, setPreview] = useState(-1);
   const items = cuts || [];
   if (!items.length) return null;
 
@@ -84,18 +78,28 @@ export function ComicBubble({ cuts, eta = 0, onReroll }) {
         {drawing > 0
           ? `네컷을 그리는 중 — ${drawing}컷 남았어요`
           : done > 0
-            ? '네컷이 나왔어요 — 더블클릭하면 대사까지 크게 봐요'
+            ? '네컷이 나왔어요 — 눌러서 크게 보세요'
             : '아직 그림이 없어요'}
       </span>
       {drawing > 0 && eta > 0 && (
         <span style={hintStyle}>약 {formatEta(eta)}. 이 화면을 닫아도 계속 그려요.</span>
       )}
-      <ComicPanels cuts={items} eta={eta} onReroll={onReroll} bubbles={false} gap={8} />
+      <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+        {items.map((c, i) => (
+          <ImageSlot
+            key={c.n ?? i} slot={c} size={92} eta={eta}
+            selectable onClick={() => setPreview(i)} onReroll={() => onReroll?.(c.n)}
+          />
+        ))}
+      </div>
       {failed > 0 && (
         <span style={{ ...hintStyle, color: colors.warnText }}>
           {failed}컷은 그리지 못했어요. ↻ 를 누르면 그 자리만 다시 그려요.
         </span>
       )}
+      {/* 네컷은 고르는 게 아니라 보는 것이라 onSelect를 주지 않는다. */}
+      <Lightbox items={items} index={preview} selected={-1}
+        onClose={() => setPreview(-1)} onMove={setPreview} />
     </div>
   );
 }

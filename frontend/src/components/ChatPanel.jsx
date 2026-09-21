@@ -30,32 +30,29 @@ export default function ChatPanel({
   const card = !!title;
 
   return (
-    <div style={{
-      flex: '1 1 420px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: card ? 0 : 8,
-      ...(card ? {
-        background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: 20,
-        boxShadow: '0 2px 6px rgba(20,28,36,.05)', overflow: 'hidden'
-      } : null)
-    }}>
-      {card && (
-        <div style={{ padding: '18px 20px 0' }}>
-          <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.3px', color: colors.text }}>{title}</span>
-        </div>
-      )}
+    <div
+      className={card ? 'ad-card ad-chat' : undefined}
+      style={card ? undefined : { flex: '1 1 420px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}
+    >
+      {card && <div className="ad-chat-h"><h3>{title}</h3></div>}
 
-      <div ref={listRef} style={{
-        flex: 1, minHeight: height, display: 'flex', flexDirection: 'column', gap: 10,
-        overflowY: 'auto', maxHeight: height + 90,
-        ...(card
-          ? { padding: 20 }
-          : { background: colors.bg, border: `1px solid ${colors.cardBorder}`, borderRadius: 16, padding: 14 })
-      }}>
+      <div
+        ref={listRef}
+        className={card ? 'log' : undefined}
+        style={card ? undefined : {
+          flex: 1, minHeight: height, display: 'flex', flexDirection: 'column', gap: 10,
+          overflowY: 'auto', maxHeight: height + 90,
+          background: colors.bg, border: `1px solid ${colors.cardBorder}`, borderRadius: 16, padding: 14
+        }}
+      >
         {/* 빈 대화창에 인사말을 미리 저장해두지 않는다. 안내는 화면이 하고, 기록은 사장님이 만든다. */}
         {empty && emptyHint && (
-          <div style={{
-            margin: 'auto', maxWidth: 340, textAlign: 'center', fontSize: 14,
-            lineHeight: '22px', color: colors.textFaint, whiteSpace: 'pre-line'
-          }}>{emptyHint}</div>
+          card
+            ? <div className="ad-chat-empty">{emptyHint}</div>
+            : <div style={{
+              margin: 'auto', maxWidth: 340, textAlign: 'center', fontSize: 14,
+              lineHeight: '22px', color: colors.textFaint, whiteSpace: 'pre-line'
+            }}>{emptyHint}</div>
         )}
 
         {messages.map((m, i) => {
@@ -86,24 +83,28 @@ export default function ChatPanel({
         )}
       </div>
 
-      <div style={{
-        display: 'flex', gap: 8,
-        ...(card ? { padding: '14px 16px', borderTop: `1px solid ${colors.cardBorder}` } : null)
-      }}>
+      <div className={card ? 'in' : undefined} style={card ? undefined : { display: 'flex', gap: 8 }}>
         <input
           value={input} onChange={e => onInputChange(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) onSend(); }}
           placeholder={placeholder}
           aria-label="메시지 입력"
-          style={{ ...inputStyle, flex: 1, minWidth: 0 }}
+          className={card ? 'ad-input' : undefined}
+          style={card ? undefined : { ...inputStyle, flex: 1, minWidth: 0 }}
         />
-        <button onClick={onSend} disabled={!input.trim()} style={{
-          flex: 'none', whiteSpace: 'nowrap', height: TAP, padding: '0 22px', borderRadius: 12,
-          border: 0, background: input.trim() ? colors.primary : colors.cardBorder,
-          color: '#fff', fontSize: 16, fontWeight: 700,
-          cursor: input.trim() ? 'pointer' : 'not-allowed',
-          boxShadow: input.trim() ? '0 6px 12px rgba(22,160,107,.32)' : 'none'
-        }}>전송</button>
+        {card ? (
+          <button className="ad-btn pri" onClick={onSend} disabled={!input.trim()} style={{ height: TAP, padding: '0 22px', flex: 'none' }}>
+            전송
+          </button>
+        ) : (
+          <button onClick={onSend} disabled={!input.trim()} style={{
+            flex: 'none', whiteSpace: 'nowrap', height: TAP, padding: '0 22px', borderRadius: 12,
+            border: 0, background: input.trim() ? colors.primary : colors.cardBorder,
+            color: '#fff', fontSize: 16, fontWeight: 700,
+            cursor: input.trim() ? 'pointer' : 'not-allowed',
+            boxShadow: input.trim() ? '0 6px 12px rgba(22,160,107,.32)' : 'none'
+          }}>전송</button>
+        )}
       </div>
     </div>
   );

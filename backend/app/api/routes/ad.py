@@ -42,11 +42,14 @@ def update_ad(body: schemas.AdUpdate, db: Session = Depends(get_db)):
 
 
 @router.post("/apply", response_model=schemas.ApplyAdOut)
-def apply_ad(db: Session = Depends(get_db)):
+def apply_ad(body: schemas.ApplyAdIn = schemas.ApplyAdIn(), db: Session = Depends(get_db)):
     """광고 설정을 확정하고 스토리보드 대화를 처음부터 시작한다.
 
     앞 단계가 안 끝났으면 무엇이 비었는지 한 문장으로 알려준다 — 그냥 막히면
     사장님은 어디가 문제인지 알 방법이 없다.
+
+    body.trend_meme_id — 트렌드 화면에서 미리 골라 온 밈(있으면). 스토리보드에
+    저장해 두면 대화가 스토리를 만들 때 자동으로 참고한다.
     """
     ad = _get(db)
 
@@ -64,5 +67,5 @@ def apply_ad(db: Session = Depends(get_db)):
     if missing:
         raise HTTPException(400, f"{' · '.join(missing)}이(가) 먼저 필요해요")
 
-    reset_storyboard(db)
+    reset_storyboard(db, trend_meme_id=body.trend_meme_id)
     return schemas.ApplyAdOut(ok=True, message=f"{ad.ad_type} · {ad.ad_concept}로 만들어볼게요.")

@@ -18,9 +18,9 @@ flowchart LR
     A --> SB
     subgraph SB[스토리보드]
         direction TB
-        B1[오늘 생산 기록 대화<br/>품목·수량·시각] --> B2[밈 카드 고르기]
-        B2 --> B3[GPT 스토리 제안<br/>4컷 대사·행동·구도] --> B4[승인]
-        B4 --> B5[네컷 그리기<br/>확정 캐릭터를 참조로 컷마다 생성]
+        B1[오늘 생산 기록 대화<br/>품목·수량·시각] --> B2[GPT 스토리 제안<br/>대화 즉시 · 트렌드에서 고른 밈 있으면 반영<br/>없으면 GPT가 스스로 살펴봄]
+        B2 --> B3[승인]
+        B3 --> B4[네컷 그리기<br/>확정 캐릭터를 참조로 컷마다 생성]
     end
     SB --> R[결과<br/>2×2 만화 + 말풍선 + 올릴 문구 → 저장]
 ```
@@ -58,9 +58,9 @@ sequenceDiagram
     participant G as GPT
     participant CF as ComfyUI (VM)
 
-    U->>API: POST /api/storyboard/propose (밈 카드)
-    API->>G: 가게·상품·캐릭터 + 밈 템플릿 → 4컷 스토리
-    G-->>API: 컷별 대사·행동·구도
+    U->>API: POST /api/storyboard/chat (생산 기록 답변)
+    API->>G: 가게·상품·캐릭터 + (트렌드에서 고른 밈 또는 밈 후보) → 컷 구성
+    G-->>API: 컷별 대사·행동·구도 (+ 반영한 밈)
     API-->>U: 제안 카드 (승인 / 거절)
     U->>API: POST /api/storyboard/comic
     API->>CF: 확정 캐릭터 그림 업로드 (참조)
@@ -79,25 +79,31 @@ sequenceDiagram
 
 ## 4. 밈 추천 (트렌드 확인 화면)
 
-트렌드 확인 화면은 크롤링해 둔 밈을 훑어보는 화면이지만, 활용 상황(카테고리) 하나를 고르면
-그 안에서 GPT가 밈 하나를 대신 골라주는 기능도 있다.
+트렌드 확인 화면은 크롤링해 둔 밈을 훑어보는 화면이지만, "밈 추천받기"를 누르면 GPT가
+대신 하나를 골라주는 기능도 있다. 활용 상황(카테고리)도 사장님이 고르지 않는다 — GPT가
+가게·캐릭터·오늘 알릴 내용을 보고 먼저 상황을 판단한 뒤, 그 상황 안에서 밈을 고른다.
+호출을 두 번으로 나눴다가 매번 왕복 두 번이라 느려서, 지금은 한 번의 GPT 호출·한 번의
+비동기(AsyncOpenAI) 요청 안에서 두 판단을 같이 받는다(`meme_recommend.py`).
 
 ```mermaid
 flowchart LR
-    U[사장님<br/>활용 상황 선택 + 오늘 알릴 내용선택] -->|POST| API["/api/trend/recommend"]
-    API --> Q["같은 situation 밈만<br/>후보로 (memes 테이블)"]
+    U[사장님<br/>오늘 알릴 내용(선택)] -->|POST| API["/api/trend/recommend"]
+    API --> Q["크롤링 밈 전체<br/>(memes 테이블, 미분류 제외)"]
+    API --> ST[가게 정보<br/>있으면]
     API --> CH[확정된 캐릭터 정보<br/>있으면]
-    Q --> G[GPT]
+    Q --> G["GPT (1회)<br/>① 활용 상황 판단 → ② 그 안에서 밈 선택"]
+    ST --> G
     CH --> G
-    G -->|"밈 하나 + 고른 이유"| API
+    G -->|"판단한 상황 + 밈 + 고른 이유"| API
     API --> R[결과 팝업]
     R --> A["이 밈으로 광고 만들기"]
     R --> L["리스트에서 그 밈만<br/>선택해두고 더 보기"]
 ```
 
-- 후보는 크롤링 밈(`memes` 테이블) 중 고른 활용 상황(`situation`)과 같은 것만 넘긴다.
-- 캐릭터가 확정돼 있으면 이름·외형·아웃핏·능력·키워드·설명을 같이 넘겨서, 그 캐릭터와 어울리는 밈을 고르게 한다.
-- 결과는 밈 하나와 "왜 골랐는지" 한국어 1~2문장. 바로 광고를 만들 수도 있고, 팝업의 밈을 눌러 트렌드 리스트에서 그 밈만 선택해둔 채로 유래·활용예시를 더 살펴볼 수도 있다.
+- 후보는 "미분류"(분류 파이프라인이 못 정한 것)를 뺀 크롤링 밈(`memes` 테이블) 전체다 — 개수가 적어 미리 좁힐 필요가 없다.
+- 가게 정보(업종·주소·영업시간·소개)와 확정된 캐릭터 정보(이름·외형·아웃핏·능력·키워드·설명)를 같이 넘긴다.
+- 결과는 밈 하나와 GPT가 판단한 활용 상황, "왜 골랐는지" 한국어 1~2문장. 바로 광고를 만들 수도 있고, 팝업의 밈을 눌러 트렌드 리스트에서 그 밈만 선택해둔 채로 유래·활용예시를 더 살펴볼 수도 있다.
+- 여기서 고른 밈은 광고 설정을 확정할 때(`POST /api/ad/apply`) 스토리보드에 같이 저장돼(`Storyboard.trend_meme_id`), 대화가 스토리를 만들 때 자동으로 반영한다 — 따로 카드를 만들거나 고르는 화면은 없다.
 - 밈 데이터 자체(`memes` 테이블)는 앱과 분리된 오프라인 파이프라인(`crawling/`)이 만든다 — 크롤링 → 문장 임베딩으로 상황 분류
 
 ## 배포
@@ -125,8 +131,8 @@ systemctl is-active adflow-backend adflow-frontend  # 둘 다 active여야 한�
 part4_3team/
 ├── backend/                  # FastAPI 서버
 │   ├── app/
-│   │   ├── api/routes/       # 화면 단위 라우터 — store·character·ad·storyboard·meme·production·history·trend
-│   │   ├── services/         # GPT·ComfyUI 연동 — sheet_llm·chat_ai·danbooru_tags·image_gen·jobs·meme_ai·meme_recommend
+│   │   ├── api/routes/       # 화면 단위 라우터 — store·character·ad·storyboard·production·history·trend
+│   │   ├── services/         # GPT·ComfyUI 연동 — sheet_llm·chat_ai·story_llm·danbooru_tags·image_gen·jobs·meme_recommend
 │   │   ├── core/              # 설정(config.py), DB 세션(database.py)
 │   │   ├── db/seed.py         # 싱글턴 행 초기화
 │   │   ├── models.py          # SQLAlchemy 모델

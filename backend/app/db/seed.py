@@ -8,9 +8,6 @@
 라우터가 `db.get(..., 1)`로 찾기 때문에 행 자체는 존재해야 한다. 그래서 행만 만든다.
 """
 
-import json
-from pathlib import Path
-
 from sqlalchemy.orm import Session
 
 from app import models
@@ -37,15 +34,8 @@ def ensure_rows(db: Session) -> None:
 
     if not db.get(models.Storyboard, 1):
         db.add(models.Storyboard(
-            id=1, messages=[], plan=[], comic_cuts=[], prod_logged=False, pending={},
+            id=1, messages=[], plan=[], comic_cuts=[], prod_logged=False, pending={}, trend_meme_id="",
         ))
-
-    # 밈 카드는 사장님 데이터가 아니라 서비스 소재라 위 원칙의 예외다. 팀이 원문에서 만든
-    # 카드 4장(배경 담당 기록, 2026-09-16)을 비어 있을 때만 넣는다 — 히스토리·내보내기엔 안 섞인다.
-    if db.query(models.MemeCard).count() == 0:
-        seed_path = Path(__file__).with_name("meme_cards_seed.json")
-        for row in json.loads(seed_path.read_text(encoding="utf-8")):
-            db.add(models.MemeCard(**row))
 
     db.commit()
 

@@ -13,6 +13,7 @@ export default function ChatPanel({
   comic, comicEta = 0, onRerollCut,
   prods, onPatchProd,
   pending, onConfirm, onDecline,
+  onSuggest,
   title = '',
   height = 430
 }) {
@@ -34,7 +35,17 @@ export default function ChatPanel({
       className={card ? 'ad-card ad-chat' : undefined}
       style={card ? undefined : { flex: '1 1 420px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}
     >
-      {card && <div className="ad-chat-h"><h3>{title}</h3></div>}
+      {card && (
+        <div className="ad-chat-h">
+          <h3>{title}</h3>
+          <span className="ad-grow" />
+          {onSuggest && (
+            <button className="ad-btn tint sm" onClick={onSuggest} disabled={thinking}>
+              ✨ 스토리 제안받기
+            </button>
+          )}
+        </div>
+      )}
 
       <div
         ref={listRef}

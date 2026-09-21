@@ -207,7 +207,7 @@ summary.ad-acc-sum::marker{content:''}
 /* 대화창 — 머리말·기록·입력칸이 카드 한 장. 개선안의 `.chat` 그대로다:
    평소엔 420px 쯤 되고, 옆 열에 맞춰 늘어나야 할 땐 height:100% 로 따라 늘어난다. */
 .ad-chat{display:flex;flex-direction:column;overflow:hidden;min-height:420px;height:100%}
-.ad-chat-h{display:flex;align-items:center;gap:10px;padding:18px 20px 0;flex:none}
+.ad-chat-h{display:flex;align-items:center;gap:10px;padding:18px 20px 0;flex:none;flex-wrap:wrap}
 .ad-chat-h h3{margin:0;font-size:17px;font-weight:700;letter-spacing:-.3px}
 /* 🔴 min-height:0 이 없으면 flex 항목이 내용보다 작아지지 못해 overflow-y:auto 가
    아예 안 걸린다 — 스크롤바가 안 생기고 카드만 계속 길어진다. 실제로 그랬다. */

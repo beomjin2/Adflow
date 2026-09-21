@@ -100,6 +100,8 @@ const mapStoryboard = (sb) => ({
   comicCuts: (sb.comic_cuts || []).map((c) => ({ ...mapSlot(c), n: c.n, line: c.line })),
   sbGenerating: !!sb.generating,
   sbEta: sb.eta_seconds || 0,
+  // 트렌드 화면에서 미리 골라 온 밈(있으면) — 대화가 자동으로 참고 중인 것.
+  sbTrendMemeId: sb.trend_meme_id || '', sbTrendMemeName: sb.trend_meme_name || '',
 });
 
 const mapRecord = (r) => ({
@@ -146,26 +148,21 @@ export const AdAPI = {
   get: () => get('/api/ad').then(mapAd),
   update: (fields) => put('/api/ad', fields).then(mapAd),
   // { ok, message } 를 돌려준다. 앞 단계가 안 끝났으면 400 + 무엇이 비었는지.
-  apply: () => post('/api/ad/apply'),
+  // trendMemeId — 트렌드 화면에서 미리 골라 온 밈(state.trendSel)이 있으면 같이 보낸다.
+  // 대화(story_llm)가 그 밈을 자동으로 반영한다(밈 카드 만들기 같은 별도 단계 없음).
+  apply: (trendMemeId) => post('/api/ad/apply', { trend_meme_id: trendMemeId || null }),
 };
 
 // ---------- storyboard ----------
 export const StoryboardAPI = {
   get: () => get('/api/storyboard').then(mapStoryboard),
   chat: (text) => post('/api/storyboard/chat', { text }).then(mapStoryboard),
+  // 사장님이 아무것도 안 적고 "스토리 제안받기" 버튼을 눌렀을 때만 부른다 — 자동으로는 안 부른다.
+  suggest: () => post('/api/storyboard/suggest').then(mapStoryboard),
   confirm: (pid) => post(`/api/storyboard/confirm/${pid}`).then(mapStoryboard),
   decline: (pid) => post(`/api/storyboard/decline/${pid}`).then(mapStoryboard),
   makeComic: () => post('/api/storyboard/comic').then(mapStoryboard),
   rerollCut: (n) => post(`/api/storyboard/comic/${n}/reroll`).then(mapStoryboard),
-  propose: (memeId) => post('/api/storyboard/propose', { meme_id: memeId }).then(mapStoryboard),
-};
-
-// ---------- meme ----------
-const mapMeme = (m) => ({ id: m.id, title: m.title, source: m.source, card: m.card || {} });
-export const MemeAPI = {
-  list: () => get('/api/memes').then((rows) => rows.map(mapMeme)),
-  create: (body) => post('/api/memes', body).then(mapMeme),
-  remove: (id) => del(`/api/memes/${id}`),
 };
 
 // ---------- production ----------
@@ -207,8 +204,8 @@ export const TrendAPI = {
     trendItems: (r.items || []).map(mapTrendMeme),
     trendSites: r.sites || [],
   })),
-  // 2단계 추천 — GPT가 활용 상황을 먼저 고르고, 그 안에서 밈을 최대 두 개 골라 이유와 함께
-  // 준다. note는 "오늘 알릴 내용"(선택, 빈 문자열 가능).
+  // 2단계 추천 — GPT가 활용 상황을 먼저 고르고, 그 안에서 밈을 하나 골라 이유와 함께 준다.
+  // note는 "오늘 알릴 내용"(선택, 빈 문자열 가능).
   recommend: (note) => post('/api/trend/recommend', { note }).then((r) => ({
     situation: r.situation,
     picks: (r.picks || []).map((p) => ({ meme: mapTrendMeme(p.meme), reason: p.reason })),

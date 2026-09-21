@@ -1,24 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AdAPI, CharacterAPI, HistoryAPI, MemeAPI, ProductionAPI, StoreAPI, StoryboardAPI, TrendAPI,
+  AdAPI, CharacterAPI, HistoryAPI, ProductionAPI, StoreAPI, StoryboardAPI, TrendAPI,
 } from '../api/client.js';
 
 /** 그림 생성 진행을 확인하는 간격. 백엔드가 generating=false를 주면 멈춘다. */
 const POLL_MS = 3000;
 /** 안전장치 — 백엔드가 영영 끝났다고 말해주지 않아도 25분이면 폴링을 멈춘다. */
 const POLL_MAX_TICKS = 500;
-
-/** 트렌드 밈 하나를 스토리보드의 "밈 카드 추가(원문 붙여넣기)" 칸 모양으로 바꾼다.
- *  유래+활용예시를 합쳐 원문 자리에 넣는다 — 카드 만들기가 요약이 아니라 원문을 봐야
- *  제대로 되기 때문(meme_ai.py 참고). 트렌드 참고로 왔으면 그 밈으로 카드를 만들라는
- *  뜻이라 원문까지 채운다("밈 고르기"에서 기존 카드를 고를 때와는 다르게 취급한다 —
- *  거긴 새 카드를 만드는 자리가 아니라서 원문을 안 채운다). 유래·활용예시가 둘 다
- *  없으면 null(채울 게 없다). */
-function trendMemeDraft(m) {
-  const text = [m.origin, m.summary].filter(Boolean).join('\n\n').trim();
-  if (!text) return null;
-  return { memeTitle: m.name, memeSource: m.url || m.sourceLabel || '', memeText: text };
-}
 
 /** 오늘 날짜(YYYY-MM-DD). toISOString()은 UTC라서 한국 시간 오전 9시 전에는 어제가 나온다 —
  *  새벽에 만든 걸 기록하는 가게가 많아서 그대로 쓰면 하루씩 밀린다. */
@@ -87,12 +75,6 @@ function initialState() {
     // "보관함에 저장"을 한 번 누르면 같은 구성으로 또 눌러도 중복 저장 안 되게 잠근다.
     // 네컷을 새로 그리면(makeComic) 그건 다른 구성이니 다시 저장할 수 있게 풀어준다.
     savedThisAd: false,
-    // 밈 카드 목록과 "밈으로 스토리 제안" 입력란
-    memes: [], memeId: '', memeTitle: '', memeSource: '', memeText: '',
-    // memeTitle/memeSource/memeText가 트렌드 밈에서 채워졌는지 — 스토리보드가 배지 표시에 쓴다.
-    // memeDraftTrendId는 그 채운 내용이 "어느 트렌드 밈" 것인지 — 트렌드에서 더 보기로 다른
-    // 밈을 새로 고르고 왔을 때 옛 내용인지 판단하는 데 쓴다(applyAd 참고).
-    memeDraftFromTrend: false, memeDraftTrendId: '',
 
     myTab: 'history', history: [],
     // Result 화면이 "새로 만든 광고 끝"인지 "보관함에서 옛 항목을 보는 중"인지 구분한다 —
@@ -191,16 +173,14 @@ export function useAdMakerState() {
   useEffect(() => {
     (async () => {
       try {
-        const [store, character, ad, storyboard, items, prods, history, memes, trend] = await Promise.all([
+        const [store, character, ad, storyboard, items, prods, history, trend] = await Promise.all([
           StoreAPI.get(), CharacterAPI.get(), AdAPI.get(), StoryboardAPI.get(),
           ProductionAPI.listItems(), ProductionAPI.listRecords(), HistoryAPI.list(),
-          // 밈 카드는 없어도 앱이 떠야 한다 — 실패하면 빈 목록.
-          MemeAPI.list().catch(() => []),
           TrendAPI.list(),
         ]);
         update({
           ...store, ...character, ...ad, ...storyboard, ...trend,
-          items, prods, history, memes,
+          items, prods, history,
           storeReadOnly: store.storeSaved,
           draftItem: items[0] || '',
           loading: false,
@@ -271,7 +251,7 @@ export function useAdMakerState() {
 
   const closeTrendRecommend = useCallback(() => update({ trendRecommendResult: null }), [update]);
 
-  /** 추천 결과 팝업엔 이제 후보가 둘이라, 어느 쪽을 눌렀는지 memeId로 받는다.
+  /** 추천 결과 팝업의 picks는 목록이라(지금은 보통 1개), 어느 걸 눌렀는지 memeId로 받는다.
    *  밈 자체를 누르면, 리스트에서 그 밈을 고른 것처럼 선택만 해두고 팝업만 닫는다 —
    *  광고 만들기로 곧장 넘어가지 않아서, 유래·활용예시를 아래 상세 패널에서 먼저
    *  훑어보고 판단할 수 있다. 검색어도 같이 비운다 — 예전에 쳐둔 검색어가 추천된 밈의
@@ -297,14 +277,10 @@ export function useAdMakerState() {
   const closeAdEntry = useCallback(() => update({ adEntryOpen: false }), [update]);
   const pickAdEntryTrend = useCallback(() => { update({ adEntryOpen: false }); goTrend(); }, [update, goTrend]);
   /** "트렌드 없이 바로 만들기" — 이전에 트렌드에서 밈을 고른 적이 있어도(trendSel) 이번엔
-   *  참고 안 하겠다는 선택이니 지운다. applyAd()가 trendSel을 보고 "밈 카드 추가" 칸을
-   *  미리 채우는데, 지난번 트렌드 선택이 남아 있으면 이번에도 그 내용이 다시 채워져
-   *  버린다 — memeTitle/memeSource/memeText(아직 카드로 안 만든 초안)도 같이 비워서
-   *  스토리보드의 "밈으로 스토리 제안받기"가 깨끗한 상태로 시작하게 한다. 이미 만들어 둔
-   *  밈 카드 목록(memes)이나 그중 고른 카드(memeId)는 트렌드와 무관한 데이터라 안 건드린다
-   *  — "스토리 제안받기" 버튼은 그대로 정상 동작(카드 고르면 활성화)한다. */
+   *  참고 안 하겠다는 선택이니 지운다. applyAd()가 trendSel을 광고 설정 확정 때 백엔드로
+   *  넘기는데, 지난번 선택이 남아 있으면 이번에도 그 밈이 대화에 반영돼 버린다. */
   const pickAdEntryDirect = useCallback(() => {
-    update({ adEntryOpen: false, trendSel: '', memeTitle: '', memeSource: '', memeText: '', memeDraftFromTrend: false, memeDraftTrendId: '' });
+    update({ adEntryOpen: false, trendSel: '' });
     goAd();
   }, [update, goAd]);
 
@@ -450,23 +426,13 @@ export function useAdMakerState() {
     try {
       await AdAPI.update({ ad_type: s.adType, ad_concept: s.adConcept });
       // 앞 단계가 안 끝났으면 400 + 무엇이 남았는지가 온다.
-      const res = await AdAPI.apply();
+      // 트렌드 화면에서 밈을 골라 왔으면(trendSel) 같이 보낸다 — 대화(story_llm)가
+      // 그 밈을 자동으로 반영한다. 별도로 카드를 만들거나 고르는 단계는 없다.
+      const res = await AdAPI.apply(s.trendSel);
       const sb = await StoryboardAPI.get();
       // 광고 설정을 새로 확정하면 백엔드가 스토리보드를 처음 상태로 되돌린다(reset_storyboard) —
       // 이전에 만든 다른 광고를 저장한 적이 있어도 이건 새 구성이니 다시 저장할 수 있게 푼다.
       update({ ...sb, savedThisAd: false });
-
-      // 트렌드 확인 화면에서 밈을 고르고 왔으면, 스토리보드의 "밈으로 스토리 제안받기"
-      // 원문 붙여넣기 칸을 미리 채워둔다 — 크롤링 원문을 다시 복붙 안 해도 되게.
-      // 카드 자체는 자동으로 안 만든다 — "카드 만들기"는 사장님이 눌러야 한다(GPT 호출이라
-      // 화면 전환만으로 조용히 돌리지 않는다). 이미 직접 입력해 둔 게 있으면 안 덮어쓴다 —
-      // 다만 그 내용이 "지난번 트렌드 선택"에서 자동으로 채워진 거고 이번엔 트렌드에서
-      // 더 보기로 다른 밈을 새로 골라 왔으면(memeDraftTrendId가 다름), 옛 내용이라 새로
-      // 채운다 — 옛 카드 선택(memeId)도 새 밈과 안 맞으니 같이 비운다.
-      const trendMeme = s.trendItems.find((m) => m.id === s.trendSel);
-      const staleTrendDraft = s.memeDraftFromTrend && s.memeDraftTrendId !== s.trendSel;
-      const draft = trendMeme && (!s.memeTitle || staleTrendDraft) ? trendMemeDraft(trendMeme) : null;
-      if (draft) update({ ...draft, memeId: '', memeDraftFromTrend: true, memeDraftTrendId: trendMeme.id });
 
       if (res?.message) toast(res.message);
       go('sb');
@@ -483,6 +449,16 @@ export function useAdMakerState() {
     update((st) => ({ sbInput: '', sbThinking: true, sbMsgs: [...st.sbMsgs, { role: 'me', kind: 'text', text }] }));
     try {
       const updated = await StoryboardAPI.chat(text);
+      update({ ...updated, sbThinking: false });
+    } catch (e) { update({ sbThinking: false }); fail(e); }
+  }, [update, fail]);
+
+  /** "스토리 제안받기" 버튼 — 아무것도 안 적고, 가게·캐릭터·생산 기록·(있으면) 밈만으로
+   *  바로 제안받는다. 자동으로는 안 뜨고 이 버튼을 눌러야만 부른다. */
+  const suggestStory = useCallback(async () => {
+    update({ sbThinking: true });
+    try {
+      const updated = await StoryboardAPI.suggest();
       update({ ...updated, sbThinking: false });
     } catch (e) { update({ sbThinking: false }); fail(e); }
   }, [update, fail]);
@@ -512,44 +488,6 @@ export function useAdMakerState() {
       if (sb.sbGenerating) startPolling();
     } catch (e) { fail(e); }
   }, [update, startPolling, fail]);
-
-  // ---------- 밈으로 스토리 제안 ----------
-  /** "밈 고르기"에서 이미 만들어 둔 카드를 고르면, 이름·출처는 "밈 카드 직접 추가" 칸에도
-   *  같이 비춰준다 — 무엇을 골랐는지 바로 보이게. 원문(memeText)까지 채우진 않는다
-   *  — 그 칸은 새 카드를 만들 때 쓰는 자리라, 이미 있는 카드의 원문을 다시 채워 넣으면
-   *  "카드 만들기"를 눌렀을 때 똑같은 카드가 하나 더 생기는 혼동만 만든다. 빈 값으로
-   *  고르면(밈 고르기) 세 칸 다 비운다. */
-  const pickMemeCard = useCallback((id) => {
-    const card = stateRef.current.memes.find((m) => String(m.id) === String(id));
-    update({
-      memeId: id,
-      memeTitle: card ? card.title : '',
-      memeSource: card ? card.source : '',
-      memeText: '',
-      memeDraftFromTrend: false,
-      memeDraftTrendId: '',
-    });
-  }, [update]);
-
-  const proposeStory = useCallback(async () => {
-    const id = Number(stateRef.current.memeId);
-    if (!id) { toast('밈을 먼저 골라주세요'); return; }
-    update({ sbThinking: true });
-    try {
-      const sb = await StoryboardAPI.propose(id);
-      update({ ...sb, sbThinking: false });
-    } catch (e) { update({ sbThinking: false }); fail(e); }
-  }, [update, toast, fail]);
-
-  const addMeme = useCallback(async () => {
-    const s = stateRef.current;
-    update({ sbThinking: true });
-    try {
-      const meme = await MemeAPI.create({ title: s.memeTitle.trim(), source: (s.memeSource || '').trim(), original: s.memeText.trim() });
-      update((st) => ({ memes: [...st.memes, meme], memeId: String(meme.id), memeTitle: '', memeSource: '', memeText: '', sbThinking: false }));
-      toast(`'${meme.title}' 카드를 만들었어요 (이해도 ${Math.round((meme.card.understanding || 0) * 100)}%)`);
-    } catch (e) { update({ sbThinking: false }); fail(e); }
-  }, [update, toast, fail]);
 
   // ---------- 결과 / 저장 ----------
   const openResult = useCallback(() => {
@@ -722,7 +660,7 @@ export function useAdMakerState() {
       saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion,
       confirmPending, declinePending,
       applyAd,
-      toggleSbSet, toggleSbProd, sendSb, makeComic, rerollCut, proposeStory, addMeme, pickMemeCard,
+      toggleSbSet, toggleSbProd, sendSb, suggestStory, makeComic, rerollCut,
       openResult, backToSb, confirmResult, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,

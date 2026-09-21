@@ -96,7 +96,7 @@ const mapAd = (a) => ({ adType: a.ad_type, adConcept: a.ad_concept });
 
 const mapStoryboard = (sb) => ({
   sbMsgs: sb.messages || [], plan: sb.plan || [],
-  sbProdLogged: sb.prod_logged, pending: sb.pending || {},
+  pending: sb.pending || {},
   comicCuts: (sb.comic_cuts || []).map((c) => ({ ...mapSlot(c), n: c.n, line: c.line })),
   sbGenerating: !!sb.generating,
   sbEta: sb.eta_seconds || 0,

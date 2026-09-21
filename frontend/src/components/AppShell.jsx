@@ -62,7 +62,7 @@ export default function AppShell({ state, actions, missingProdsCount, children }
                     <span className="dot" />
                     <span className="t">
                       <b>‘{p.name}’ 매진 시각을 적어주세요</b>
-                      <span>{p.date} {p.time} 생산{p.qty ? ` · ${p.qty}` : ''}</span>
+                      <span>{p.date} {p.time} 생산{p.qty ? ` · ${p.qty}개` : ''}</span>
                     </span>
                     <button className="go" onClick={() => { actions.set('notifOpen', false); actions.openProdTab(); }}>입력</button>
                   </div>

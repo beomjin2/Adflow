@@ -21,22 +21,26 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-CARD_KEYS = ("definition", "why", "template", "visual", "industries", "avoid", "understanding", "humor_type")
+CARD_KEYS = ("definition", "why", "template", "visual", "industries", "avoid", "understanding")
 
-# 밈이 웃기는 방식은 하나가 아니다. 종류마다 네 컷에 웃음을 배치하는 법이 달라서, 카드에 종류를 하나
-# 적어 두고 스토리 지시문에 그 종류의 레시피만 붙인다(2026-09-21 사용자: "유머를 선택했을 때 유머
-# 프롬프트가 필요"). 종류는 다섯 개로 고정 — GPT가 지어내지 못하게 선택지로 준다.
-HUMOR_TYPES = {
-    "반전": "1~2컷은 진지하고 작게(대사·표정 모두 정색), 3컷에서 **실제 규모·현실을 그림으로** 보여준다 — 카드의 visual 이 "
-            "곧 3컷의 shot·pose·props·place 다. 대사로 설명하지 말고 그림 대비로 웃긴다. 3컷은 shot.size 를 1~2컷과 반대로 잡는다.",
-    "말장난": "밈의 어미·낱말을 네 컷 대사 **끝마다** 붙인다. 컷이 갈수록 더 무리한 자리에 붙이고, 3컷이 가장 억지스럽다. "
-              "4컷은 캐릭터도 스스로 어이없어하거나(땀·눈 돌림) 손님이 반응한다.",
-    "번복": "1컷 단호한 선언 → 2컷 그 이유(진지) → 3컷 정반대 선언(생산 기록의 숫자를 근거로) → 4컷 뻔뻔한 마무리. "
-            "1컷과 3컷의 표정·자세를 정확히 반대로 잡는다(팔짱↔두 손 들기, 새침↔활짝).",
-    "되묻기": "캐릭터가 뻔한 것을 아주 진지하게 묻고(1~2컷), 동물 손님이 어이없어한다(3컷, shot.count 여럿). "
-              "4컷에서 캐릭터는 끝까지 진지하다 — 깨닫지 않는 게 웃음이다.",
-    "공감": "누구나 겪는 상황을 빵집 하루로 옮긴다. 과장 대신 작은 디테일(땀 한 방울, 빈 쟁반, 시계)로 웃긴다. "
-            "3컷은 shot.size 아주크게로 표정 하나에 건다.",
+# 광고 느낌은 **사장님이 화면에서 고른다** (frontend Ad.jsx / Storyboard.jsx 의 AD_CONCEPTS → ad_concept).
+# 느낌마다 네 컷을 짜는 법이 달라서, 고른 느낌의 레시피만 스토리 지시문에 붙인다. 밈 카드는 네 느낌 모두
+# 쓰되 쓰는 정도가 다르다 — 유쾌함은 밈이 주인공, 담백함은 말 틀 한 번만.
+# (처음엔 밈을 GPT가 반전·말장난 등으로 자동 분류하게 했는데, 느낌은 사용자가 고르는 것이라 되돌렸다. 09-21)
+AD_CONCEPTS = ("유쾌함", "감성", "정보형", "담백함")
+CONCEPT_RECIPES = {
+    "유쾌함": "밈이 주인공이다. 카드의 template 을 세 컷 이상 대사에 실제로 쓰고, why(웃음 포인트)가 **3컷에서 터지게** 3컷을 먼저 "
+              "정한 뒤 1·2컷을 거꾸로 짠다. visual 은 3컷의 shot·pose·props·place 로 옮긴다 — 대사로 설명하지 말고 그림으로 보인다. "
+              "1·2컷은 작게·정색, 3컷은 shot.size 를 반대로(아주크게 또는 여럿이면 아주작게). 4컷은 캐릭터가 멋쩍어하거나 뻔뻔하게 마무리. "
+              "필요하면 3컷 대사를 비워 그림만으로 웃긴다.",
+    "감성": "웃기려 하지 않는다. 밈은 말 틀만 1·4컷에 조용히 쓴다. 새벽에 굽는 손, 오븐의 김, 창으로 드는 빛 같은 작은 디테일로 "
+            "하루를 보여준다. light 슬롯을 컷마다 채운다(새벽 어스름 → 아침 햇살 → 낮 → 노을). 3컷은 shot.size 아주크게로 "
+            "표정 하나(눈 감음·미소)에 건다. 대사는 짧고 잔잔하게, 감탄사·느낌표 없이.",
+    "정보형": "사실이 주인공이다. 생산 기록의 무엇을·몇 개·몇 시를 컷마다 하나씩 대사에 넣는다(1컷 무엇을, 2컷 몇 개, 3컷 몇 시·매진, "
+              "4컷 어디서). 밈은 1컷 도입에만 쓴다. 과장·비유 없이, shot.size 는 보통·크게 위주로 빵이 잘 보이게, props 에 실제 빵 이름. "
+              "표정은 차분한 미소 하나로 고정한다.",
+    "담백함": "말을 아낀다. 대사는 열 자 안팎, 감탄사·과장 없음. 밈의 말 틀은 딱 한 번(3컷)만. 네 컷 중 한 컷은 대사를 비운다. "
+              "배경은 단순하게(place 한 단어, props 는 하나), light 는 비운다. 표정도 무표정·옅은 미소 둘만 쓴다. 여백이 멋이다.",
 }
 
 # 그림 모델이 알아듣는 구도 태그만 허용한다. 자연어 카메라 지시("입구 클로즈업")는 여기로 매핑된다.
@@ -46,10 +50,7 @@ _CARD_PROMPT = (
     "당신은 한국 SNS 밈을 광고 기획자에게 설명하는 편집자다. 아래 밈 원문(뉴스레터 본문 등)을 읽고 "
     "JSON 하나만 출력한다. 키: definition(한 줄 정의), why(유행 이유), template(말 틀 — 대괄호 자리표시로), "
     "visual(그림으로 옮길 때의 시각 요소), industries(어울리는 업종 배열), avoid(피할 것 배열), "
-    "understanding(원문만으로 이 밈을 얼마나 확실히 이해했는지 0~1 숫자), "
-    f"humor_type(이 밈이 웃기는 방식 — 반드시 다음 중 하나: {' | '.join(HUMOR_TYPES)}). "
-    "humor_type 기준: 반전=작게 말하고 크게 보여주는 대비 / 말장난=어미·낱말 비틀기 / 번복=말을 뒤집기 / "
-    "되묻기=뻔한 걸 진지하게 묻기 / 공감=누구나 겪는 상황. "
+    "understanding(원문만으로 이 밈을 얼마나 확실히 이해했는지 0~1 숫자). "
     "원문에 없는 사실은 지어내지 않는다. 원문이 인사말·잡담뿐이면 understanding을 낮게 주고 definition에 "
     "'원문에서 밈을 특정할 수 없음'이라고 적는다."
 )
@@ -64,18 +65,15 @@ SHOT_COUNT_CHOICES = ("혼자", "여럿")
 # 특히 shot.size가 컷마다 달라져 "캐릭터가 매 컷 화면을 채우는" 문제가 풀린다.
 # 형식·어휘는 규칙 대신 **예시 두 편**으로 가르친다(09-21 실측: 예시가 규칙보다 글자당 3.4배 효과).
 _STORY_PROMPT = (
-    "당신은 동네 빵집의 SNS 네컷 만화를 기획하는 개그 작가다. 주어진 밈 카드와 가게 정보로 4컷 스토리를 JSON 하나로 출력한다.\n"
+    "당신은 동네 빵집의 SNS 네컷 만화를 기획하는 작가다. 주어진 밈 카드·가게 정보·광고 느낌으로 4컷 스토리를 JSON 하나로 출력한다.\n"
     "주인공은 가게 마스코트 한 마리다. 사람 손님은 그리지 않는다 — 손님이 필요하면 동물 손님으로 적는다. "
-    "가게 정보에 없는 가격·할인은 지어내지 않는다.\n\n"
-    "밈 카드를 이렇게 쓴다:\n"
-    "  template  말 틀 — 네 컷 중 세 컷 이상의 대사에서 **자리표시를 이 가게의 것으로 채워** 실제로 쓴다\n"
-    "  why       웃음 포인트 — 이게 3컷에서 터져야 한다. 3컷을 먼저 정하고 1·2컷을 거꾸로 짠다\n"
-    "  visual    그림 요소 — 3컷의 shot·pose·props·place 로 옮긴다. 대사로 설명하지 말고 그림으로 보인다\n"
-    "  avoid     어기지 않는다\n"
-    "네 컷의 역할: 1컷 상황(말 틀 첫 사용) → 2컷 키우기(기대·긴장) → 3컷 웃음 포인트(why 실현) → 4컷 마무리 — "
+    "가게 정보에 없는 가격·할인은 지어내지 않는다. 카드의 avoid 를 어기지 않는다.\n\n"
+    "밈 카드의 칸: template(말 틀 — 자리표시를 이 가게의 것으로 채워 쓴다) · why(웃음 포인트) · visual(그림 요소). "
+    "**어느 정도로 쓰는지는 [광고 느낌]의 레시피가 정한다** — 유쾌함은 밈이 주인공, 담백함은 말 틀 한 번뿐이다.\n"
+    "네 컷의 역할: 1컷 상황 → 2컷 키우기 → 3컷 핵심(느낌이 가장 드러나는 컷) → 4컷 마무리 — "
     "마지막 컷은 가게 이름·영업시간 같은 실제 정보로 끝낸다.\n"
-    "[유머 종류]로 지정된 레시피를 따른다. 마지막에 why_funny 한 줄로 '몇 컷에서 왜 웃긴가'를 스스로 적는다 — "
-    "이 줄을 쓰다가 웃음 포인트가 없으면 3컷을 다시 짠다.\n\n"
+    "마지막에 concept_check 한 줄로 '고른 느낌이 몇 컷에서 어떻게 드러나는가'를 스스로 적는다 — "
+    "이 줄을 쓰다가 드러나는 데가 없으면 3컷을 다시 짠다.\n\n"
     "컷마다 아래 칸을 채운다. shot의 세 칸은 반드시 주어진 선택지 중 하나만 쓴다.\n"
     "  line        대사 — 말풍선에 들어갈 짧은 한국어 한 문장\n"
     "  action      한 줄 요약 — 사람이 읽는 용도(그림엔 안 씀)\n"
@@ -91,7 +89,7 @@ _STORY_PROMPT = (
     # 있으면 GPT가 예시를 그대로 베낀다(09-21 실측: 100드립 예시 → 100드립 회차 컷 1·2 슬롯값 동일).
     # 예시는 **빵집이 아닌 가게**(분식집·꽃집)로 짠다. 빵집 예시를 주면 GPT가 대사·소품을 그대로 베낀다
     # (09-21 실측: 같은 유머 종류 예시의 컷 2·3·4 를 소품만 바꿔 복사). 업종이 다르면 옮겨 쓸 수밖에 없다.
-    "예시 1 — 분식집. 밈 '○○각'(말 끝에 '~각'을 붙여 확신하는 말장난), 유머 종류 말장난, 김밥 15줄, 마스코트 고슴도치:\n"
+    "예시 1 — 분식집. 밈 '○○각'(말 끝에 '~각'을 붙여 확신하는 말장난), 광고 느낌 유쾌함, 김밥 15줄, 마스코트 고슴도치:\n"
     "{\"title\": \"매진각\", \"cuts\": [\n"
     " {\"n\": 1, \"line\": \"오늘 김밥 열다섯 줄. 이건 매진각\", \"action\": \"김밥 접시 들고 확신\", "
     "\"shot\": {\"size\": \"보통\", \"angle\": \"정면\", \"count\": \"혼자\"}, \"expression\": \"확신, 반짝이는 눈\", "
@@ -105,8 +103,8 @@ _STORY_PROMPT = (
     " {\"n\": 4, \"line\": \"내일은 맑음각. 김밥 열다섯 줄 또 쌉니다\", \"action\": \"김밥 말며 멋쩍게\", "
     "\"shot\": {\"size\": \"작게\", \"angle\": \"정면\", \"count\": \"혼자\"}, \"expression\": \"멋쩍은 웃음, 땀\", "
     "\"pose\": \"김밥 말기\", \"place\": \"주방\", \"props\": [\"김밥\", \"김\"], \"light\": \"\"}],\n"
-    " \"why_funny\": \"3컷 — '매진각'이 갈수록 근거 없는 자리에 붙다가 손님 한 마리에 '각각각'으로 터진다. 어미 남용 자체가 웃음\"}\n\n"
-    "예시 2 — 꽃집. 밈 '그게 되네'(안 될 것 같은 게 되는 반전), 유머 종류 반전, 장미 40송이 입고, 마스코트 두더지:\n"
+    " \"concept_check\": \"유쾌함 — 3컷에서 '매진각'이 갈수록 근거 없는 자리에 붙다가 손님 한 마리에 '각각각'으로 터진다\"}\n\n"
+    "예시 2 — 꽃집. 밈 '그게 되네'(안 될 것 같은 게 되는 반전), 광고 느낌 유쾌함, 장미 40송이 입고, 마스코트 두더지:\n"
     "{\"title\": \"그게 되네\", \"cuts\": [\n"
     " {\"n\": 1, \"line\": \"장미 마흔 송이는 무리지...\", \"action\": \"꽃통 앞에서 걱정\", "
     "\"shot\": {\"size\": \"크게\", \"angle\": \"옆에서\", \"count\": \"혼자\"}, \"expression\": \"걱정, 땀\", "
@@ -120,30 +118,12 @@ _STORY_PROMPT = (
     " {\"n\": 4, \"line\": \"...그게 되네. 내일은 여든 송이\", \"action\": \"팔 걷어붙이고 결의\", "
     "\"shot\": {\"size\": \"작게\", \"angle\": \"아래에서\", \"count\": \"혼자\"}, \"expression\": \"불타는 눈\", "
     "\"pose\": \"주먹 불끈\", \"place\": \"가게 안\", \"props\": [\"꽃통\"], \"light\": \"\"}],\n"
-    " \"why_funny\": \"3컷 — 1·2컷은 걱정하며 작게 잡고, 3컷은 대사를 비우고 줄과 빈 꽃통(visual)만으로 규모를 보여줘 대비가 터진다\"}\n\n"
+    " \"concept_check\": \"유쾌함 — 1·2컷은 걱정하며 작게 잡고, 3컷은 대사를 비우고 줄과 빈 꽃통(visual)만으로 규모를 보여줘 대비가 터진다\"}\n\n"
+    "위 두 예시는 유쾌함이다. 감성·정보형·담백함을 골랐을 땐 같은 형식으로 쓰되 그 느낌의 레시피를 따른다 — "
+    "감성은 웃기지 않고, 정보형은 숫자·시간이 대사에 있고, 담백함은 열 자 안팎이다.\n\n"
     "위 예시는 다른 업종이다 — 형식과 레시피만 가져오고 대사·소품·장소는 **이 빵집과 생산 기록**으로 새로 쓴다. "
     "네 컷의 shot.size는 서로 다르게 섞어 리듬을 만든다. 대사를 비운 컷은 한 컷까지만. 같은 형식의 JSON 하나만 출력한다."
 )
-
-# 판별도 규칙보다 예시. 규칙만 줬을 때 '하겠습니다/안 하겠습니다'를 번복이 아니라 공감으로 골랐다(09-21).
-_HUMOR_CLASSIFY_PROMPT = (
-    "아래 밈 카드가 웃기는 방식을 다음 중 하나로만 고른다: " + " | ".join(HUMOR_TYPES) + ".\n"
-    "예시:\n"
-    "  '100명 넘겠지?' — 큰 규모를 일부러 작은 기준으로 말함 → 반전\n"
-    "  '소금빵삐', '~각' — 어미·낱말을 붙이거나 비틂 → 말장난\n"
-    "  '하겠습니다 / 안 하겠습니다', '포기와 진행을 번갈아' — 같은 말을 뒤집어 반복 → 번복\n"
-    "  '누가 돌아왔게~? / 그래, ○○이 돌아왔다' — 뻔한 답을 진지하게 묻고 답함 → 되묻기\n"
-    "  '월요일 출근길', '퇴근 5분 전' — 누구나 겪는 상황 그 자체 → 공감\n"
-    "말 틀(template)이 뒤집기·반복이면 감정이 공감돼도 번복이다. JSON {\"humor_type\": str, \"reason\": 한 줄} 만 출력한다."
-)
-
-
-def classify_humor(card: dict) -> tuple[str, str]:
-    """카드에 humor_type 이 없을 때(옛 카드) 한 번 골라 준다. (종류, 이유). 선택지 밖이면 '공감'."""
-    data = _json_chat(_HUMOR_CLASSIFY_PROMPT, json.dumps(card, ensure_ascii=False), temperature=0)
-    kind = str(data.get("humor_type") or "").strip()
-    return (kind if kind in HUMOR_TYPES else "공감"), str(data.get("reason") or "")
-
 
 def _client() -> OpenAI:
     if not settings.openai_api_key:
@@ -174,8 +154,6 @@ def make_meme_card(title: str, source: str, original: str) -> dict:
         card["understanding"] = 0.0
     for k in ("definition", "why", "template", "visual"):
         card[k] = str(card.get(k) or "")
-    kind = str(card.get("humor_type") or "").strip()
-    card["humor_type"] = kind if kind in HUMOR_TYPES else classify_humor(card)[0]
     return card
 
 
@@ -186,25 +164,26 @@ def story_user_message(card: dict, meme_title: str, store: dict, prods: list[dic
         + (f", 매진 {p['sold_out']}" if p.get("sold_out") else "") + ")"
         for p in prods
     ] or ["- (기록 없음)"]
-    kind = card.get("humor_type") or "공감"
+    concept = concept_of(ad)
     return (
         f"[밈 카드: {meme_title}]\n{json.dumps(card, ensure_ascii=False, indent=1)}\n\n"
-        f"[유머 종류] {kind}\n레시피: {HUMOR_TYPES.get(kind, HUMOR_TYPES['공감'])}\n\n"
+        f"[광고 느낌] {concept}\n레시피: {CONCEPT_RECIPES[concept]}\n\n"
         f"[가게]\n업종: {store.get('category') or '빵집'}\n주소: {store.get('address') or ''}\n"
         f"영업시간: {store.get('hours') or ''}\n소개: {store.get('desc') or ''}\n"
         f"[생산 기록]\n" + "\n".join(prod_lines) + "\n\n"
-        f"[광고] 종류: {ad.get('ad_type') or ''} / 컨셉: {ad.get('ad_concept') or ''}\n"
+        f"[광고] 종류: {ad.get('ad_type') or ''}\n"
         f"[마스코트] {mascot or '가게 마스코트'}"
     )
 
 
-def propose_story(card: dict, meme_title: str, store: dict, prods: list[dict], ad: dict, mascot: str) -> dict:
-    """카드 + 가게 정보 → {title, humor_type, why_funny, cuts[4]}. 컷은 line/action/slots 를 갖는다.
+def concept_of(ad: dict) -> str:
+    """화면에서 고른 광고 느낌. 선택지 밖(빈 값·옛 데이터)이면 유쾌함 — 밈 기반 광고의 기본값."""
+    c = str(ad.get("ad_concept") or "").strip()
+    return c if c in CONCEPT_RECIPES else "유쾌함"
 
-    카드에 humor_type 이 없으면(옛 카드) 여기서 한 번 골라 card 에 채워 넣는다 — 호출부가 저장하면
-    다음부터는 안 묻는다."""
-    if str(card.get("humor_type") or "") not in HUMOR_TYPES:
-        card["humor_type"] = classify_humor(card)[0]
+
+def propose_story(card: dict, meme_title: str, store: dict, prods: list[dict], ad: dict, mascot: str) -> dict:
+    """카드 + 가게 정보 + 광고 느낌 → {title, concept, concept_check, cuts[4]}. 컷은 line/action/slots 를 갖는다."""
     user = story_user_message(card, meme_title, store, prods, ad, mascot)
     data = _json_chat(_STORY_PROMPT, user, temperature=0.5)
     cuts = []
@@ -241,4 +220,4 @@ def propose_story(card: dict, meme_title: str, store: dict, prods: list[dict], a
             or sum(1 for c in cuts if c["line"]) < 2:
         raise RuntimeError("스토리 형식이 어긋났어요 — 다시 제안받아 주세요")
     return {"title": str(data.get("title") or meme_title), "cuts": cuts,
-            "humor_type": card["humor_type"], "why_funny": str(data.get("why_funny") or "").strip()}
+            "concept": concept_of(ad), "concept_check": str(data.get("concept_check") or "").strip()}

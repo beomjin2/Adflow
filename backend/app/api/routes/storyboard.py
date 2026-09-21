@@ -235,10 +235,9 @@ def propose(body: schemas.ProposeIn, db: Session = Depends(get_db)):
     ad = db.get(models.AdSettings, 1)
     char = db.get(models.Character, 1)
     prods = db.query(models.ProductionRecord).order_by(models.ProductionRecord.id.desc()).limit(10).all()
-    card = dict(meme.card or {})
     try:
         story = propose_story(
-            card, meme.title,
+            meme.card or {}, meme.title,
             {"category": store.category, "address": store.address, "hours": store.hours, "desc": store.desc} if store else {},
             [{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time, "sold_out": p.sold_out} for p in prods],
             {"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {},
@@ -249,9 +248,6 @@ def propose(body: schemas.ProposeIn, db: Session = Depends(get_db)):
     except Exception:
         logger.exception("스토리 제안 실패")
         raise HTTPException(502, "스토리를 만들지 못했어요. 잠시 뒤 다시 시도해 주세요")
-    if card.get("humor_type") != (meme.card or {}).get("humor_type"):
-        meme.card = card   # 옛 카드에 유머 종류가 처음 붙었다 — 저장해 두면 다음부터 안 묻는다
-        db.commit()
 
     cuts = story["cuts"]
     current = list(sb.plan or [])

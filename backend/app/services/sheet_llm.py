@@ -2,9 +2,10 @@
 
 하는 일은 네 가지다.
 
-1. `read_fields()` — 사장님이 쓴 한 문장에서 **여러 칸**을 한 번에 읽어낸다.
-   "앞치마 두른 3살 곰이요"를 외형·아웃핏·나이 세 칸으로 나눈다. 규칙 기반으로는
-   이걸 못 해서 통째로 한 칸에 들어갔다.
+1. `understand()` — 사장님이 쓴 한 문장을 읽고 **무엇을 어디에 할지**까지 가려낸다.
+   "앞치마 두른 3살 곰이요"를 외형·아웃핏·나이 세 칸으로 나누고, 그 말이 어느 칸
+   얘기인지(target)와 대신 정해달라는 뜻인지(wants_help)도 함께 낸다. 가이드 순서는
+   안내일 뿐이라, 앞 칸으로 돌아가는 말이면 라우터가 그쪽으로 따라간다.
 2. `propose_field()` — "알아서 해줘"에 대신 값을 하나 정해 준다.
 3. `reply()` — 사장님 말에 대답하고 다음 칸을 묻는다.
 4. `suggest_keywords()` / `detect_edit_target()` — 키워드를 뽑고, 다 찬 시트에서
@@ -74,8 +75,23 @@ _EXTRACT_SYSTEM = """\
 7. 이미 값이 있는 칸에 사장님이 **덧붙이는** 말을 했으면(기존 값을 부정하지 않고 특징을
    더하는 말), 기존 값과 새 내용을 자연스럽게 **합쳐서** 낸다. 덮어쓰라는 뜻이면 새 내용만 낸다.
 
-출력은 이 모양의 JSON만: {"fields": {"look": "...", "age": "..."}}
-해당하는 게 하나도 없으면 {"fields": {}}
+**사장님 말이 어디로 가야 하는지도 함께 가려낸다.** 가이드 순서(외형→아웃핏→설명→…)는
+안내일 뿐이고, 사장님은 언제든 앞 칸으로 돌아갈 수 있다.
+
+8. target — 사장님이 **지금 어느 칸 얘기를 하고 있는지** 그 키를 낸다.
+   지금 묻고 있는 칸과 달라도 된다 — 앞 칸으로 돌아가는 말이면 그 칸을 낸다.
+   ("외형 자체가 그게 아니고 네가 정해달라는 거야" → look)
+   어느 칸인지 알 수 없으면 빈 문자열로 둔다.
+9. wants_help — 사장님이 **그 칸을 대신 정해달라는 뜻**이면 true.
+   "몰라", "알아서 해줘", "줘봐", "추천해줘" 같은 말만이 아니다.
+   **원하는 느낌만 말하고 구체적인 생김새는 안 준 경우도 포함**한다:
+   "~하게 생긴 걸로 해줘", "~느낌으로 만들어줘", "~잘하게 생긴 놈으로"처럼.
+   이건 묘사가 아니라 **부탁**이다. 이럴 때 fields 는 반드시 비운다 —
+   그 말을 칸에 그대로 적으면 사장님이 쓴 적 없는 묘사가 시트에 남는다.
+
+출력은 이 모양의 JSON만:
+{"fields": {"look": "..."}, "target": "look", "wants_help": false}
+칸에 넣을 게 없으면 fields 는 {} 로 둔다.
 """
 
 _PROPOSE_SYSTEM = """\
@@ -342,16 +358,30 @@ def _context(char, store, extra: str = "") -> str:
     return f"{block}\n\n{extra}" if extra else block
 
 
-def read_fields(char, text: str, asked_field: str = "", store=None) -> dict[str, str]:
-    """사장님 문장에서 채울 칸들을 읽어낸다. 못 하면 빈 dict.
+def understand(char, text: str, asked_field: str = "", store=None) -> dict:
+    """사장님 문장 하나를 읽고 **무엇을 어디에 할지**까지 한 번에 가려낸다.
 
-    돌려주는 값은 전부 사장님 문장(또는 그 칸의 기존 값)에 뿌리를 둬야 한다. 아래에서
+    돌려주는 모양:
+        {"fields": {"look": "..."},   # 시트에 넣을 값 (없으면 {})
+         "target": "look",            # 사장님이 지금 얘기하는 칸 (모르면 "")
+         "wants_help": False}         # 그 칸을 대신 정해달라는 뜻인가
+
+    **가이드 순서(외형→아웃핏→…)는 안내일 뿐이다.** 어느 칸 얘기인지는 여기서 LLM이
+    가리고, 라우터는 그 결과를 따라간다. 예전에는 라우터가 "지금 묻는 칸"에 못 박아
+    둬서, 아웃핏을 묻는 중에 외형 얘기를 해도 계속 아웃핏만 물었다.
+
+    `wants_help`가 중요한 이유 — "베이커리 잘하게 생긴 놈으로"는 **묘사가 아니라
+    부탁**이다. 예전에는 이 말이 외형 칸에 글자 그대로 적혔다. 사장님은 그렇게
+    생긴 걸 만들어 달라고 한 것이지, 그 문장을 시트에 적어 달라고 한 게 아니다.
+
+    fields 값은 전부 사장님 문장(또는 그 칸의 기존 값)에 뿌리를 둬야 한다. 아래에서
     한 번 더 거른다 — 모델이 규칙을 어기고 빈 칸을 채우려 드는 경우가 있다.
     """
     from app.services import character_sheet as sheet
 
+    empty = {"fields": {}, "target": "", "wants_help": False}
     if not available() or not (text or "").strip():
-        return {}
+        return empty
 
     asked_label = sheet.LABELS.get(asked_field, "")
     prompt = _context(
@@ -360,9 +390,14 @@ def read_fields(char, text: str, asked_field: str = "", store=None) -> dict[str,
         f"[사장님이 방금 한 말]\n{text.strip()}",
     )
     parsed = _ask(_EXTRACT_SYSTEM, prompt, _T_EXTRACT)
+
+    target = parsed.get("target")
+    target = target if target in _FILLABLE else ""
+    wants_help = bool(parsed.get("wants_help"))
+
     fields = parsed.get("fields")
     if not isinstance(fields, dict):
-        return {}
+        return {"fields": {}, "target": target, "wants_help": wants_help}
 
     cleaned: dict[str, str] = {}
     for field, value in fields.items():
@@ -391,7 +426,13 @@ def read_fields(char, text: str, asked_field: str = "", store=None) -> dict[str,
             logger.info("답이 아닌 말이라 칸 '%s'을(를) 버렸습니다", field)
             continue
         cleaned[field] = value
-    return cleaned
+
+    # 대신 정해달라는 뜻이면 시트에 넣지 않는다. 모델이 규칙을 어기고 부탁을 값으로
+    # 옮겨 적는 일이 있어서, 프롬프트만 믿지 않고 여기서 한 번 더 막는다.
+    if wants_help and cleaned:
+        logger.info("대신 정해달라는 뜻이라 읽어낸 값을 시트에 넣지 않습니다: %s", list(cleaned))
+        cleaned = {}
+    return {"fields": cleaned, "target": target, "wants_help": wants_help}
 
 
 # "몰라" · "알아서 해줘" 는 답이 아니다. 프롬프트로 막아도 모델은 지금 묻는 칸에
@@ -499,7 +540,7 @@ def propose_field(char, field: str, text: str, store=None) -> dict:
     제안할 게 없으면 **빈 dict** — 그러면 호출부가 그냥 되묻는다. 인사나 잡담에 대고
     캐릭터 설정을 지어내기 시작하면 사장님이 정한 적 없는 캐릭터가 된다.
 
-    여기서 나온 값은 `read_fields()`와 달리 **사장님 문장에 근거가 없다.** 그래서
+    여기서 나온 값은 `understand()`와 달리 **사장님 문장에 근거가 없다.** 그래서
     시트에 바로 넣지 않고 승인 카드로 올린다. 참고한 게 있으면 basis에 담겨 오고,
     없으면 빈 목록이다 — **근거가 없다고 제안을 막지 않는다.** 가게 정보는 참고
     자료이지 제안의 조건이 아니다. 캐릭터를 정하는 건 사장님이고, 여기는 사장님이
@@ -586,7 +627,7 @@ def reply(char, text: str, filled: dict[str, str], ask_field: str, store=None) -
     대답을 안 한 것이다.** 시트를 채우는 건 대화의 결과여야지 목적이 아니다.
 
     돌려주는 건 **말뿐이다.** 여기서 나온 문장이 시트에 적히는 일은 없다 —
-    칸을 채우는 건 `read_fields()`와 `propose_field()`만 한다.
+    칸을 채우는 건 `understand()`와 `propose_field()`만 한다.
     """
     from app.services import character_sheet as sheet
 

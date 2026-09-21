@@ -201,9 +201,18 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     # 우리가 **실제로 물어본** 칸. 비어 있으면 아직 아무것도 묻지 않았다는 뜻이다.
     asked = char.editing
 
-    # LLM이 붙어 있으면 한 문장에서 여러 칸을 한 번에 읽는다
-    # ("앞치마 두른 3살 곰이요" → 외형·아웃핏·나이). 못 읽으면 빈 dict가 온다.
-    read = sheet_llm.read_fields(char, text, asked or sheet.next_field(char), store)
+    # LLM이 붙어 있으면 한 문장에서 여러 칸을 한 번에 읽고, **어느 칸 얘기인지**와
+    # **대신 정해달라는 뜻인지**까지 같이 가려낸다.
+    read = sheet_llm.understand(char, text, asked or sheet.next_field(char), store)
+    fields = read.get("fields") or {}
+    wants_help = read.get("wants_help", False)
+
+    # **사장님이 가리킨 칸이 가이드 순서보다 우선이다.** 아웃핏을 묻는 중에 외형
+    # 얘기를 하면 외형으로 옮겨간다. 예전에는 라우터가 "지금 묻는 칸"에 못 박아 둬서,
+    # 앞 칸으로 돌아가려 해도 계속 원래 칸만 물었다.
+    target = read.get("target") or ""
+    if target and target != asked:
+        char.editing = asked = target
 
     if not complete_before:
         # ---- 빈 칸 채우기 ----
@@ -212,7 +221,7 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
         # 예전에는 못 읽으면 물어본 칸에 사장님 말을 통째로 넣었다(`{asked: text}`).
         # 그래서 "몰라 좀 해봐"가 설명 칸에, "모른다고"가 능력 칸에 그대로 적혔다.
         # 답이 아닌 말은 답이 아니다. 시트는 사장님이 **정한 것**만 담아야 한다.
-        filling = dict(read)
+        filling = dict(fields)
         if not filling and asked and not sheet_llm.available():
             # LLM이 없을 때만 규칙 기반으로 되돌아간다 — 그때는 이것 말고 방법이 없다.
             filling = {asked: text}
@@ -236,7 +245,9 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
                 _say(messages, f"{labels}까지 적어뒀어요. 시트가 다 채워졌어요.")
                 _propose_keywords(char, messages, store)
         else:
-            _handle_non_answer(char, messages, text, asked, store)
+            # target을 이미 반영했으니 칸을 다시 가릴 필요는 없다.
+            _handle_non_answer(char, messages, text, asked, store,
+                               target_known=bool(target), wants_help=wants_help)
     else:
         # ---- 다 찬 뒤의 수정 — 승인받고 반영한다 ----
         # 시트에서 칸을 눌러 '이 칸을 고치겠다'고 한 게 asked다. 그게 없어도
@@ -246,7 +257,7 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
         # 말만 하면 추출 쪽이 지금 외형을 그대로 되돌려주는데, 그걸 수정으로 치면
         # "지금 시트와 같은 내용이에요"로 끝나고 칸이 열리지 않는다 — 배포 서버에서
         # 실제로 그랬다. 무의미한 값은 걷어내고 무엇을 고치려는 말인지 읽는 쪽으로 넘긴다.
-        changes = {f: v for f, v in (read or {}).items() if sheet.value_of(char, f) != v}
+        changes = {f: v for f, v in fields.items() if sheet.value_of(char, f) != v}
         if not changes and asked and sheet.value_of(char, asked) != text:
             changes = {asked: text}
         if changes:
@@ -308,7 +319,8 @@ def _handle_complete_chat(char, messages: list, text: str, store) -> None:
     )
 
 
-def _handle_non_answer(char, messages: list, text: str, asked: str, store) -> None:
+def _handle_non_answer(char, messages: list, text: str, asked: str, store,
+                       target_known: bool = False, wants_help: bool = False) -> None:
     """시트에 넣을 내용이 없는 말에 답한다. **사장님 말이 시트에 적히는 일은 없다.**
 
     세 갈래다.
@@ -337,7 +349,7 @@ def _handle_non_answer(char, messages: list, text: str, asked: str, store) -> No
     # 아웃핏을 묻는 중에 "고양이 말고 다른 외형 추천해줘"라고 해도 계속 아웃핏만 물었고,
     # 심지어 외형 값("흰색 털에 긴 꼬리를 가진 강아지")을 아웃핏 칸에 제안했다.
     # 어느 칸인지 가르는 일은 LLM이 한다 — 여기서 키워드로 정하지 않는다.
-    wanted = sheet_llm.detect_edit_target(char, text, store)
+    wanted = {} if target_known else sheet_llm.detect_edit_target(char, text, store)
     if wanted.get("intent") == "edit" and wanted["field"] != following:
         following = wanted["field"]
         char.editing = following

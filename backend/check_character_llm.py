@@ -229,6 +229,53 @@ print(f"    판정: {'통과 — 아웃핏에 안 들어갔다' if '강아지' n
 
 print()
 print("=" * 72)
+print("3-c. '~하게 생긴 놈으로'가 시트에 그대로 적히지 않는가")
+print("=" * 72)
+# 실사용: "걍 베이커리 잘하게 생긴놈으로"가 외형 칸에 글자 그대로 적혔다.
+# 그건 묘사가 아니라 "그렇게 생긴 걸 만들어 달라"는 부탁이다.
+reset()
+set_store("베이커리", "내맘대로 베이커리", ["소금빵"])
+say("뭐할까")
+data = say("음.. 걍 베이커리 잘하게 생긴놈으로")
+looks = {r["field"]: r["value"] for r in data["sheet"]}
+pid, proposal = open_proposal(data)
+print(f"  시트의 외형 : {looks['look'] or '(비어 있음 — 제안 카드로 올라감)'}")
+if proposal:
+    for d in proposal["diffs"]:
+        print(f"  제안 카드   : {d['label']} → \"{d['to']}\"")
+    for b in (proposal.get("basis") or []):
+        print(f"    근거      : [{b['label']}] “{b['quote']}”")
+literal = "생긴놈" in (looks["look"] or "") or "생긴 놈" in (looks["look"] or "")
+print(f"  판정: {'⚠ 실패 — 부탁이 그대로 적혔다' if literal else '통과 — 그대로 적히지 않았다'}")
+
+print()
+print("=" * 72)
+print("3-d. 뒤 칸을 묻는 중에 '외형을 네가 정해달라'고 하면 외형으로 돌아가는가")
+print("=" * 72)
+# 실사용: 설명/능력을 묻는 중에 "외형자체가 ... 너가 그 외형을 해달라는거야"라고 해도
+# 계속 앞으로만 나아가 능력을 물었다.
+if proposal:
+    data = call(route.accept_suggestion, pid)
+for line in ["앞치마 입은 걸로", "빵을 잘 굽는 성격이에요"]:
+    data = say(line)
+    pid2, prop2 = open_proposal(data)
+    if prop2:
+        data = call(route.accept_suggestion, pid2)
+print(f"  지금 묻는 칸: {data['editing']}")
+data = say("아니 외형자체가 그게 아니고 너가 그 외형을 정해달라는거야")
+pid3, prop3 = open_proposal(data)
+target3 = list(prop3["payload"]["changes"])[0] if prop3 else ""
+print(f"\n  '외형자체가 ... 너가 정해달라는거야' →")
+print(f"    열린 칸   : {data['editing']}")
+print(f"    제안된 칸 : {target3 or '(제안 없음)'}")
+if prop3:
+    for d in prop3["diffs"]:
+        print(f"    {d['label']}: \"{d['from']}\"  →  \"{d['to']}\"")
+ok3 = data["editing"] == "look" or target3 == "look"
+print(f"    판정: {'통과 — 외형으로 돌아갔다' if ok3 else '⚠ 실패 — 앞으로만 나아갔다'}")
+
+print()
+print("=" * 72)
 print("4. 시트 정보가 그림 프롬프트로 얼마나 넘어가는가")
 print("=" * 72)
 with SessionLocal() as db:

@@ -69,17 +69,108 @@ KEYWORD_TO_TAG: dict[str, str] = {
 }
 
 
+# ── 색 + 품목 조합 ────────────────────────────────────────────────────────
+# 사전에 '흰앞치마'를 손으로 적어 두는 대신, 색과 품목을 따로 알고 있다가 붙여서
+# 데이터셋에 물어본다. 2026-09-21 실측: 품목 30개 x 색 15개 중 **251개 조합이
+# post_count >= 2,000 을 통과**하는데 사전에는 5개뿐이었다(white_apron 91,151장,
+# white_shirt 107만장이 그렇게 버려지고 있었다). 손으로 246줄을 채우는 대신 규칙 하나로 푼다.
+COLOR_KO: dict[str, str] = {
+    "흰": "white", "하얀": "white", "하양": "white", "화이트": "white",
+    "검은": "black", "검정": "black", "까만": "black", "블랙": "black",
+    "갈색": "brown", "브라운": "brown",
+    "빨간": "red", "붉은": "red", "빨강": "red", "레드": "red",
+    "파란": "blue", "푸른": "blue", "파랑": "blue", "블루": "blue",
+    "초록": "green", "녹색": "green", "그린": "green",
+    "노란": "yellow", "노랑": "yellow", "옐로": "yellow",
+    "분홍": "pink", "핑크": "pink",
+    "보라": "purple", "자주": "purple",
+    "주황": "orange", "오렌지": "orange",
+    "회색": "grey", "그레이": "grey",
+}
+
+ITEM_KO: dict[str, str] = {
+    "앞치마": "apron", "셔츠": "shirt", "바지": "pants", "반바지": "shorts",
+    "목도리": "scarf", "스카프": "scarf", "모자": "hat", "조끼": "vest",
+    "재킷": "jacket", "자켓": "jacket", "코트": "coat", "가디건": "cardigan",
+    "장갑": "gloves", "리본": "ribbon", "치마": "skirt", "원피스": "dress",
+    "신발": "shoes", "부츠": "boots", "양말": "socks", "스웨터": "sweater",
+    "후드": "hoodie", "넥타이": "necktie", "나비넥타이": "bowtie",
+    "털": "fur", "눈": "eyes",
+}
+
+
+# 무늬도 색과 같은 자리에 온다 — 「줄무늬 목도리」. 2026-09-21 실측에서 striped_scarf 를
+# 뺀 판만 줄무늬가 사라졌으므로, 색과 함께 조합 대상으로 둔다(둘 다 내보낸다).
+PATTERN_KO: dict[str, str] = {
+    "줄무늬": "striped", "스트라이프": "striped",
+    "체크": "plaid", "격자": "plaid",
+    "물방울": "polka_dot", "도트": "polka_dot",
+}
+
+
+def compose_color_item(text: str) -> list[str]:
+    """평문에서 '색 + 품목'을 찾아 조합 태그 후보를 만든다.
+
+    「흰 앞치마」 -> white_apron. 띄어쓰기가 있든 없든(「흰앞치마」) 잡는다.
+    검증은 하지 않는다 — 돌려준 후보를 호출부가 verify_tags 에 통과시킨다.
+    통과하면 white_apron 을 쓰고, 떨어지면 품목만(apron) 남는 사다리다.
+    """
+    if not text:
+        return []
+    flat = text.replace(",", " ").replace(".", " ")
+    out: list[str] = []
+    for ko_color, en_color in {**COLOR_KO, **PATTERN_KO}.items():
+        idx = 0
+        while True:
+            pos = flat.find(ko_color, idx)
+            if pos < 0:
+                break
+            idx = pos + len(ko_color)
+            # 색 뒤 12자 안에 품목이 오면 한 짝으로 본다 — 「빨간 줄무늬 목도리」처럼
+            # 사이에 수식어가 끼어도 잡히게. **가장 가까운** 품목을 고른다 —
+            # 사전 순서대로 집으면 「줄무늬 목도리와 흰 앞치마」의 줄무늬가 뒤쪽
+            # 앞치마와 짝지어져 striped_apron 이 나온다(실제로 그랬다).
+            window = flat[idx:idx + 12]
+            nearest = None
+            for ko_item, en_item in ITEM_KO.items():
+                at = window.find(ko_item)
+                if at >= 0 and (nearest is None or at < nearest[0]):
+                    nearest = (at, en_item)
+            if nearest:
+                tag = f"{en_color}_{nearest[1]}"
+                if tag not in out:
+                    out.append(tag)
+    return out
+
+
 def resolve_look_to_tags(look: str) -> tuple[list[str], list[str]]:
     """(매칭된 태그 목록, 버려진 원문 단어 목록)을 반환한다."""
     matched: list[str] = []
     unmatched: list[str] = []
     seen: set[str] = set()
 
+    # 색+품목 조합을 먼저 시도한다. 검증을 통과한 것만 남으므로, 통과 못 하면
+    # 아래 단어별 매칭이 품목만(apron) 집어 사다리를 이어받는다.
+    composed = verify_tags(compose_color_item(look))
+    for tag in composed:
+        if tag not in seen:
+            matched.append(tag)
+            seen.add(tag)
+
+    # 「흰 앞치마」의 '흰'이 털색으로 새면 안 된다. 사전에 "흰": "white fur" 가 있어서
+    # 그냥 두면 앞치마 색이 털색 태그로 둔갑한다(2026-09-21에 실제로 그랬다).
+    # 옷으로 이미 쓰인 색은 털색 후보에서 뺀다.
+    _colors = set(COLOR_KO.values())
+    worn_colors = {t.split("_", 1)[0] for t in composed if not t.endswith("_fur")} & _colors
+    blocked_fur = {f"{c} fur" for c in worn_colors} | {f"{c}_fur" for c in worn_colors}
+
     raw_tokens = [t.strip() for t in (look or "").replace(",", " ").replace(".", " ").split() if t.strip()]
     for token in raw_tokens:
         tag = KEYWORD_TO_TAG.get(token)
         if tag is None:
             tag = next((v for k, v in KEYWORD_TO_TAG.items() if k in token), None)
+        if tag and tag in blocked_fur:
+            tag = None          # 옷 색으로 이미 쓰인 색이다 — 털색으로 다시 쓰지 않는다
         if tag:
             if tag not in seen:
                 matched.append(tag)

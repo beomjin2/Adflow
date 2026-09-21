@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from app.services.danbooru_lookup import verify_tags
 from app.services.danbooru_tags import tags_for_look
+from app.services import tag_slots
 
 logger = logging.getLogger(__name__)
 
@@ -40,24 +41,44 @@ STYLE_TAGS = "masterpiece, best quality, score_7, safe, solo, (chibi:1.3), full 
 
 
 def character_prompt(char, hint: str = "") -> str:
-    """캐릭터 시트를 '연습용' 워크플로우의 프롬프트로 조립한다.
+    """캐릭터 시트를 후보 생성용 프롬프트로 조립한다.
 
     Anima는 Danbooru 태그로 학습된 모델이라 한국어 문장을 그대로 넣으면 얼버무린다
-    (CLAUDE.md 5-1, v4 12컷 실험). 설명을 실존 Danbooru 태그로 바꿔 넣고, 태그를
-    하나도 못 뽑았을 때만 원문으로 폴백한다. STYLE_TAGS 접두어는 그대로 둔다.
+    (CLAUDE.md 5-1, v4 12컷 실험). 설명을 실존 Danbooru 태그로 바꿔 넣는다.
+
+    조립은 tag_slots 가 한다 — 앵커·종·외형·의상·구도를 정해진 순서로 놓고,
+    겉옷만 있으면 상·하의를 채운다. 예전에는 STYLE_TAGS 문자열 뒤에 태그를 순서 없이
+    붙였는데, 그 상수에 `solo`·`full body`가 박혀 있어 컷마다 구도를 못 바꿨고
+    앵커가 빠져 사람으로 흐르는 일이 있었다(2026-09-21 실측).
 
     시트에서 무엇을 읽을지는 character_sheet.IMAGE_FIELDS 한 곳에서만 정한다 —
-    외형·아웃핏·설명·나이·이름 다섯 칸. 능력·성별·퍼스널 키워드는 시트에만 남고
-    그림 쪽으로 넘어가지 않는다. 라우터가 시트가 다 찬 뒤에만 여기까지 오게 막으므로
-    described가 비는 경우는 없다(비면 태그도 프롬프트도 STYLE_TAGS뿐이다).
+    외형·아웃핏·설명·나이·이름 다섯 칸.
     """
-    pieces = [STYLE_TAGS]
-    part = character_part(char)
-    if part:
-        pieces.append(part)
+    tags = character_tags(char)
+    # 후보 단계는 캐릭터만 보여주면 되므로 전신·단독·단색배경을 기본으로 둔다.
+    tags += ["full_body", "solo", "simple_background"]
     if hint:
-        pieces.append(hint)
-    return ", ".join(pieces)
+        tags.append(hint)
+    return tag_slots.build(tags)
+
+
+def character_tags(char) -> list[str]:
+    """시트의 IMAGE_FIELDS 다섯 칸 → 실존 Danbooru 태그 **목록**.
+
+    슬롯 조립기가 쓰는 원본이다. character_part() 는 이걸 쉼표로 이어 붙인 것으로,
+    기존 호출부(스토리보드)가 문자열을 기대해서 함께 남겨 둔다.
+    """
+    from app.services.character_sheet import IMAGE_FIELDS
+
+    described = ", ".join(
+        value for value in ((getattr(char, f, "") or "").strip() for f in IMAGE_FIELDS) if value
+    )
+    if not described:
+        return []
+    tags = tags_for_look(described)
+    if not tags:
+        logger.warning("캐릭터 태그를 하나도 못 뽑았습니다 — 설명 없이 갑니다: %s", described[:60])
+    return tags
 
 
 def character_part(char) -> str:
@@ -68,42 +89,43 @@ def character_part(char) -> str:
     붙을 뿐이었다. 캐릭터 후보 프롬프트와 네컷 프롬프트(comic_prompt)가 같은 캐릭터
     태그를 쓰도록 여기 한 곳에서만 계산한다.
     """
-    from app.services.character_sheet import IMAGE_FIELDS
-
-    described = ", ".join(
-        value for value in ((getattr(char, f, "") or "").strip() for f in IMAGE_FIELDS) if value
-    )
-    tags = tags_for_look(described) if described else []
-    if tags:
-        return ", ".join(tags)
-    if described:
-        logger.warning("캐릭터 태그를 하나도 못 뽑았습니다 — 설명 없이 갑니다: %s", described[:60])
-    return ""
-
-
-# 네컷은 장소·소품 태그가 들어가므로 STYLE_TAGS의 simple background만 뺀다.
-COMIC_STYLE_TAGS = "masterpiece, best quality, score_7, safe, solo, (chibi:1.3), full body"
+    return ", ".join(character_tags(char))
 
 
 def comic_prompt(char_part_text: str, cut_line: str, camera: str = "") -> str:
-    """네컷의 한 컷 프롬프트 — 캐릭터 태그 + 컷 문장을 태그로 바꾼 것 (+ 구도 태그).
+    """네컷의 한 컷 프롬프트 — 캐릭터 태그 + 컷 태그를 슬롯 순서로 조립한다.
 
     컷 문장("손님이 몰려온다")도 같은 변환을 거친다. **태그가 안 나와도 한국어 원문을
-    넣지 않는다** — 예전에는 "컷을 비워 두는 것보다 낫다"고 원문을 넣었지만, Anima는
-    Danbooru 태그로 학습돼 한국어를 못 읽으므로 비워 두는 것과 결과가 같고 프롬프트만
-    흐려진다. tags_for_look()이 검증을 못 통과한 영문 후보까지 내려가며 찾아 주므로
-    여기까지 비는 일은 GPT 호출 자체가 실패했을 때뿐이다.
+    넣지 않는다** — Anima는 Danbooru 태그로 학습돼 한국어를 못 읽으므로 비워 두는 것과
+    결과가 같고 프롬프트만 흐려진다.
+
     캐릭터 정체성은 참조 이미지(IP-Adapter)가 잡고, 여기 태그는 행동·소품·장소를 말한다.
     char_part_text는 character_part()로 한 번만 계산해 넘긴다(GPT 호출 절약).
-    camera는 스토리 제안이 고른 구도 태그(straight-on 등) — 실존 검증을 통과할 때만 붙인다.
+
+    구도는 **컷이 정한다.** 예전에는 `solo, full body`가 상수에 박혀 있어서
+    ① 손님이 여럿 나오는 컷에도 `solo`가 따라붙고 ② 클로즈업을 시켜도 `full body`와
+    함께 나가 둘 다 무시됐다. 이제 컷 태그에 인원·크기가 있으면 그쪽을 쓰고,
+    없을 때만 기본값(solo, full_body)을 채운다.
     """
+    char_tags = [t.strip() for t in (char_part_text or "").split(",") if t.strip()]
+
     scene = (cut_line or "").strip()
     scene_tags = tags_for_look(scene, kind="scene") if scene else []
     if scene and not scene_tags:
         logger.warning("컷 태그를 못 뽑았습니다 — 컷 문장 없이 갑니다: %s", scene[:60])
+
     cam = verify_tags([camera]) if camera else []
-    pieces = [COMIC_STYLE_TAGS, char_part_text, ", ".join(scene_tags), ", ".join(cam)]
-    return ", ".join(p for p in pieces if p)
+
+    slots = tag_slots.ensure_base_garments(tag_slots.to_slots(char_tags + scene_tags + cam))
+    # 컷이 인원·크기를 말하지 않았을 때만 기본값을 넣는다.
+    if not slots.get("shot_count"):
+        slots["shot_count"] = ["solo"]
+    if not slots.get("shot_size"):
+        slots["shot_size"] = ["full_body"]
+    # 여럿이 나오는 컷이면 '동물만' 앵커를 푼다 — 안 풀면 손님이 안 그려진다.
+    crowded = any(t != "solo" for t in slots.get("shot_count", []))
+    # 네컷은 장소 태그가 들어가므로 simple_background 를 기본으로 넣지 않는다.
+    return tag_slots.assemble(slots, anchor=not crowded)
 
 
 def pending_candidates(count: int = 3) -> list[dict]:

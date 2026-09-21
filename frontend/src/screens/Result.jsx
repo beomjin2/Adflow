@@ -45,7 +45,10 @@ export default function Result({ state, actions }) {
         </div>
         {(state.comicCuts || []).some((c) => c.status !== 'empty') && (
           <div style={{ padding: '12px 12px 0' }}>
-            <ComicPanels cuts={state.comicCuts || []} eta={state.sbEta} onReroll={actions.rerollCut} />
+            {/* 이미 보관함에 저장한 뒤(또는 보관함에서 옛 항목을 보는 중)엔 컷을 다시 그릴 수
+                없다 — 저장된 그림과 화면이 어긋나게 된다. */}
+            <ComicPanels cuts={state.comicCuts || []} eta={state.sbEta}
+              onReroll={(state.savedThisAd || state.viewingHistory) ? undefined : actions.rerollCut} />
           </div>
         )}
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>

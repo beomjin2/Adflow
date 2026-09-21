@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { colors } from '../../theme.js';
 import ImageSlot, { formatEta } from '../ImageSlot.jsx';
 import Lightbox from '../Lightbox.jsx';
@@ -128,8 +128,11 @@ export function ProdBubble({ prod, onChange }) {
     <div style={bubbleCardStyle}>
       <span style={bubbleTitleStyle}>생산 기록을 남겼어요 — 여기서 바로 고칠 수 있어요</span>
       <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-        <Field label="품목"><input value={prod.name} onChange={e => onChange({ name: e.target.value })} style={{ ...fieldStyle, flex: '2 1 150px' }} /></Field>
-        <Field label="수량"><input value={prod.qty} onChange={e => onChange({ qty: e.target.value })} style={{ ...fieldStyle, flex: '1 1 92px' }} /></Field>
+        <Field label="품목"><DraftField value={prod.name} onCommit={v => onChange({ name: v })} style={{ ...fieldStyle, flex: '2 1 150px' }} /></Field>
+        <Field label="수량(개)">
+          <DraftField value={prod.qty} onCommit={v => onChange({ qty: v })} sanitize={v => v.replace(/[^0-9]/g, '')}
+            inputMode="numeric" style={{ ...fieldStyle, flex: '1 1 92px' }} />
+        </Field>
         <Field label="생산 날짜"><input type="date" value={prod.date} onChange={e => onChange({ date: e.target.value })} style={{ ...fieldStyle, flex: '1 1 150px' }} /></Field>
         <Field label="생산 시각"><input type="time" value={prod.time} onChange={e => onChange({ time: e.target.value })} style={{ ...fieldStyle, flex: '1 1 118px' }} /></Field>
         <Field label="매진 시각"><input type="time" value={prod.soldOut} onChange={e => onChange({ soldOut: e.target.value })} style={{ ...fieldStyle, flex: '1 1 118px', borderColor: missing ? '#E0BE74' : colors.inputBorder }} /></Field>
@@ -138,6 +141,31 @@ export function ProdBubble({ prod, onChange }) {
         {missing ? '매진 시각을 적어두면 다음 광고 시간을 잡아드려요' : `매진 ${prod.soldOut} 기록됨`}
       </span>
     </div>
+  );
+}
+
+/** 타이핑마다 바로 onChange(→서버 PATCH)를 쏘면, 응답이 느릴 때 뒤늦게 도착한 이전
+ *  글자의 응답이 입력값을 예전 상태로 덮어써 타이핑이 씹히는 것처럼 보인다(품목·수량 둘
+ *  다 겪던 문제 — My/ProductionTab.jsx의 DraftInput과 같은 원인·같은 해법). 로컬에서만
+ *  타이핑을 받고, 포커스를 벗어나거나 Enter를 눌렀을 때만 커밋한다. */
+function DraftField({ value, onCommit, sanitize, style, ...props }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+
+  const commit = () => {
+    if (draft === value) return;
+    onCommit(draft);
+  };
+
+  return (
+    <input
+      value={draft}
+      onChange={e => setDraft(sanitize ? sanitize(e.target.value) : e.target.value)}
+      onBlur={commit}
+      onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.target.blur(); }}
+      style={style}
+      {...props}
+    />
   );
 }
 

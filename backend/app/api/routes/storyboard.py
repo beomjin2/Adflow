@@ -7,8 +7,10 @@
   캐릭터 그림을 참조로 넣어 컷마다 한 장씩 백그라운드에서 그린다. 대사·글자는 그림에
   넣지 않는다 — 그림 모델은 글자를 못 쓴다.
 
-남은 건 전부 사장님이 직접 입력한 값이다. 컷 구성도 템플릿이 아니라 사장님이 쓴
-문장을 컷 단위로 쪼갠 것이다 — 서비스가 대신 지어내는 문장은 없다.
+컷 구성은 **사장님이 쓴 말을 GPT가 컷으로 나눈 것**이다(`story_llm.plan_from_text`).
+템플릿은 없다. 키가 없거나 호출이 실패하면 예전 경로 — 문장부호에서 자르는
+`_cuts_from_text` — 로 조용히 되돌아간다. 어느 쪽이든 만든 구성을 바로 반영하지 않고
+confirm 카드로 올려 사장님이 승인해야 plan이 된다. 서비스가 문장을 만드는 자리라 그렇다.
 """
 
 import logging
@@ -21,7 +23,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.core.config import settings
 from app.core.database import get_db
-from app.services import jobs
+from app.services import jobs, story_llm
 from app.services.chat_ai import (character_part, comic_prompt, day_from, fmt_day, is_skip,
                                   item_from, iso_day, new_pid, qty_from, time_from)
 from app.services.image_gen import generate_images
@@ -66,6 +68,69 @@ def _cuts_from_text(text: str) -> list[dict]:
         {"n": i + 1, "short": p[:14], "line": p}
         for i, p in enumerate(parts)
     ]
+
+
+def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> list[dict] | None:
+    """사장님 문장 → 컷 구성.
+
+    GPT가 있으면 GPT가 가게·캐릭터·광고 느낌을 함께 보고 컷으로 나눈다. 못 쓰면
+    (키 없음·호출 실패·형식 이상) 문장부호에서 자르는 옛 규칙으로 조용히 되돌아간다.
+
+    **None은 "규칙으로도 되돌아가지 않는다"는 뜻이다.** GPT가 사장님 말을 인사·잡담으로
+    본 경우에만 나온다 — 그때 규칙으로 쪼개면 "안녕하세요"가 1컷이 되어 버린다.
+    """
+    store = db.get(models.Store, 1)
+    char = db.get(models.Character, 1)
+    ad = db.get(models.AdSettings, 1)
+    prods = (
+        db.query(models.ProductionRecord)
+        .order_by(models.ProductionRecord.id.desc()).limit(10).all()
+    )
+    proposed = story_llm.plan_from_text(
+        text,
+        store={"category": store.category, "address": store.address,
+               "hours": store.hours, "desc": store.desc} if store else {},
+        char={"name": char.name, "look": char.look, "outfit": char.outfit,
+              "desc": char.desc} if char else {},
+        ad={"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {},
+        prods=[{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time,
+                "sold_out": p.sold_out} for p in prods],
+        current_plan=list(sb.plan or []),
+    )
+    if proposed is None:
+        return _cuts_from_text(text)
+    if not proposed:
+        return None
+    return proposed
+
+
+def _propose_plan(sb: models.Storyboard, cuts: list[dict], messages: list[dict]) -> None:
+    """만든 컷 구성을 확인 카드로 올린다. 승인하기 전까지 plan은 바뀌지 않는다.
+
+    밈 제안(`/propose`)과 대화(`/chat`)가 같은 카드를 쓴다 — 어느 쪽에서 나왔든
+    사장님이 보는 건 "이렇게 바뀝니다" 한 장이어야 한다.
+    """
+    current = list(sb.plan or [])
+    diffs = []
+    for cut in cuts:
+        before = next((c["line"] for c in current if c.get("n") == cut["n"]), "아직 없음")
+        action = cut.get("action") or ""
+        diffs.append({
+            "label": f"{cut['n']}컷",
+            "from": before,
+            "to": f"{cut['line']} — {action}" if action else cut["line"],
+        })
+    for old in current[len(cuts):]:
+        diffs.append({"label": f"{old['n']}컷", "from": old["line"], "to": "삭제"})
+
+    pending = dict(sb.pending or {})
+    pid = new_pid()
+    pending[pid] = {
+        "which": "sb", "kind": "plan", "diffs": diffs,
+        "payload": {"plan": cuts}, "status": "open",
+    }
+    sb.pending = pending
+    messages.append({"role": "ai", "kind": "confirm", "pid": pid})
 
 
 @router.get("", response_model=schemas.StoryboardOut)
@@ -127,29 +192,21 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
                 })
                 sb.prod_logged = True
     else:
-        cuts = _cuts_from_text(text)
-        if not cuts:
+        cuts = _plan_cuts(text, sb, db)
+        if cuts is None:
+            # GPT가 "광고로 만들 내용이 아니다"라고 본 경우다. 여기서 아무 장면이나
+            # 만들면 사장님이 말한 적 없는 광고가 된다 — 지어내지 말고 되묻는다.
+            messages.append({
+                "role": "ai", "kind": "text",
+                "text": "그 말씀만으로는 광고 장면을 잡기 어려워요. 오늘 알리고 싶은 걸 한 줄로 적어주세요.",
+            })
+        elif not cuts:
             messages.append({
                 "role": "ai", "kind": "text",
                 "text": "어떤 장면인지 한 문장으로 적어주세요. 문장 하나가 한 컷이 돼요.",
             })
         else:
-            current = list(sb.plan or [])
-            diffs = []
-            for cut in cuts:
-                before = next((c["line"] for c in current if c.get("n") == cut["n"]), "아직 없음")
-                diffs.append({"label": f"{cut['n']}컷", "from": before, "to": cut["line"]})
-            for old in current[len(cuts):]:
-                diffs.append({"label": f"{old['n']}컷", "from": old["line"], "to": "삭제"})
-
-            pending = dict(sb.pending or {})
-            pid = new_pid()
-            pending[pid] = {
-                "which": "sb", "kind": "plan", "diffs": diffs,
-                "payload": {"plan": cuts}, "status": "open",
-            }
-            sb.pending = pending
-            messages.append({"role": "ai", "kind": "confirm", "pid": pid})
+            _propose_plan(sb, cuts, messages)
 
     sb.messages = messages
     db.commit()
@@ -237,25 +294,12 @@ def propose(body: schemas.ProposeIn, db: Session = Depends(get_db)):
         logger.exception("스토리 제안 실패")
         raise HTTPException(502, "스토리를 만들지 못했어요. 잠시 뒤 다시 시도해 주세요")
 
-    cuts = story["cuts"]
-    current = list(sb.plan or [])
-    diffs = []
-    for cut in cuts:
-        before = next((c["line"] for c in current if c.get("n") == cut["n"]), "아직 없음")
-        diffs.append({"label": f"{cut['n']}컷", "from": before, "to": f"{cut['line']} — {cut['action']}"})
-    for old in current[len(cuts):]:
-        diffs.append({"label": f"{old['n']}컷", "from": old["line"], "to": "삭제"})
-
-    pending = dict(sb.pending or {})
-    pid = new_pid()
-    pending[pid] = {"which": "sb", "kind": "plan", "diffs": diffs, "payload": {"plan": cuts}, "status": "open"}
     messages = list(sb.messages or [])
     messages.append({
         "role": "ai", "kind": "text",
         "text": f"'{meme.title}' 밈으로 '{story['title']}' 4컷을 제안해요. 마음에 들면 아래에서 이대로 바꾸기를 눌러주세요.",
     })
-    messages.append({"role": "ai", "kind": "confirm", "pid": pid})
-    sb.pending = pending
+    _propose_plan(sb, story["cuts"], messages)
     sb.messages = messages
     sb.prod_logged = True  # 제안을 받은 뒤의 채팅은 컷 수정으로 다룬다(생산 기록 질문 단계 건너뜀)
     db.commit()
@@ -279,6 +323,21 @@ def make_comic(db: Session = Depends(get_db)):
          "label": f"{c['n']}컷", "image": None, "status": "generating"}
         for c in plan
     ]
+    # 네컷은 대화창 안에서 보여준다. 그림이 대화 흐름 밖에서 나오면 사장님은 무엇 때문에
+    # 그게 나왔는지 놓친다. 말풍선은 comic_cuts를 그대로 비추므로 **하나만** 둔다 —
+    # 다시 그려도 새 말풍선이 생기는 게 아니라 그 자리가 다시 채워진다. 안내 문구도 같이
+    # 걷어내야 한다(ref로 표시해 둔다). 말풍선만 지우면 "그릴게요"가 다시 그릴 때마다
+    # 한 줄씩 쌓여, 대화 기록만 보면 네 번 그린 것처럼 보인다.
+    messages = [
+        m for m in list(sb.messages or [])
+        if m.get("kind") != "comic" and m.get("ref") != "comic-start"
+    ]
+    messages.append({
+        "role": "ai", "kind": "text", "ref": "comic-start",
+        "text": f"정해진 {len(plan)}컷을 그릴게요. 이 화면을 닫아도 서버에서 계속 그립니다.",
+    })
+    messages.append({"role": "ai", "kind": "comic"})
+    sb.messages = messages
     _start_cuts(sb, char, list(range(len(plan))), db)
     db.refresh(sb)
     return schemas.storyboard_out(sb, jobs.queue_depth())

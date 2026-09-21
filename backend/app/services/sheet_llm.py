@@ -249,6 +249,56 @@ def _sheet_summary(char) -> str:
     return "\n".join(lines)
 
 
+def _context_rows(char, store) -> list[tuple[str, str]]:
+    """모델에게 준 배경을 (라벨, 값) 쌍으로. 근거를 되짚을 때 이 목록에 대고 맞춘다."""
+    from app.services import character_sheet as sheet
+
+    rows: list[tuple[str, str]] = []
+    if store is not None:
+        for label, attr in (("업종", "category"), ("가게 소개", "desc"),
+                            ("영업시간", "hours"), ("주소", "address")):
+            value = (getattr(store, attr, "") or "").strip()
+            if value:
+                rows.append((label, value))
+        for item in (getattr(store, "images", None) or []):
+            name = str(item.get("label", "")).strip() if isinstance(item, dict) else ""
+            if name:
+                rows.append(("대표 상품", name))
+    for field in sheet.ORDER + [sheet.KEYWORDS_FIELD]:
+        value = sheet.value_of(char, field)
+        if value:
+            rows.append((sheet.LABELS.get(field, sheet.KEYWORDS_LABEL), value))
+    return rows
+
+
+def _infer_basis(why: str, char, store) -> list[dict]:
+    """모델이 basis를 비워 보냈을 때, why에 실제로 나온 말을 배경에서 찾아 근거로 삼는다.
+
+    temperature를 올려 뒀기 때문에(제안이 매번 같으면 그게 고정이다) 모델이 출력 형식을
+    **매번** 지키지는 않는다. 배포 서버 실측: why에 "꽃집에 어울리는"이라고 써 놓고
+    basis는 []로 보내는 경우가 잦았다. 그럴 때 조용히 근거 없는 카드가 된다.
+
+    지어내지 않는다 — **why와 배경 양쪽에 다 있는 말**만 근거로 올린다. 모델이 스스로
+    근거라고 말한 것을 원문에 대고 확인하는 것이라, 없는 말이 붙을 일은 없다.
+    """
+    said = (why or "").replace(" ", "")
+    if not said:
+        return []
+    found: list[dict] = []
+    for label, value in _context_rows(char, store):
+        stripped = value.replace(" ", "")
+        # 값이 통째로 언급됐거나(업종 "꽃집"), 값의 특징적인 조각이 언급됐을 때.
+        hit = stripped in said or any(
+            len(stripped[i:i + 3]) == 3 and stripped[i:i + 3] in said
+            for i in range(max(len(stripped) - 2, 0))
+        )
+        if hit and not any(b["quote"] == value for b in found):
+            found.append({"label": label, "quote": value})
+        if len(found) == 3:
+            break
+    return found
+
+
 def _store_summary(store) -> str:
     """가게 정보를 프롬프트에 넣을 몇 줄로. 없으면 '모른다'고 분명히 적는다.
 
@@ -511,7 +561,13 @@ def evidence_from(parsed: dict, char, store) -> dict:
 
     why = parsed.get("why")
     why = why.strip() if isinstance(why, str) else ""
-    return {"basis": basis, "why": why if len(why) <= 120 else ""}
+    if len(why) > 120:
+        why = ""
+    # 모델이 근거를 빠뜨렸으면 why에 나온 말을 배경에서 되짚어 본다. 형식을 매번 지키진
+    # 않기 때문이다 — 그래도 근거 없는 카드보다는 확인된 근거를 보여주는 게 낫다.
+    if not basis and why:
+        basis = _infer_basis(why, char, store)
+    return {"basis": basis, "why": why}
 
 
 def reply(char, text: str, filled: dict[str, str], ask_field: str, store=None) -> str:

@@ -1,0 +1,110 @@
+/* 개선안 디자인 시스템.
+ * theme.js 의 값을 CSS 변수로 옮겨 적은 것이다 — 두 곳에 색이 흩어지지 않게
+ * theme.js 를 원본으로 두고 여기 값은 거기서 그대로 가져왔다. */
+:root{
+  --bg:#F6F8F9; --ink:#2B2F36; --sub:#6A7077; --mute:#979CA2;
+  --line:#E8EAEC; --input-line:#DBDEE1; --soft:#EFF2F4;
+  --green:#16A06B; --green-hover:#138A5C; --green-deep:#2E6B4E;
+  --green-soft:#E6F7EF; --green-tint:#F1FBF6; --green-line:#CFEFE0;
+  --warn-bg:#FFF6E6; --warn-line:#F0DCB4; --warn-ink:#7A5C15; --warn-sub:#8A6A20; --warn:#C9912B;
+  --blue:#4A86C5; --blue-tint:#EAF2FA; --violet:#7B5CFA; --violet-tint:#F1EEFE;
+  --shadow:0 2px 6px rgba(20,28,36,.05);
+  --r-card:20px; --r-tile:16px; --r-bar:14px; --r-in:12px; --tap:48px;
+}
+body{font-size:16px;line-height:1.45}
+
+.ad-page{min-height:100vh;padding:20px 16px 72px;display:flex;justify-content:center}
+.ad-wrap{width:100%;max-width:1040px;display:flex;flex-direction:column;gap:20px}
+
+/* 상단 바 */
+.ad-top{display:flex;align-items:center;gap:12px;min-height:48px}
+.ad-brand{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700;letter-spacing:-.3px;background:none;border:0;padding:0;cursor:pointer;color:var(--ink)}
+.ad-brand i{width:28px;height:28px;border-radius:9px;background:var(--green);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-style:normal;font-size:12px;font-weight:700}
+.ad-grow{flex:1}
+.ad-bell{position:relative}
+.ad-notice{height:44px;white-space:nowrap;border-radius:999px;padding:0 8px 0 16px;font-size:14px;font-weight:700;border:1px solid var(--line);background:#fff;color:var(--ink);display:flex;align-items:center;gap:8px;box-shadow:var(--shadow);cursor:pointer;transition:border-color .15s}
+.ad-notice:hover{border-color:var(--warn)}
+.ad-badge{min-width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:var(--warn);color:#fff;border-radius:999px;padding:0 7px}
+.ad-badge.zero{background:var(--soft);color:var(--sub)}
+.ad-drop{position:absolute;right:0;top:52px;width:340px;max-width:calc(100vw - 32px);background:#fff;border:1px solid var(--line);border-radius:var(--r-tile);box-shadow:0 12px 32px rgba(20,28,36,.12);padding:8px;z-index:60;animation:pop .18s ease}
+.ad-drop-h{font-size:12.5px;font-weight:700;color:var(--mute);padding:8px 10px 6px}
+.ad-drop-item{display:flex;gap:12px;padding:12px 10px;border-radius:12px;align-items:center}
+.ad-drop-item .dot{width:8px;height:8px;border-radius:999px;background:var(--warn);flex:none}
+.ad-drop-item .t{flex:1;min-width:0}
+.ad-drop-item b{display:block;font-size:14.5px;color:var(--warn-ink)}
+.ad-drop-item span{display:block;font-size:13.5px;color:var(--sub);margin-top:2px}
+.ad-drop-item .go{height:36px;padding:0 14px;border-radius:999px;background:var(--warn-sub);color:#fff;font-size:13.5px;font-weight:700;white-space:nowrap;border:0;cursor:pointer}
+.ad-drop-empty{padding:16px 10px;font-size:14px;color:var(--sub);line-height:20px}
+
+/* 페이지 머리말 */
+.ad-ph{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ad-back{width:44px;height:44px;border-radius:12px;background:#fff;border:1px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font-size:18px;flex:none;box-shadow:var(--shadow);cursor:pointer;color:var(--ink)}
+.ad-back:hover{border-color:var(--mute)}
+.ad-ph .t{display:flex;flex-direction:column;gap:2px;min-width:0}
+.ad-ph h1{margin:0;font-size:24px;line-height:32px;font-weight:700;letter-spacing:-.5px}
+.ad-ph p{margin:0;font-size:14.5px;color:var(--sub)}
+.ad-pill{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;font-size:13px;font-weight:700;background:var(--soft);color:var(--sub);white-space:nowrap}
+.ad-pill.green{background:var(--green-soft);color:var(--green-deep)}
+.ad-pill.warn{background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line)}
+
+/* 홈 */
+.ad-hero{display:flex;flex-direction:column;gap:6px;padding:2px 4px 0}
+.ad-hero h2{margin:0;font-size:30px;line-height:40px;font-weight:700;letter-spacing:-.7px;text-wrap:pretty}
+.ad-hero h2 em{font-style:normal;color:var(--green)}
+.ad-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,352px);gap:18px;align-items:start}
+@media (max-width:820px){.ad-cols{grid-template-columns:minmax(0,1fr)}}
+.ad-card{background:#fff;border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--shadow)}
+.ad-flow{padding:22px 24px 24px;display:flex;flex-direction:column;gap:18px}
+.ad-flow-h{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.ad-flow-h h3{margin:0;font-size:18px;font-weight:700;letter-spacing:-.3px}
+.ad-prog{display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:700;color:var(--green-deep)}
+.ad-prog .bar{width:110px;height:8px;border-radius:999px;background:var(--green-tint);border:1px solid var(--green-line);overflow:hidden}
+.ad-prog .bar i{display:block;height:100%;background:var(--green);border-radius:999px;transition:width .3s}
+.ad-steps{display:flex;flex-direction:column}
+.ad-step{display:grid;grid-template-columns:36px minmax(0,1fr) auto;gap:16px;align-items:center;padding:16px 4px;border-top:1px solid var(--line);width:100%;border-radius:12px;background:none;border-left:0;border-right:0;border-bottom:0;text-align:left;cursor:pointer;transition:background .15s;color:var(--ink)}
+.ad-step:first-child{border-top:0}
+.ad-step:hover:not(:disabled){background:var(--bg)}
+.ad-step:disabled{cursor:not-allowed;opacity:.55}
+.ad-step .n{width:36px;height:36px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;background:var(--green-tint);color:var(--green-deep);border:1px solid var(--green-line);overflow:hidden;flex:none}
+.ad-step .n img{width:100%;height:100%;object-fit:cover}
+.ad-step .t{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ad-step .title{font-size:17.5px;font-weight:700;letter-spacing:-.3px}
+.ad-step .desc{font-size:13.5px;color:var(--sub);line-height:19px}
+.ad-step .st{font-size:13.5px;font-weight:700;color:var(--green-deep);white-space:nowrap;text-align:right}
+.ad-step.next{background:var(--green);border:0;border-radius:var(--r-tile);padding:20px 22px;margin-top:8px;color:#fff;box-shadow:0 8px 20px rgba(22,160,107,.22)}
+.ad-step.next:hover:not(:disabled){background:var(--green-hover);transform:translateY(-1px)}
+.ad-step.next .n{background:#fff;color:var(--green-deep);border-color:#fff}
+.ad-step.next .desc{color:rgba(255,255,255,.88)}
+.ad-step.next .title{font-size:20px}
+.ad-step.next .st{color:#fff;background:rgba(255,255,255,.18);border-radius:999px;padding:9px 15px;font-size:14.5px}
+.ad-step.todo .n{background:var(--soft);color:var(--sub);border-color:var(--line)}
+
+.ad-side{display:flex;flex-direction:column;gap:12px}
+.ad-side-h{font-size:12.5px;font-weight:700;color:var(--mute);letter-spacing:.3px;padding:0 4px}
+.ad-tool{padding:16px 18px;display:flex;flex-direction:column;gap:10px;width:100%;transition:border-color .15s}
+/* 한 줄짜리 도구 카드는 .ad-tool 없이 .ad-tool-row 만으로도 서야 한다 —
+   .ad-tool 의 flex-direction:column 이 행 배치를 눌러서 아이콘이 위로 튀었다. */
+.ad-tool-row{display:flex;align-items:center;gap:14px;width:100%;background:none;border:0;padding:0;cursor:pointer;text-align:left;color:var(--ink)}
+.ad-card.ad-tool-row{padding:16px 18px;transition:border-color .15s}
+.ad-tool-row .ic{width:44px;height:44px;border-radius:13px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:none;overflow:hidden;background:var(--soft);color:var(--sub)}
+.ad-tool-row .ic img{width:100%;height:100%;object-fit:cover}
+.ad-tool-row .txt{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.ad-tool-row .title{font-size:16.5px;font-weight:700;letter-spacing:-.2px}
+.ad-tool-row .desc{font-size:13px;color:var(--sub);line-height:18px}
+.ad-tool-row .arr{color:var(--mute);font-size:18px;flex:none}
+.rec:hover{border-color:var(--blue)} .rec .ic{background:var(--blue-tint);color:var(--blue)}
+.trend:hover{border-color:var(--violet)} .trend .ic{background:var(--violet-tint);color:var(--violet)}
+.me:hover{border-color:var(--mute)}
+.ad-warnrow{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:var(--r-bar);padding:12px 14px;display:flex;align-items:center;gap:10px;width:100%;cursor:pointer;text-align:left}
+.ad-warnrow:hover{border-color:var(--warn)}
+.ad-warnrow .txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.ad-warnrow b{font-size:14px;color:var(--warn-ink)}
+.ad-warnrow span{font-size:12.5px;color:var(--warn-sub)}
+.ad-warnrow .go{font-size:13px;font-weight:700;color:var(--warn-ink);white-space:nowrap;background:#fff;border:1px solid var(--warn-line);border-radius:999px;padding:7px 12px}
+
+/* 본문 카드 — 기존 화면들이 그대로 들어앉는 자리 */
+.ad-body{background:#fff;border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--shadow);overflow:hidden}
+
+.ad-chip{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:600;background:var(--bg);border:1px solid var(--line);color:var(--sub);white-space:nowrap}
+.ad-hdr-btn{height:38px;padding:0 16px;border-radius:999px;border:0;background:var(--green);color:#fff;box-shadow:0 4px 10px rgba(22,160,107,.3);font-size:13.5px;font-weight:700;cursor:pointer;flex:none}
+.ad-hdr-btn:hover{background:var(--green-hover)}

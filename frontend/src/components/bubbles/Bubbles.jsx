@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { colors } from '../../theme.js';
 import ImageSlot, { formatEta } from '../ImageSlot.jsx';
 import Lightbox from '../Lightbox.jsx';
+import ComicPanels from '../ComicPanels.jsx';
 
 export function TextBubble({ role, text }) {
   const mine = role === 'me';
@@ -60,6 +61,41 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 
         items={items} index={preview} selected={selected}
         onClose={() => setPreview(-1)} onMove={setPreview} onSelect={onSelect}
       />
+    </div>
+  );
+}
+
+/** 네컷 그림. 그림이 대화 밖에서 나오면 사장님은 무엇 때문에 나온 건지 놓친다 —
+ *  "네컷 그리기"를 누른 자리 바로 아래에서 칸이 하나씩 채워지게 둔다.
+ *
+ *  여기선 말풍선을 얹지 않는다. 대화창 폭에서 2×2로 줄이면 대사 글씨가 그림을 덮는다.
+ *  대사가 얹힌 큰 네컷은 더블클릭한 확대 화면과 결과 화면의 몫이다. */
+export function ComicBubble({ cuts, eta = 0, onReroll }) {
+  const items = cuts || [];
+  if (!items.length) return null;
+
+  const drawing = items.filter((c) => c.status === 'generating').length;
+  const failed = items.filter((c) => c.status === 'failed').length;
+  const done = items.filter((c) => c.status === 'done' && c.image).length;
+
+  return (
+    <div style={bubbleCardStyle}>
+      <span style={bubbleTitleStyle}>
+        {drawing > 0
+          ? `네컷을 그리는 중 — ${drawing}컷 남았어요`
+          : done > 0
+            ? '네컷이 나왔어요 — 더블클릭하면 대사까지 크게 봐요'
+            : '아직 그림이 없어요'}
+      </span>
+      {drawing > 0 && eta > 0 && (
+        <span style={hintStyle}>약 {formatEta(eta)}. 이 화면을 닫아도 계속 그려요.</span>
+      )}
+      <ComicPanels cuts={items} eta={eta} onReroll={onReroll} bubbles={false} gap={8} />
+      {failed > 0 && (
+        <span style={{ ...hintStyle, color: colors.warnText }}>
+          {failed}컷은 그리지 못했어요. ↻ 를 누르면 그 자리만 다시 그려요.
+        </span>
+      )}
     </div>
   );
 }

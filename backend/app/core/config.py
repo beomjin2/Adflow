@@ -31,12 +31,15 @@ class Settings(BaseSettings):
     # 생성된 캐릭터 PNG를 저장할 폴더. /api/media/<파일명>으로 서빙된다.
     media_dir: str = "media"
 
-    # 키 하나를 두 군데서 쓴다 — 캐릭터 시트 대화(sheet_llm)와 Danbooru 태그
-    # 조립(danbooru_tags). 둘 다 키가 없으면 각자 규칙 기반으로 폴백하므로
-    # 비워둬도 서비스는 그대로 돈다. 키는 .env에만 두고 저장소에 넣지 않는다.
+    # 키 하나를 여러 군데서 쓴다 — 캐릭터 시트 대화(sheet_llm), 광고 컷 구성(story_llm),
+    # Danbooru 태그 조립(danbooru_tags), 밈 카드·스토리(meme_ai), 밈 추천(meme_recommend).
+    # 앞의 셋은 키가 없으면 각자 규칙 기반으로 폴백하므로 비워둬도 서비스는 돈다.
+    # 밈 쪽 둘은 폴백이 없어 키가 없으면 그 기능만 400으로 막힌다.
+    # 키는 .env에만 두고 저장소에 넣지 않는다.
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
-    # sheet_llm이 쓴다. danbooru_tags는 openai SDK를 쓰므로 base_url을 보지 않는다.
+    # sheet_llm·story_llm이 쓴다(requests로 직접 친다). meme_ai 쪽은 openai SDK를 쓰므로
+    # base_url을 보지 않는다.
     openai_base_url: str = "https://api.openai.com/v1"
     openai_timeout_seconds: int = 20
 

@@ -254,40 +254,36 @@ export function useAdMakerState() {
     goAd();
   }, [toast, goAd]);
 
-  /** 활용 상황 카테고리 안에서 GPT 추천을 받는다. "전체"는 범위가 너무 넓어서 막는다.
-   *  성공하면 추천 요청 팝업은 닫고 결과 팝업으로 넘어간다 — 실패하면 요청 팝업에 그대로
-   *  남겨서 사장님이 카테고리/한줄입력을 고쳐 다시 시도할 수 있게 한다. */
+  /** 밈 전체 중 GPT 추천을 받는다 — 활용 상황은 이제 사장님이 안 고르고 GPT가 가게·캐릭터·
+   *  오늘 알릴 내용을 보고 알아서 판단한다. 성공하면 추천 요청 팝업은 닫고 결과 팝업으로
+   *  넘어간다 — 실패하면 요청 팝업에 그대로 남겨서 한줄입력을 고쳐 다시 시도할 수 있게 한다. */
   const recommendTrendMeme = useCallback(async () => {
     const s = stateRef.current;
-    if (!s.trendFilter || s.trendFilter === '전체') { toast('먼저 활용 상황을 골라주세요'); return; }
     update({ trendRecommendLoading: true });
     try {
-      const result = await TrendAPI.recommend(s.trendFilter, s.trendRecommendNote.trim());
+      const result = await TrendAPI.recommend(s.trendRecommendNote.trim());
       update({ trendRecommendResult: result, trendRecommendLoading: false, trendRecommendPopupOpen: false });
     } catch (e) {
       update({ trendRecommendLoading: false });
       fail(e);
     }
-  }, [update, toast, fail]);
+  }, [update, fail]);
 
   const closeTrendRecommend = useCallback(() => update({ trendRecommendResult: null }), [update]);
 
-  /** 추천 결과 팝업에서 밈 자체를 누르면, 리스트에서 그 밈을 고른 것처럼 선택만 해두고
-   *  팝업만 닫는다 — 광고 만들기로 곧장 넘어가지 않아서, 유래·활용예시를 아래 상세
-   *  패널에서 먼저 훑어보고 판단할 수 있다. 검색어도 같이 비운다 — 예전에 쳐둔 검색어가
-   *  추천된 밈의 이름·유래·활용예시와 안 겹치면 리스트에서 걸러져서, Trend.jsx의 "선택이
-   *  안 보이면 맨 위로 되돌리는" 로직이 방금 고른 밈을 곧장 다른 밈으로 덮어써버린다. */
-  const selectTrendRecommendMeme = useCallback(() => {
-    const s = stateRef.current;
-    if (!s.trendRecommendResult) return;
-    update({ trendSel: s.trendRecommendResult.meme.id, trendRecommendResult: null, trendSearch: '' });
+  /** 추천 결과 팝업엔 이제 후보가 둘이라, 어느 쪽을 눌렀는지 memeId로 받는다.
+   *  밈 자체를 누르면, 리스트에서 그 밈을 고른 것처럼 선택만 해두고 팝업만 닫는다 —
+   *  광고 만들기로 곧장 넘어가지 않아서, 유래·활용예시를 아래 상세 패널에서 먼저
+   *  훑어보고 판단할 수 있다. 검색어도 같이 비운다 — 예전에 쳐둔 검색어가 추천된 밈의
+   *  이름·유래·활용예시와 안 겹치면 리스트에서 걸러져서, Trend.jsx의 "선택이 안 보이면
+   *  맨 위로 되돌리는" 로직이 방금 고른 밈을 곧장 다른 밈으로 덮어써버린다. */
+  const selectTrendRecommendMeme = useCallback((memeId) => {
+    update({ trendSel: memeId, trendRecommendResult: null, trendSearch: '' });
   }, [update]);
 
-  /** 추천받은 밈을 그대로 고른 걸로 치고 광고 만들기로 넘어간다. */
-  const useTrendRecommendMeme = useCallback(() => {
-    const s = stateRef.current;
-    if (!s.trendRecommendResult) return;
-    update({ trendSel: s.trendRecommendResult.meme.id, trendRecommendResult: null });
+  /** 고른 후보를 그대로 선택한 걸로 치고 광고 만들기로 넘어간다. */
+  const useTrendRecommendMeme = useCallback((memeId) => {
+    update({ trendSel: memeId, trendRecommendResult: null });
     goAd();
   }, [update, goAd]);
 

@@ -207,9 +207,10 @@ export const TrendAPI = {
     trendItems: (r.items || []).map(mapTrendMeme),
     trendSites: r.sites || [],
   })),
-  // situation 안에서 GPT가 밈 하나를 고르고 이유를 준다. note는 "오늘 알릴 내용"(선택, 빈 문자열 가능).
-  recommend: (situation, note) => post('/api/trend/recommend', { situation, note }).then((r) => ({
-    meme: mapTrendMeme(r.meme),
-    reason: r.reason,
+  // 2단계 추천 — GPT가 활용 상황을 먼저 고르고, 그 안에서 밈을 최대 두 개 골라 이유와 함께
+  // 준다. note는 "오늘 알릴 내용"(선택, 빈 문자열 가능).
+  recommend: (note) => post('/api/trend/recommend', { note }).then((r) => ({
+    situation: r.situation,
+    picks: (r.picks || []).map((p) => ({ meme: mapTrendMeme(p.meme), reason: p.reason })),
   })),
 };

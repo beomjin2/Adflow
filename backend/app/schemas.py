@@ -273,10 +273,14 @@ class TrendOut(BaseModel):
 
 
 class TrendRecommendIn(BaseModel):
-    situation: str
     note: str = ""
 
 
-class TrendRecommendOut(BaseModel):
+class TrendRecommendPick(BaseModel):
     meme: MemeOut
     reason: str
+
+
+class TrendRecommendOut(BaseModel):
+    situation: str
+    picks: list[TrendRecommendPick]

@@ -151,8 +151,42 @@ _SCENE_SYSTEM_PROMPT = (
 )
 
 
+# 슬롯 하나(표정·동작·장소·소품·빛 중 한 칸)만 바꿀 때. 장면 프롬프트를 그대로 쓰면 "자신만만"
+# 한 칸에도 shop, indoors 를 붙여 와서 컷 프롬프트에 같은 태그가 네 번 반복됐다(2026-09-21 실측).
+# 칸의 이름을 앞에 붙여 보내고, 그 칸의 태그만 1~3개 내게 한다. 형식·어휘는 예시로 가르친다.
+_SLOT_SYSTEM_PROMPT = (
+    "You convert ONE slot of a 4-panel bakery mascot comic panel into 1-3 Danbooru imageboard tags. "
+    "The input is 'slot name: Korean phrase'. Output ONLY a comma-separated list of real Danbooru "
+    "tags in exact tag format (lowercase English, spaces as underscores) for THAT slot only — "
+    "no setting or place tags unless the slot is 'place', never Korean words, never invented compound "
+    "tags, never the mascot's appearance. Examples: "
+    "'expression: 자신만만' -> smug, smile; "
+    "'expression: 머쓱함' -> embarrassed, sweatdrop; "
+    "'expression: 행복, 눈 감음' -> happy, closed_eyes, smile; "
+    "'expression: 놀람' -> surprised, open_mouth; "
+    "'pose: 쟁반 들기' -> holding_tray; "
+    "'pose: 팔짱' -> crossed_arms; "
+    "'pose: 손 흔들기' -> waving, arm_up; "
+    "'pose: 빵 먹기' -> eating, holding_food; "
+    "'pose: 서있기' -> standing; "
+    "'place: 가게 안' -> shop, indoors; "
+    "'place: 가게 앞' -> shop, outdoors, door; "
+    "'place: 주방' -> kitchen, indoors; "
+    "'props: 소금빵, 쟁반' -> bread, tray; "
+    "'props: 빈 쟁반' -> tray, plate; "
+    "'props: 고양이 손님, 강아지 손님' -> cat, dog, crowd; "
+    "'light: 아침 햇살' -> sunlight, morning; "
+    "'light: 저녁 노을' -> sunset, orange_sky; "
+    "'light: 밤' -> night."
+)
+
+
 def _system_prompt(kind: str) -> str:
-    return _SCENE_SYSTEM_PROMPT if kind == "scene" else _LLM_SYSTEM_PROMPT
+    if kind == "scene":
+        return _SCENE_SYSTEM_PROMPT
+    if kind == "slot":
+        return _SLOT_SYSTEM_PROMPT
+    return _LLM_SYSTEM_PROMPT
 
 
 # 프롬프트로 "영어로만"을 아무리 적어도 GPT는 스토리 문장에서 한국어를 그대로 뱉는다.

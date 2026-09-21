@@ -81,8 +81,70 @@ def character_part(char) -> str:
     return ""
 
 
-# 네컷은 장소·소품 태그가 들어가므로 STYLE_TAGS의 simple background만 뺀다.
+# 네컷 전역 접두어. 예전엔 여기에 `solo, full body`가 고정으로 박혀 있었다 — 그래서 "멀리서"
+# 컷에 wide_shot을 붙여도 full body와 싸워 캐릭터가 화면을 채웠다(2026-09-21 종단 실행에서
+# 확인). 둘은 컷마다 바뀌는 슬롯(shot.count · shot.size)이라 접두어에서 빼고 슬롯으로 옮겼다.
+# 옛 경로(comic_prompt)는 호환을 위해 예전 접두어를 그대로 쓴다.
 COMIC_STYLE_TAGS = "masterpiece, best quality, score_7, safe, solo, (chibi:1.3), full body"
+COMIC_GLOBAL_TAGS = "masterpiece, best quality, score_7, safe, (chibi:1.3)"
+
+# ── 컷 층의 닫힌 슬롯 — 한국어 선택지 → 실존 Danbooru 태그. 팀장의 슬롯 시트(shot.size ·
+# shot.angle · shot.count)를 그대로 따른다. 선택지가 정해져 있으니 GPT를 거치지 않고 표로 바꾼다.
+SHOT_SIZE = {   # 캐릭터가 화면에서 얼마나 크게 보이나
+    "아주작게": "wide_shot",   # 배경이 주인공, 캐릭터는 한 점
+    "작게": "full_body",       # 전신이 다 보임
+    "보통": "cowboy_shot",     # 허벅지 위
+    "크게": "upper_body",      # 상반신
+    "아주크게": "close-up",    # 얼굴만
+}
+SHOT_ANGLE = {"정면": "straight-on", "위에서": "from_above", "아래에서": "from_below",
+              "옆에서": "from_side", "뒤에서": "from_behind"}
+SHOT_COUNT = {"혼자": "solo", "여럿": "multiple_others"}
+OPEN_SLOTS = ("expression", "pose", "place", "props", "light")   # 컷 문장에서 오는 열린 슬롯
+
+
+def comic_prompt_slots(char_part_text: str, slots: dict) -> tuple[str, dict]:
+    """팀장 슬롯 시트대로 한 컷의 프롬프트를 조립한다. (프롬프트, 계단별 기록) 을 돌려준다.
+
+    전역 접두어 + 캐릭터 태그(4컷 고정) + 컷 슬롯(컷마다 바뀜) 순서다.
+    닫힌 슬롯(size·angle·count)은 표로 바꾸고, 열린 슬롯(표정·동작·장소·소품·빛)은
+    짧은 한국어 구를 장면용 태거에 넣어 실존 태그로 바꾼다. 짧게 넣는 이유 — 낱말 단위
+    통과율이 문장보다 높았다(09-18 실측: 동작 76%, 배경 83%). 기록(trace)은 화면·보고서에서
+    "어느 슬롯이 어떤 태그가 됐고 무엇이 버려졌나"를 보여주는 데 쓴다.
+    """
+    trace: dict = {"closed": {}, "open": {}}
+    parts: list[str] = [COMIC_GLOBAL_TAGS, char_part_text]
+
+    shot = slots.get("shot") or {}
+    for key, table in (("size", SHOT_SIZE), ("angle", SHOT_ANGLE), ("count", SHOT_COUNT)):
+        val = str(shot.get(key) or "").strip()
+        tag = table.get(val, "")
+        trace["closed"][f"shot.{key}"] = {"in": val, "tag": tag, "ok": bool(tag)}
+        if tag:
+            parts.append(tag)
+
+    for key in OPEN_SLOTS:
+        raw = slots.get(key)
+        text = ", ".join(str(x) for x in raw) if isinstance(raw, list) else str(raw or "")
+        text = text.strip()
+        # 칸 이름을 앞에 붙여 "이 칸의 태그만" 내게 한다 — 장면용 프롬프트를 쓰면 표정 한 칸에도
+        # shop, indoors 가 따라와 프롬프트에 같은 태그가 네 번 반복됐다.
+        tags = tags_for_look(f"{key}: {text}", kind="slot") if text else []
+        trace["open"][key] = {"in": text, "tags": tags}
+        if tags:
+            parts.append(", ".join(tags))
+
+    # 같은 태그가 두 칸에서 나오면 한 번만 (props의 bread 와 pose의 bread 등)
+    seen: set[str] = set()
+    tokens: list[str] = []
+    for p in parts:
+        for tok in (x.strip() for x in p.split(",")):
+            if tok and tok not in seen:
+                seen.add(tok)
+                tokens.append(tok)
+    prompt = ", ".join(tokens)
+    trace["prompt"] = prompt
+    return prompt, trace
 
 
 def comic_prompt(char_part_text: str, cut_line: str, camera: str = "") -> str:

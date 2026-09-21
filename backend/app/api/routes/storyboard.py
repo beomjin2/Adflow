@@ -22,8 +22,9 @@ from app import models, schemas
 from app.core.config import settings
 from app.core.database import get_db
 from app.services import jobs
-from app.services.chat_ai import (character_part, comic_prompt, day_from, fmt_day, is_skip,
-                                  item_from, iso_day, new_pid, qty_from, time_from)
+from app.services.chat_ai import (character_part, comic_prompt, comic_prompt_slots, day_from,
+                                  fmt_day, is_skip, item_from, iso_day, new_pid, qty_from,
+                                  time_from)
 from app.services.image_gen import generate_images
 from app.services.meme_ai import propose_story
 
@@ -172,20 +173,27 @@ def _reference_path(char) -> Path | None:
 def _fill_cuts(indexes: list[int], scenes: list[dict], char_part_text: str, reference: Path) -> None:
     """백그라운드 본체 — 컷마다 프롬프트를 만들고 한 장씩 뽑아 comic_cuts의 칸을 채운다.
     컷 문장의 태그 변환(GPT)도 여기서 한다. 실패한 칸은 failed로 남긴다.
-    scenes[i] = {"text": 동작 문장(없으면 대사), "camera": 구도 태그 또는 ""}."""
+    scenes[i] = {"slots": 팀장 시트의 컷 슬롯} 또는 옛 형식 {"text": 동작 문장, "camera": 구도 태그}.
+    슬롯이 있으면 comic_prompt_slots로, 없으면(직접 쓴 옛 컷) 옛 경로로 조립한다."""
     for index, scene in zip(indexes, scenes):
-        prompt = comic_prompt(char_part_text, scene.get("text", ""), scene.get("camera", ""))
+        trace = None
+        if scene.get("slots"):
+            prompt, trace = comic_prompt_slots(char_part_text, scene["slots"])
+        else:
+            prompt = comic_prompt(char_part_text, scene.get("text", ""), scene.get("camera", ""))
         images = generate_images(prompt, 1, workflow_file=settings.comfy_comic_workflow_file,
                                  reference_path=reference)
         image = images[0] if images else None
 
-        def write(db: Session, index=index, image=image):
+        def write(db: Session, index=index, image=image, prompt=prompt, trace=trace):
             sb = db.get(models.Storyboard, 1)
             if not sb:
                 return
             cuts = list(sb.comic_cuts or [])
             if 0 <= index < len(cuts):
-                cuts[index] = {**cuts[index], "image": image, "status": "done" if image else "failed"}
+                # 프롬프트와 슬롯→태그 기록을 컷에 남긴다 — 화면·보고서에서 "왜 이렇게 나왔나"를 보여주려고.
+                cuts[index] = {**cuts[index], "image": image, "status": "done" if image else "failed",
+                               "prompt": prompt, "trace": trace}
                 sb.comic_cuts = cuts
                 db.commit()
 
@@ -197,9 +205,13 @@ def _start_cuts(sb: models.Storyboard, char: models.Character, indexes: list[int
     if reference is None:
         raise HTTPException(400, "캐릭터를 먼저 확정해주세요 — 확정한 캐릭터 그림을 참조로 씁니다")
     cuts = list(sb.comic_cuts or [])
-    # 그림엔 대사가 아니라 동작을 넣는다(대사·글자는 말풍선 몫). 동작이 없으면(직접 쓴 컷) 대사 문장을 쓴다.
-    scenes = [{"text": cuts[i].get("action") or cuts[i].get("line", ""), "camera": cuts[i].get("camera", "")}
-              for i in indexes]
+    # 그림엔 대사가 아니라 동작을 넣는다(대사·글자는 말풍선 몫). 슬롯이 있으면 슬롯으로,
+    # 없으면(직접 쓴 옛 컷) 동작 문장 → 그것도 없으면 대사 문장을 쓴다.
+    scenes = [
+        {"slots": cuts[i]["slots"]} if cuts[i].get("slots")
+        else {"text": cuts[i].get("action") or cuts[i].get("line", ""), "camera": cuts[i].get("camera", "")}
+        for i in indexes
+    ]
     for i in indexes:
         cuts[i] = {**cuts[i], "image": None, "status": "generating"}
     sb.comic_cuts = cuts
@@ -242,7 +254,7 @@ def propose(body: schemas.ProposeIn, db: Session = Depends(get_db)):
     diffs = []
     for cut in cuts:
         before = next((c["line"] for c in current if c.get("n") == cut["n"]), "아직 없음")
-        diffs.append({"label": f"{cut['n']}컷", "from": before, "to": f"{cut['line']} — {cut['action']}"})
+        diffs.append({"label": f"{cut['n']}컷", "from": before, "to": f"{cut['line']} — {cut.get('action', '')}"})
     for old in current[len(cuts):]:
         diffs.append({"label": f"{old['n']}컷", "from": old["line"], "to": "삭제"})
 
@@ -276,6 +288,7 @@ def make_comic(db: Session = Depends(get_db)):
     sb.comic_cuts = [
         {"n": c["n"], "short": c.get("short", ""), "line": c.get("line", ""),
          "action": c.get("action", ""), "camera": c.get("camera", ""),
+         "slots": c.get("slots"),   # 팀장 시트의 컷 슬롯. 옛 plan엔 없다(→ 옛 경로)
          "label": f"{c['n']}컷", "image": None, "status": "generating"}
         for c in plan
     ]

@@ -24,7 +24,8 @@ from app import models, schemas
 from app.core.config import settings
 from app.core.database import get_db
 from app.services import jobs, story_llm
-from app.services.chat_ai import (character_part, comic_prompt, day_from, fmt_day, is_skip,
+from app.services.chat_ai import (COMIC_IDENTITY_FIELDS, character_part, comic_prompt, day_from,
+                                  fmt_day, is_skip,
                                   item_from, iso_day, new_pid, qty_from, time_from)
 from app.services.image_gen import generate_images
 from app.services.meme_ai import propose_story
@@ -262,7 +263,9 @@ def _start_cuts(sb: models.Storyboard, char: models.Character, indexes: list[int
     sb.comic_cuts = cuts
     db.commit()
     # 캐릭터 태그는 여기서 한 번만 계산한다(GPT 1회). 컷 문장 변환은 백그라운드에서.
-    jobs.submit(_fill_cuts, indexes, scenes, character_part(char), reference)
+    # 생김새·옷·나이만 넘긴다 — 성격·능력에서 나오는 표정·소품 태그는 컷마다 정해지는
+    # 표정과 부딪친다(chat_ai.COMIC_IDENTITY_FIELDS).
+    jobs.submit(_fill_cuts, indexes, scenes, character_part(char, COMIC_IDENTITY_FIELDS), reference)
 
 
 @router.post("/propose", response_model=schemas.StoryboardOut)

@@ -131,6 +131,11 @@ class AdUpdate(BaseModel):
     ad_concept: str | None = None
 
 
+class ApplyAdIn(BaseModel):
+    # 트렌드 확인 화면에서 미리 골라 온 밈(Meme.id). 안 골랐으면 None.
+    trend_meme_id: str | None = None
+
+
 class ApplyAdOut(BaseModel):
     ok: bool
     message: str
@@ -147,6 +152,10 @@ class StoryboardOut(BaseModel):
     generating: bool = False          # 네컷 중 하나라도 그리는 중이면 3초 뒤 다시 물어본다
     queue_depth: int = 0
     eta_seconds: int = 0
+    # 트렌드 화면에서 미리 골라 온 밈(있으면). 화면이 "지금 이 밈을 참고 중"이라고
+    # 보여줄 때 쓴다 — 안 골랐으면 둘 다 빈 문자열.
+    trend_meme_id: str = ""
+    trend_meme_name: str = ""
 
 
 def storyboard_out(sb, queue_depth: int = 0) -> "StoryboardOut":
@@ -162,25 +171,6 @@ def storyboard_out(sb, queue_depth: int = 0) -> "StoryboardOut":
     out.queue_depth = queue_depth
     out.eta_seconds = _eta(pending) if pending else 0
     return out
-
-
-# ---------- meme ----------
-class MemeCardOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: int
-    title: str
-    source: str
-    card: dict[str, Any]
-
-
-class MemeCreate(BaseModel):
-    title: str
-    source: str = ""
-    original: str
-
-
-class ProposeIn(BaseModel):
-    meme_id: int
 
 
 # ---------- production ----------
@@ -273,10 +263,14 @@ class TrendOut(BaseModel):
 
 
 class TrendRecommendIn(BaseModel):
-    situation: str
     note: str = ""
 
 
-class TrendRecommendOut(BaseModel):
+class TrendRecommendPick(BaseModel):
     meme: MemeOut
     reason: str
+
+
+class TrendRecommendOut(BaseModel):
+    situation: str
+    picks: list[TrendRecommendPick]

@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.api.routes import ad, character, history, meme, production, storyboard, store, trend
+from app.api.routes import ad, character, history, production, storyboard, store, trend
 from app.core.config import BACKEND_ROOT, settings
 from app.core.database import SessionLocal, init_db
 from app.db.seed import ensure_rows
@@ -63,7 +63,6 @@ app.include_router(store.router)
 app.include_router(character.router)
 app.include_router(ad.router)
 app.include_router(storyboard.router)
-app.include_router(meme.router)
 app.include_router(production.router)
 app.include_router(history.router)
 app.include_router(trend.router)

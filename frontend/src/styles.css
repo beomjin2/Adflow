@@ -198,10 +198,16 @@ summary.ad-acc-sum::marker{content:''}
 .ad-cut:first-child{border-top:0}
 .ad-cut .n{width:32px;height:32px;border-radius:10px;background:var(--green-soft);color:var(--green-deep);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
 
+/* 광고 종류 예시 목업 — 실제 그림은 아직 없어서, 몇 컷짜리 만화로 나뉘는지만 작은 칸으로
+   보여준다("이런 그림이 나와요"라고 오해 주지 않게 캡션 없이 숫자만). 4컷만화는 2×2, 그 외는
+   1행으로 놓아서 실제 컷 배치처럼 보이게 한다(gridTemplateColumns는 Ad.jsx에서 정함). */
+.ad-mockgrid{display:grid;gap:6px}
+.ad-mockcut{aspect-ratio:1/1;border-radius:8px;border:1.5px dashed var(--input-line);background:var(--soft);color:var(--sub);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+
 /* 대화창 — 머리말·기록·입력칸이 카드 한 장. 개선안의 `.chat` 그대로다:
    평소엔 420px 쯤 되고, 옆 열에 맞춰 늘어나야 할 땐 height:100% 로 따라 늘어난다. */
 .ad-chat{display:flex;flex-direction:column;overflow:hidden;min-height:420px;height:100%}
-.ad-chat-h{display:flex;align-items:center;gap:10px;padding:18px 20px 0;flex:none}
+.ad-chat-h{display:flex;align-items:center;gap:10px;padding:18px 20px 0;flex:none;flex-wrap:wrap}
 .ad-chat-h h3{margin:0;font-size:17px;font-weight:700;letter-spacing:-.3px}
 /* 🔴 min-height:0 이 없으면 flex 항목이 내용보다 작아지지 못해 overflow-y:auto 가
    아예 안 걸린다 — 스크롤바가 안 생기고 카드만 계속 길어진다. 실제로 그랬다. */
@@ -226,8 +232,10 @@ summary.ad-acc-sum::marker{content:''}
    페이지가 1458px 스크롤됐다. height:0 으로 대화창이 행 높이 계산에 끼지 않게 만들면
    행은 왼쪽 열이 정하고, min-height:100% 가 그 높이를 도로 채운다. */
 .ad-split.match > .ad-chat{height:0;min-height:100%}
-/* 그래서 바닥값(420px)도 왼쪽 열이 진다 — 대화창은 이제 행 높이를 못 정한다. */
-.ad-split.match > section:first-child{min-height:420px}
+/* 그래서 바닥값도 왼쪽 열이 진다 — 대화창은 이제 행 높이를 못 정한다.
+   밈 카드 섹션을 걷어내면서 왼쪽 열 내용이 짧아져 대화창도 따라 짧아졌다 —
+   바닥값을 420px보다 높여 대화창이 충분히 길게 보이도록 한다. */
+.ad-split.match > section:first-child{min-height:580px}
 .ad-split.match > section > .ad-card:last-child{flex:1 1 auto}
 /* 남는 높이는 카드 안쪽 위에 두고, 버튼은 카드 바닥에 붙인다 — 눌러야 할 것이
    허공 위가 아니라 판 끝에 놓여야 어디서 끝나는 화면인지 읽힌다. */

@@ -5,18 +5,26 @@
 사장님 문장을 토막낸 것이다 — "오늘 소금빵 30개 구웠어요" 는 한 컷이 되고, 그 한 컷이
 그대로 그림 프롬프트로 들어가 글자를 못 쓰는 모델에게 대사를 그리라고 시켰다.
 
-여기서 만드는 컷은 `meme_ai.propose_story()` 와 같은 모양이다(line/action/camera/props).
 `line` 은 말풍선에 들어갈 대사고 `action` 은 그림에 들어갈 동작이다. 둘을 나눠야
 `_start_cuts()` 가 그림에는 동작만 넣는다.
+
+밈도 여기서 같이 본다(예전엔 meme_ai.py가 밈 카드+가게 정보로 스토리를 따로 만드는
+별도 경로였다 — 대화와 밈이 따로 놀아서 사장님이 뭘 눌러야 밈이 들어가는지 헷갈렸다).
+트렌드 확인 화면에서 미리 골라 온 밈이 있으면(`trend_meme`) 그걸 참고하고, 없으면
+크롤링된 밈 후보(`meme_candidates`)를 보여주고 자연스럽게 어울리는 게 있을 때만
+GPT가 스스로 골라 쓴다. 카드로 미리 요약해 두지 않는다 — 원문(유래·활용예시)만으로도
+충분하다(meme_recommend.py에서 이미 확인됨).
 
 **실패해도 된다.** 키가 없거나 네트워크가 끊겼거나 응답이 이상하면 `None` 을 돌려주고
 라우터가 규칙 기반(`_cuts_from_text`)으로 간다. sheet_llm 과 같은 약속이다.
 
 돌려주는 값 세 가지를 구분한다:
   None  — LLM을 못 썼다. 호출부가 규칙 기반으로 돌아간다.
-  []    — LLM이 "이건 광고로 만들 내용이 아니다"라고 판단했다(인사·잡담·되묻는 질문).
+  {"cuts": [], "meme_used": None}
+        — LLM이 "이건 광고로 만들 내용이 아니다"라고 판단했다(인사·잡담·되묻는 질문).
           호출부는 지어내지 말고 되물어야 한다.
-  [...] — 컷 구성.
+  {"cuts": [...], "meme_used": {"id","name"} | None}
+        — 컷 구성. meme_used는 실제로 반영한 밈(있으면).
 """
 
 import json
@@ -26,9 +34,11 @@ import re
 import requests
 
 from app.core.config import settings
-from app.services.meme_ai import CAMERA_TAGS
 
 logger = logging.getLogger(__name__)
+
+# 그림 모델이 알아듣는 구도 태그만 허용한다. 자연어 카메라 지시("입구 클로즈업")는 여기로 매핑된다.
+CAMERA_TAGS = ("straight-on", "close-up", "from_side", "from_below", "from_above", "wide_shot")
 
 _PLAN_SYSTEM = """\
 너는 한국 동네 가게 사장님의 SNS 광고를 같이 만든다.
@@ -49,11 +59,42 @@ _PLAN_SYSTEM = """\
 4. 주인공은 가게 마스코트 하나다. 사람 손님은 그리지 않는다 — 손님이 필요하면 동물 손님으로 적는다.
 5. 광고 느낌(컨셉)을 대사 **말투**에 반영한다. 느낌을 설명하는 문장을 쓰지 않는다.
 6. 컷은 정확히 {n}개.
+{meme_rule}
 
-출력은 이 모양의 JSON만: {{"cuts": [{{"n": 1, "line": "...", "action": "...", "camera": "..."}}]}}
+출력은 이 모양의 JSON만:
+{{"cuts": [{{"n": 1, "line": "...", "action": "...", "camera": "..."}}], "meme_used": 실제로 반영한 밈의 id(문자열) 또는 null}}
 사장님 말이 광고로 만들 내용이 아니면(인사·잡담·되묻는 질문·"몰라" 같은 말)
-{{"cuts": []}} 로 돌려준다. 그럴 때 아무 장면이나 지어내면 사장님이 만든 적 없는 광고가 된다.
+{{"cuts": [], "meme_used": null}} 로 돌려준다. 그럴 때 아무 장면이나 지어내면 사장님이 만든 적 없는 광고가 된다.
 """
+
+_MEME_RULE_SELECTED = (
+    "7. 아래 [참고 밈]을 스토리에 자연스럽게 녹인다 — 말투나 분위기를 빌려 오되, "
+    "강제로 우겨넣어 어색해지면 안 된다. meme_used엔 그 밈의 id를 그대로 적는다."
+)
+_MEME_RULE_CANDIDATES = (
+    "7. [밈 후보] 중 지금 이야기에 자연스럽게 어울리는 게 있으면 하나 골라 살짝 녹여도 "
+    "된다(선택) — 없으면 그냥 이야기로만 만들고 meme_used는 null. 억지로 끼워맞추지 않는다."
+)
+
+
+def _meme_prompt_parts(trend_meme: dict | None, meme_candidates: list[dict]) -> tuple[str, str]:
+    """(meme_rule, meme_block) — meme_rule은 시스템 프롬프트에, meme_block은 사용자 메시지에 넣는다."""
+    if trend_meme:
+        block = (
+            f"[참고 밈: {trend_meme.get('name', '')}]\n"
+            f"유래: {(trend_meme.get('origin') or '')[:200]}\n"
+            f"활용예시: {(trend_meme.get('usage_example') or '')[:200]}\n\n"
+        )
+        return _MEME_RULE_SELECTED, block
+    if meme_candidates:
+        lines = [
+            f"- id: {m['id']} / 이름: {m['name']} / 유래: {(m.get('origin') or '')[:120]} "
+            f"/ 활용예시: {(m.get('usage_example') or '')[:120]}"
+            for m in meme_candidates
+        ]
+        block = "[밈 후보]\n" + "\n".join(lines) + "\n\n"
+        return _MEME_RULE_CANDIDATES, block
+    return "", ""
 
 # 사장님이 말한 적 없는 숫자를 잡는다. 프롬프트로 "지어내지 마라"를 적어도 모델은
 # "단돈 3,000원!" 같은 문장을 만든다 — 그건 가게에 실제로 없는 가격이다.
@@ -148,15 +189,24 @@ def plan_from_text(
     ad: dict,
     prods: list[dict],
     current_plan: list[dict],
-) -> list[dict] | None:
-    """사장님 문장 → 컷 구성. 못 쓰면 None, 광고 내용이 아니면 []."""
+    trend_meme: dict | None = None,
+    meme_candidates: list[dict] = (),
+) -> dict | None:
+    """사장님 문장 → 컷 구성. 못 쓰면 None, 광고 내용이 아니면 {"cuts": [], "meme_used": None}.
+
+    trend_meme — 트렌드 화면에서 미리 골라 온 밈({id,name,origin,usage_example}). 주면
+    meme_candidates는 무시한다(이미 정해졌으니 고를 필요가 없다).
+    meme_candidates — 안 골랐을 때 GPT가 스스로 볼 후보 목록. 비어 있으면 밈 얘기 자체를 안 한다.
+    """
     if not available() or not (text or "").strip():
         return None
 
     n = cut_count(ad.get("ad_type", ""))
-    system = _PLAN_SYSTEM.format(cameras=" | ".join(CAMERA_TAGS), n=n)
+    meme_rule, meme_block = _meme_prompt_parts(trend_meme, list(meme_candidates))
+    system = _PLAN_SYSTEM.format(cameras=" | ".join(CAMERA_TAGS), n=n, meme_rule=meme_rule)
     user = (
         f"{_context(store, char, ad, prods, current_plan)}\n\n"
+        + meme_block +
         f"[사장님이 방금 한 말]\n{text.strip()}"
     )
     parsed = _ask(system, user)
@@ -167,7 +217,7 @@ def plan_from_text(
     if not isinstance(raw, list):
         return None
     if not raw:
-        return []  # 모델이 "광고로 만들 내용이 아니다"라고 답한 것
+        return {"cuts": [], "meme_used": None}  # 모델이 "광고로 만들 내용이 아니다"라고 답한 것
 
     # 사장님 말 + 가게 정보에 있는 숫자만 허용한다. 숫자 검사의 건초더미다.
     haystack = (text or "") + " " + _context(store, char, ad, prods, current_plan)
@@ -197,7 +247,22 @@ def plan_from_text(
         })
 
     # 한 컷짜리 광고는 컷 구성이라고 부를 수 없다. 모델이 형식을 놓친 것으로 본다.
-    return cuts if len(cuts) >= 2 else None
+    if len(cuts) < 2:
+        return None
+
+    # trend_meme이 있으면 이미 정해진 값을 그대로 쓴다(GPT의 echo를 믿을 필요가 없다).
+    # meme_candidates뿐이었다면 GPT가 실제로 고른 id를 후보 목록에서 확인해서 쓴다 —
+    # 후보에 없는 값이 오면(지어냈거나 형식이 어긋났으면) 안 쓴 것으로 조용히 넘어간다.
+    meme_used = None
+    if trend_meme:
+        meme_used = {"id": trend_meme["id"], "name": trend_meme.get("name", "")}
+    elif meme_candidates:
+        raw_id = str(parsed.get("meme_used") or "")
+        match = next((m for m in meme_candidates if str(m["id"]) == raw_id), None)
+        if match:
+            meme_used = {"id": match["id"], "name": match.get("name", "")}
+
+    return {"cuts": cuts, "meme_used": meme_used}
 
 
 def _invents_numbers(value: str, haystack: str) -> bool:

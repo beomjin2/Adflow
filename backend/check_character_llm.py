@@ -189,6 +189,97 @@ print(f"  판정: {'통과' if len(filled) >= 4 else '⚠ 적게 읽었다'}")
 
 print()
 print("=" * 72)
+print("3-b. 채우는 중에 다른 칸으로 옮겨갈 수 있는가 (실사용에서 막혔던 지점)")
+print("=" * 72)
+# 배포 서버 실사용: 아웃핏을 묻는 중에 "고양이 말고 다른 외형 추천해줘"라고 했더니
+# 계속 아웃핏만 물었고, 외형 값("흰색 털에 긴 꼬리를 가진 강아지")을 아웃핏 칸에 제안했다.
+reset()
+set_store("베이커리", "동네 빵집", ["소금빵"])
+say("안녕하세요")
+data = say("몰라 베이커리 잘하게 생기게")
+pid, proposal = open_proposal(data)
+if proposal:
+    data = call(route.accept_suggestion, pid)
+print(f"  외형 채운 뒤 묻는 칸: {data['editing']}  (아웃핏이어야 정상)")
+
+data = say("아 고양이 말고 다른거 할래 외형 뭐 다른거 추천좀")
+pid, proposal = open_proposal(data)
+target = list(proposal["payload"]["changes"])[0] if proposal else ""
+print(f"\n  '외형 뭐 다른거 추천좀' →")
+print(f"    열린 칸   : {data['editing']}")
+print(f"    제안된 칸 : {target or '(제안 없음)'}")
+if proposal:
+    for d in proposal["diffs"]:
+        print(f"    {d['label']}: \"{d['to']}\"")
+ok = data["editing"] == "look" and (not target or target == "look")
+print(f"    판정: {'통과 — 외형 쪽으로 옮겨갔다' if ok else '⚠ 실패 — 아웃핏에 갇혔다'}")
+if proposal:
+    data = call(route.decline_suggestion, pid)
+
+data = say("강아지")
+looks = {r["field"]: r["value"] for r in data["sheet"]}
+print(f"\n  이어서 '강아지' →")
+print(f"    외형 : {looks['look']}")
+print(f"    아웃핏: {looks['outfit'] or '(비어 있음)'}")
+pid, proposal = open_proposal(data)
+if proposal:
+    for d in proposal["diffs"]:
+        print(f"    제안: {d['label']} → \"{d['to']}\"")
+print(f"    판정: {'통과 — 아웃핏에 안 들어갔다' if '강아지' not in (looks['outfit'] or '') else '⚠ 실패 — 아웃핏에 들어갔다'}")
+
+print()
+print("=" * 72)
+print("3-c. '~하게 생긴 놈으로'가 시트에 그대로 적히지 않는가")
+print("=" * 72)
+# 실사용: "걍 베이커리 잘하게 생긴놈으로"가 외형 칸에 글자 그대로 적혔다.
+# 그건 묘사가 아니라 "그렇게 생긴 걸 만들어 달라"는 부탁이다.
+reset()
+set_store("베이커리", "내맘대로 베이커리", ["소금빵"])
+say("뭐할까")
+data = say("음.. 걍 베이커리 잘하게 생긴놈으로")
+looks = {r["field"]: r["value"] for r in data["sheet"]}
+pid, proposal = open_proposal(data)
+print(f"  시트의 외형 : {looks['look'] or '(비어 있음 — 제안 카드로 올라감)'}")
+if proposal:
+    for d in proposal["diffs"]:
+        print(f"  제안 카드   : {d['label']} → \"{d['to']}\"")
+    for b in (proposal.get("basis") or []):
+        print(f"    근거      : [{b['label']}] “{b['quote']}”")
+# 특정 표현이 들어갔는지로 보지 않는다 — 그러면 그 표현만 검사하게 된다.
+# **사장님이 친 말이 시트에 거의 그대로 옮겨졌는가**를 본다. 어떤 문장이든 통한다.
+said = "음.. 걍 베이커리 잘하게 생긴놈으로".replace(" ", "").replace(".", "")
+wrote = (looks["look"] or "").replace(" ", "")
+copied = bool(wrote) and (wrote in said or said in wrote)
+print(f"  판정: {'⚠ 실패 — 사장님 말이 그대로 옮겨졌다' if copied else '통과 — 그대로 옮기지 않았다'}")
+
+print()
+print("=" * 72)
+print("3-d. 뒤 칸을 묻는 중에 '외형을 네가 정해달라'고 하면 외형으로 돌아가는가")
+print("=" * 72)
+# 실사용: 설명/능력을 묻는 중에 "외형자체가 ... 너가 그 외형을 해달라는거야"라고 해도
+# 계속 앞으로만 나아가 능력을 물었다.
+if proposal:
+    data = call(route.accept_suggestion, pid)
+for line in ["앞치마 입은 걸로", "빵을 잘 굽는 성격이에요"]:
+    data = say(line)
+    pid2, prop2 = open_proposal(data)
+    if prop2:
+        data = call(route.accept_suggestion, pid2)
+print(f"  지금 묻는 칸: {data['editing']}")
+data = say("아니 외형자체가 그게 아니고 너가 그 외형을 정해달라는거야")
+pid3, prop3 = open_proposal(data)
+target3 = list(prop3["payload"]["changes"])[0] if prop3 else ""
+print(f"\n  '외형자체가 ... 너가 정해달라는거야' →")
+print(f"    열린 칸   : {data['editing']}")
+print(f"    제안된 칸 : {target3 or '(제안 없음)'}")
+if prop3:
+    for d in prop3["diffs"]:
+        print(f"    {d['label']}: \"{d['from']}\"  →  \"{d['to']}\"")
+ok3 = data["editing"] == "look" or target3 == "look"
+print(f"    판정: {'통과 — 외형으로 돌아갔다' if ok3 else '⚠ 실패 — 앞으로만 나아갔다'}")
+
+print()
+print("=" * 72)
 print("4. 시트 정보가 그림 프롬프트로 얼마나 넘어가는가")
 print("=" * 72)
 with SessionLocal() as db:

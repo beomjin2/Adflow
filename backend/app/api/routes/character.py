@@ -201,9 +201,18 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     # 우리가 **실제로 물어본** 칸. 비어 있으면 아직 아무것도 묻지 않았다는 뜻이다.
     asked = char.editing
 
-    # LLM이 붙어 있으면 한 문장에서 여러 칸을 한 번에 읽는다
-    # ("앞치마 두른 3살 곰이요" → 외형·아웃핏·나이). 못 읽으면 빈 dict가 온다.
-    read = sheet_llm.read_fields(char, text, asked or sheet.next_field(char), store)
+    # LLM이 붙어 있으면 한 문장에서 여러 칸을 한 번에 읽고, **어느 칸 얘기인지**와
+    # **대신 정해달라는 뜻인지**까지 같이 가려낸다.
+    read = sheet_llm.understand(char, text, asked or sheet.next_field(char), store)
+    fields = read.get("fields") or {}
+    wants_help = read.get("wants_help", False)
+
+    # **사장님이 가리킨 칸이 가이드 순서보다 우선이다.** 아웃핏을 묻는 중에 외형
+    # 얘기를 하면 외형으로 옮겨간다. 예전에는 라우터가 "지금 묻는 칸"에 못 박아 둬서,
+    # 앞 칸으로 돌아가려 해도 계속 원래 칸만 물었다.
+    target = read.get("target") or ""
+    if target and target != asked:
+        char.editing = asked = target
 
     if not complete_before:
         # ---- 빈 칸 채우기 ----
@@ -212,7 +221,20 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
         # 예전에는 못 읽으면 물어본 칸에 사장님 말을 통째로 넣었다(`{asked: text}`).
         # 그래서 "몰라 좀 해봐"가 설명 칸에, "모른다고"가 능력 칸에 그대로 적혔다.
         # 답이 아닌 말은 답이 아니다. 시트는 사장님이 **정한 것**만 담아야 한다.
-        filling = dict(read)
+        filling = dict(fields)
+
+        # **이미 값이 있는 칸을 덮어쓰려 하면 한 번 더 묻는다.**
+        # "외형 다른거할래" 같은 말에서 모델이 "다른거"를 값으로 뽑아내는 일이 있다.
+        # 그대로 덮어쓰면 사장님 캐릭터가 그 조각으로 바뀌고, 대화는 가이드 순서대로
+        # 다음 칸으로 가 버린다 — 정작 사장님은 그 칸을 다시 정하자고 한 것이다.
+        # 덮어쓰기는 흔치 않으니 그때만 칸 판단을 한 번 더 부른다(비용도 그때만 든다).
+        if any(sheet.value_of(char, f) for f in filling):
+            wanted = sheet_llm.detect_edit_target(char, text, store)
+            if wanted.get("intent") == "edit" and not wanted.get("value"):
+                # 어떻게 바꿀지는 아직 안 말했다. 그 칸을 열고 다시 묻는다.
+                filling = {}
+                char.editing = asked = wanted["field"]
+
         if not filling and asked and not sheet_llm.available():
             # LLM이 없을 때만 규칙 기반으로 되돌아간다 — 그때는 이것 말고 방법이 없다.
             filling = {asked: text}
@@ -236,7 +258,7 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
                 _say(messages, f"{labels}까지 적어뒀어요. 시트가 다 채워졌어요.")
                 _propose_keywords(char, messages, store)
         else:
-            _handle_non_answer(char, messages, text, asked, store)
+            _handle_non_answer(char, messages, text, asked, store, wants_help=wants_help)
     else:
         # ---- 다 찬 뒤의 수정 — 승인받고 반영한다 ----
         # 시트에서 칸을 눌러 '이 칸을 고치겠다'고 한 게 asked다. 그게 없어도
@@ -246,7 +268,7 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
         # 말만 하면 추출 쪽이 지금 외형을 그대로 되돌려주는데, 그걸 수정으로 치면
         # "지금 시트와 같은 내용이에요"로 끝나고 칸이 열리지 않는다 — 배포 서버에서
         # 실제로 그랬다. 무의미한 값은 걷어내고 무엇을 고치려는 말인지 읽는 쪽으로 넘긴다.
-        changes = {f: v for f, v in (read or {}).items() if sheet.value_of(char, f) != v}
+        changes = {f: v for f, v in fields.items() if sheet.value_of(char, f) != v}
         if not changes and asked and sheet.value_of(char, asked) != text:
             changes = {asked: text}
         if changes:
@@ -308,7 +330,8 @@ def _handle_complete_chat(char, messages: list, text: str, store) -> None:
     )
 
 
-def _handle_non_answer(char, messages: list, text: str, asked: str, store) -> None:
+def _handle_non_answer(char, messages: list, text: str, asked: str, store,
+                       wants_help: bool = False) -> None:
     """시트에 넣을 내용이 없는 말에 답한다. **사장님 말이 시트에 적히는 일은 없다.**
 
     세 갈래다.
@@ -333,6 +356,42 @@ def _handle_non_answer(char, messages: list, text: str, asked: str, store) -> No
         ))
         return
 
+    # **사장님이 다른 칸 얘기를 하면 그 칸으로 옮긴다.** 묻고 있는 칸에 갇히면 안 된다 —
+    # 아웃핏을 묻는 중에 "고양이 말고 다른 외형 추천해줘"라고 해도 계속 아웃핏만 물었고,
+    # 심지어 외형 값("흰색 털에 긴 꼬리를 가진 강아지")을 아웃핏 칸에 제안했다.
+    # 어느 칸인지 가르는 일은 LLM이 한다 — 여기서 키워드로 정하지 않는다.
+    # **칸 판단은 언제나 한 번 더 묻는다.** understand()가 이미 target을 냈더라도
+    # 건너뛰지 않는다 — 그게 틀렸을 때 되돌릴 길이 없어진다. 실제로 능력을 묻는 중에
+    # "외형자체가 그게 아니고 너가 정해달라는거야"라고 했는데 능력에 갇혔다.
+    # 이쪽은 "어느 칸 얘기인가" 하나만 보는 전문 판단이라 더 믿을 만하다.
+    wanted = sheet_llm.detect_edit_target(char, text, store)
+    if wanted.get("intent") == "edit" and wanted["field"] != following:
+        following = wanted["field"]
+        char.editing = following
+        value = wanted.get("value")
+        if value:
+            # 어떻게 바꿀지까지 말했다 — 바로 카드로 올린다.
+            _open_suggestion(char, messages, {following: value}, phase="filling")
+            return
+        # 칸만 옮겼다. 그 칸을 묻되, 대신 정해달라는 뜻이면 아래 제안으로 이어진다.
+        proposal = sheet_llm.propose_field(char, following, text, store)
+        if not proposal:
+            current = sheet.value_of(char, following)
+            _say(messages, _guide(
+                char, text, {}, following, store,
+                fallback=(f"'{_label(following)}'은(는) 지금 \"{current}\"예요. 어떻게 바꿀까요?"
+                          if current else sheet.QUESTIONS.get(following, "")),
+            ))
+            return
+        # 카드에 무엇을 왜 정했는지(why)가 실린다. 여기에 되묻는 말까지 얹으면
+        # "제안해 놓고 다시 뭘 원하냐고 묻는" 꼴이 된다 — 그게 대화를 설문지로 만든다.
+        _open_suggestion(
+            char, messages, {following: proposal["value"]}, phase="filling",
+            lead=proposal.get("say") or sheet_llm.reply(char, text, {}, following, store),
+            basis=proposal.get("basis"), why=proposal.get("why"),
+        )
+        return
+
     proposal = sheet_llm.propose_field(char, following, text, store)
     if proposal:
         char.editing = following
@@ -341,7 +400,7 @@ def _handle_non_answer(char, messages: list, text: str, asked: str, store) -> No
         # 무엇을 보고 정했는지(basis)도 카드에 같이 싣는다.
         _open_suggestion(
             char, messages, {following: proposal["value"]}, phase="filling",
-            lead=sheet_llm.reply(char, text, {}, following, store),
+            lead=proposal.get("say") or sheet_llm.reply(char, text, {}, following, store),
             basis=proposal.get("basis"), why=proposal.get("why"),
         )
         return
@@ -459,6 +518,9 @@ def _open_suggestion(char, messages: list, changes: dict, phase: str = "editing"
         "phase": phase,
         # 승인 뒤 가이드 제안의 기준점. 여러 칸이면 가이드 순서상 가장 뒤쪽을 기준으로 삼는다.
         "field": max(real, key=_rank),
+        # 빈 칸을 채우는 게 아니라 **이미 있던 값을 고치는 것**인가. 승인 뒤에 어디로
+        # 갈지를 이걸로 가른다 — 고친 거면 그 칸에 머물러야 한다.
+        "redo": any(sheet.value_of(char, f) for f in real),
         "diffs": diffs,
         "payload": {"changes": real},
         # 우리가 대신 정해준 값일 때만 근거가 붙는다. 사장님이 직접 말한 수정에는
@@ -511,6 +573,18 @@ def accept_suggestion(pid: str, db: Session = Depends(get_db)):
         label = ", ".join(_label(f) for f in changes)
 
         if proposal.get("phase") == "filling":
+            # **고친 것이면 그 칸에 머문다.** 사장님이 "외형 다른거"라고 해서 고쳐 놓고
+            # 곧바로 다음 칸을 물으면, 방금 고친 게 마음에 드는지 말할 틈이 없다.
+            # 실제로 외형을 고친 직후 설명을 물어 버려서 사장님이 같은 말을 반복했다.
+            if proposal.get("redo"):
+                stay = proposal["field"]
+                char.editing = stay
+                following = sheet.next_field(char)
+                nxt = f" 이대로 괜찮으시면 다음은 '{_label(following)}'이에요." if following else ""
+                _say(messages, f"{label} 이렇게 바꿨어요. 더 고칠 게 있으면 말씀해주세요.{nxt}")
+                char.messages = messages
+                return _out(char, db)
+
             # 빈 칸을 대신 정해준 제안이었다. 가이드가 아니라 **남은 빈 칸**으로 이어간다.
             following = sheet.next_field(char)
             if following:

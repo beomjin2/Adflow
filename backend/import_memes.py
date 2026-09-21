@@ -11,6 +11,21 @@ id/image.file이 고구마팜 항목 일부에서 한글로 돼 있는데(예: "
 경로로 못 찾으면 같은 소스(gogumafarm) 안에서 id 끝의 일련번호(_02, _09 같은 두 자리
 숫자)로 실제 파일을 찾는다. memes_classified.json의 unique_id도 같은 이유로 로마자라
 분류 결과를 붙일 때 이 일련번호 매칭을 그대로 재사용한다.
+
+[누적 방식] 크롤링할 때마다 DB를 갈아엎지 않고 쌓는다.
+- 같은 밈인지는 id(글 번호 기반이라 크롤링마다 바뀜)가 아니라 띄어쓰기를 뺀 밈 이름으로
+  판단한다(merged_from에 남은 다른 사이트 표기도 같이 비교).
+- 새 밈: 전부 저장한다.
+- 이미 있는 밈: id와 사이트 내용(이름·유래·활용 예시·등록일·이미지·링크 등)은 처음 수집한
+  것을 그대로 둔다. 밈 내용은 한 번 쓰이면 거의 안 바뀌고, 다시 덮어쓰면 파싱 실패로 멀쩡한
+  내용이 망가질 위험만 있어서다. 비어 있는 칸만 채운다.
+  바뀌는 정보(조회수·순위·수집일·유행 날짜)와 새로 발견된 출처(merged_from)만 반영한다.
+- 이번 파일에 없는 밈은 지우지 않는다(지난달 밈도 트렌드 화면에 남는다).
+- 화면의 "최근 수집"은 collected_at 전체 중 최댓값이다.
+
+유행 날짜는 원래 사이트 크롤링과 별개로, DB에 있는 밈 전체를 대상으로 네이버 검색량을
+다시 재서 갱신해야 한다(사이트 목록에서 빠진 밈도 여전히 유행 중일 수 있으므로). 그 단계가
+따로 생기기 전까지는 여기서 파일에 담긴 측정값으로만 갱신한다.
 """
 
 import json
@@ -32,6 +47,57 @@ CLASSIFIED_PATH = CRAWLING_DIR / "memes_classified.json"
 
 _SUFFIX_RE = re.compile(r"_(\d{2})$")
 _IMAGE_SUFFIX_RE = re.compile(r"^gogumafarm_[a-z]+_(\d{2})\.jpg$")
+
+
+def _meme_key(name: str) -> str:
+    """같은 밈 판정용 키. "연락 없네 잘 살아"와 "연락없네잘살아"를 같은 밈으로 본다."""
+    return re.sub(r"\s+", "", name or "").lower()
+
+
+# 처음 수집한 값을 유지하는 사이트 내용 칸 — 비어 있을 때만 채운다.
+_KEEP_FIELDS = (
+    "source", "source_label", "url", "meme_name", "origin", "usage_example",
+    "published_date", "image", "search_terms",
+)
+_TREND_FIELDS = ("period_start", "period_end", "peak_date", "trend_method", "pre_existing", "blog_total")
+
+
+def _update_existing(row, fields: dict, item: dict) -> None:
+    """이미 DB에 있는 밈을 갱신한다. id와 사이트 내용은 건드리지 않는다."""
+    for key in _KEEP_FIELDS:
+        if not getattr(row, key) and fields.get(key):
+            setattr(row, key, fields[key])
+
+    # 매번 달라지는 정보
+    row.views = fields["views"]
+    row.rank_in_source = fields["rank_in_source"]
+    row.collected_at = fields["collected_at"]
+    if fields.get("trend_method"):  # 측정값이 있을 때만 (없으면 예전 측정값 유지)
+        for key in _TREND_FIELDS:
+            setattr(row, key, fields[key])
+    for key in ("situation", "situation_score", "ad_safe"):
+        if key in fields:
+            setattr(row, key, fields[key])
+
+    # 새로 발견된 출처는 merged_from / links에 덧붙인다.
+    merged = list(row.merged_from or [])
+    seen = {row.url} | {m.get("url") for m in merged}
+    candidates = [dict(id=item["id"], source=item.get("source") or "", source_label=item.get("source_label") or "",
+                       name=item.get("name") or "", url=item.get("url") or "")]
+    candidates += item.get("merged_from") or []
+    for c in candidates:
+        if c.get("url") and c["url"] not in seen:
+            merged.append(c)
+            seen.add(c["url"])
+    row.merged_from = merged
+
+    links = list(row.links or [])
+    hrefs = {l.get("href") for l in links}
+    for l in fields.get("links") or []:
+        if l.get("href") and l["href"] not in hrefs:
+            links.append(l)
+            hrefs.add(l["href"])
+    row.links = links
 
 
 def _suffix(item_id: str) -> str | None:
@@ -100,6 +166,18 @@ def main() -> None:
     db = SessionLocal()
     inserted = updated = missing_image = 0
     try:
+        # 이미 DB에 있는 밈을 이름 키로 색인한다. merged_from에 남은 다른 사이트 표기도
+        # 같이 넣어 둬서, 다음 크롤링에서 그 표기로 들어와도 같은 밈으로 잡히게 한다.
+        existing_by_key: dict[str, models.Meme] = {}
+        for row in db.query(models.Meme).all():
+            names = [row.meme_name] + [m.get("name") or "" for m in (row.merged_from or [])]
+            for n in names:
+                k = _meme_key(n)
+                if k:
+                    existing_by_key.setdefault(k, row)
+        before_ids = {r.id for r in existing_by_key.values()}
+        touched_ids: set[str] = set()
+
         for item in memes:
             image_name = _resolve_image(item, image_suffix_index)
             if not image_name:
@@ -141,29 +219,29 @@ def main() -> None:
                     situation_score=classification.get("situation_score"),
                     ad_safe=classification.get("ad_safe"),
                 )
-            row = db.get(models.Meme, fields["id"])
+            names = [item.get("name") or ""] + [m.get("name") or "" for m in (item.get("merged_from") or [])]
+            keys = [k for k in (_meme_key(n) for n in names) if k]
+            row = next((existing_by_key[k] for k in keys if k in existing_by_key), None)
             if row is None:
-                db.add(models.Meme(**fields))
+                row = db.get(models.Meme, fields["id"])  # 이름은 달라도 id가 겹치는 경우 대비
+            if row is None:
+                row = models.Meme(**fields)
+                db.add(row)
                 inserted += 1
             else:
-                for key, value in fields.items():
-                    setattr(row, key, value)
+                _update_existing(row, fields, item)
                 updated += 1
-
-        # memes_all.json은 그때그때의 델타가 아니라 전체 현황이다 — 이전 크롤링
-        # 포맷(memes_nested.json 등)으로 들어와 있던, 지금 파일엔 없는 옛 행은 지운다.
-        current_ids = {item["id"] for item in memes}
-        stale = db.query(models.Meme).filter(models.Meme.id.notin_(current_ids)).all()
-        removed = len(stale)
-        for row in stale:
-            db.delete(row)
+            touched_ids.add(row.id)
+            for k in keys:
+                existing_by_key[k] = row
 
         db.commit()
+        kept = len(before_ids - touched_ids)  # 이번 파일엔 없지만 지우지 않고 남겨 둔 밈
     finally:
         db.close()
 
     print(f"{ALL_PATH.name}: {len(memes)}건")
-    print(f"완료 — 새로 추가 {inserted}건, 갱신 {updated}건, 이미지 없음 {missing_image}건, 삭제(옛 포맷 잔여) {removed}건")
+    print(f"완료 — 새로 추가 {inserted}건, 갱신 {updated}건, 이번엔 없어서 그대로 둔 밈 {kept}건, 이미지 없음 {missing_image}건")
 
 
 if __name__ == "__main__":

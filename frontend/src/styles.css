@@ -13,8 +13,10 @@
 }
 body{font-size:16px;line-height:1.45}
 
-.ad-page{min-height:100vh;padding:20px 16px 72px;display:flex;justify-content:center}
-.ad-wrap{width:100%;max-width:1040px;display:flex;flex-direction:column;gap:20px}
+/* 개선안의 `.page` / `.wrap` 그대로. 아래 80px 은 마지막 카드와 창 끝 사이에 배경이
+   한 뼘 남게 두는 값이다 — 카드가 창 끝에 맞닿으면 잘린 것처럼 보인다. */
+.ad-page{min-height:100vh;padding:20px 20px 80px;display:flex;justify-content:center}
+.ad-wrap{width:100%;max-width:1040px;display:flex;flex-direction:column;gap:22px}
 
 /* 상단 바 */
 .ad-top{display:flex;align-items:center;gap:12px;min-height:48px}
@@ -108,3 +110,138 @@ body{font-size:16px;line-height:1.45}
 .ad-chip{display:inline-flex;align-items:center;height:30px;padding:0 12px;border-radius:999px;font-size:12.5px;font-weight:600;background:var(--bg);border:1px solid var(--line);color:var(--sub);white-space:nowrap}
 .ad-hdr-btn{height:38px;padding:0 16px;border-radius:999px;border:0;background:var(--green);color:#fff;box-shadow:0 4px 10px rgba(22,160,107,.3);font-size:13.5px;font-weight:700;cursor:pointer;flex:none}
 .ad-hdr-btn:hover{background:var(--green-hover)}
+
+/* ===========================================================================
+ * 광고 만들기 화면 (3단계: 설정 · 알릴 내용)
+ *
+ * 개선안 프로토타입(claude.ai/design 프로젝트 bdf26dfe, app/style.css)의 클래스를
+ * 그대로 옮겨 적은 것이다. 이름만 `ad-` 접두사를 붙였다 — 이 파일의 다른 클래스와
+ * 같은 규칙이고, 전역 `.btn` `.card` 같은 흔한 이름이 새어 나가지 않게.
+ *
+ * 이 화면들은 `.ad-body`(흰 카드) 안에 들어가지 않는다. 카드 여러 장이 배경 위에
+ * 나란히 놓이는 게 개선안의 모양이라, 큰 흰 카드 안에 또 카드를 넣으면 테두리가
+ * 두 겹이 된다. AppShell 의 FULL_BLEED 가 그 예외를 정한다.
+ * ======================================================================== */
+
+/* 2단 배치. l 은 왼쪽이 넓고, r 은 오른쪽이 넓다. 좁아지면 한 단으로 접힌다. */
+.ad-split{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+.ad-split.l{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
+.ad-split.r{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}
+@media (max-width:860px){.ad-split,.ad-split.l,.ad-split.r{grid-template-columns:minmax(0,1fr)}}
+
+.ad-pad{padding:22px}
+.ad-col{display:flex;flex-direction:column;gap:12px}
+.ad-row{display:flex;align-items:center;gap:10px}
+.ad-wrapc{display:flex;flex-wrap:wrap;gap:8px}
+.ad-sec-t{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ad-sec-t h3{margin:0;font-size:16px;font-weight:700;letter-spacing:-.3px}
+.ad-hint{font-size:13px;color:var(--sub);line-height:19px}
+
+/* 입력 */
+.ad-field{display:flex;flex-direction:column;gap:7px;min-width:0}
+.ad-field>label,.ad-lbl{font-size:14px;font-weight:700;color:var(--ink)}
+.ad-field .sub{font-size:13px;color:var(--mute);font-weight:500}
+.ad-input,.ad-select,.ad-textarea{height:var(--tap);border-radius:var(--r-in);border:1.5px solid var(--input-line);background:#fff;color:var(--ink);padding:0 14px;width:100%;min-width:0;font-size:16px;font-family:inherit;transition:border-color .15s}
+.ad-input:focus,.ad-select:focus,.ad-textarea:focus{border-color:var(--green);outline:0;box-shadow:0 0 0 3px var(--green-line)}
+.ad-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%236A7077' stroke-width='2'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px}
+.ad-select.unset{color:var(--mute)}
+.ad-textarea{height:auto;min-height:84px;padding:11px 14px;resize:vertical;line-height:21px}
+.ad-select:disabled{background:var(--bg);color:var(--sub)}
+
+/* 버튼 */
+.ad-btn{height:52px;padding:0 20px;border-radius:var(--r-in);font-size:16px;font-weight:700;font-family:inherit;display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;border:0;cursor:pointer;color:var(--ink);transition:background .15s,box-shadow .15s,border-color .15s}
+.ad-btn:disabled{cursor:not-allowed}
+.ad-btn.pri{background:var(--green);color:#fff;box-shadow:0 6px 12px rgba(22,160,107,.32)}
+.ad-btn.pri:hover:not(:disabled){background:var(--green-hover)}
+.ad-btn.pri:disabled{opacity:.45;box-shadow:none}
+.ad-btn.sec{background:#fff;border:1.5px solid var(--input-line)}
+.ad-btn.sec:hover:not(:disabled){border-color:var(--mute)}
+.ad-btn.soft{background:var(--soft)}
+.ad-btn.soft:hover:not(:disabled){background:#E4E8EB}
+.ad-btn.tint{background:var(--green-soft);color:var(--green-deep)}
+.ad-btn.tint:hover:not(:disabled){background:#D8F1E5}
+.ad-btn.tint:disabled,.ad-btn.soft:disabled,.ad-btn.sec:disabled{opacity:.5}
+.ad-btn.ghost{background:none;color:var(--sub);height:44px;padding:0 12px}
+.ad-btn.ghost:hover:not(:disabled){color:var(--ink);background:var(--soft)}
+.ad-btn.sm{height:40px;padding:0 14px;font-size:14px;border-radius:10px}
+.ad-btn.xs{height:36px;padding:0 12px;font-size:13.5px;border-radius:10px}
+.ad-btn.block{width:100%}
+
+/* 고르는 칩. 높이는 개선안의 40px 이 아니라 --tap(48px) 이다 —
+   사장님은 가게에서 폰으로 누른다. */
+.ad-chipbtn{height:var(--tap);padding:0 18px;border-radius:999px;border:1.5px solid var(--input-line);background:#fff;font-size:15px;font-weight:700;font-family:inherit;color:var(--sub);display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;transition:all .12s}
+.ad-chipbtn:hover:not(:disabled){border-color:var(--green)}
+.ad-chipbtn.on{background:var(--green);border-color:var(--green);color:#fff}
+.ad-chipbtn:disabled{opacity:.6;cursor:not-allowed}
+
+/* 이름표–값 목록 */
+.ad-kv{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px 14px;align-items:start;font-size:15px;margin:0}
+.ad-kv dt{margin:0;color:var(--mute);font-weight:700;font-size:13.5px;padding-top:2px}
+.ad-kv dd{margin:0;color:var(--ink);line-height:22px;min-width:0}
+.ad-kv dd .none{color:var(--mute)}
+@media (max-width:600px){.ad-kv{grid-template-columns:minmax(0,1fr);gap:2px 0}.ad-kv dd{margin-bottom:8px}}
+
+/* 접이줄 */
+.ad-acc{border-top:1px solid var(--line)}
+.ad-acc:first-child{border-top:0}
+.ad-acc-sum{display:flex;align-items:center;gap:10px;padding:14px 0;width:100%;min-height:48px;background:none;border:0;cursor:pointer;font-family:inherit;font-weight:700;font-size:15px;text-align:left;color:var(--ink)}
+.ad-acc-sum .arr{margin-left:auto;color:var(--mute);transition:transform .15s}
+.ad-acc-sum[aria-expanded="true"] .arr{transform:rotate(180deg)}
+/* <summary> 로도 쓴다(밈 카드 직접 추가). 브라우저 기본 삼각형을 지운다. */
+summary.ad-acc-sum{list-style:none}
+summary.ad-acc-sum::-webkit-details-marker{display:none}
+summary.ad-acc-sum::marker{content:''}
+.ad-acc-body{padding:0 0 14px;display:flex;flex-direction:column;gap:10px;animation:pop .18s ease}
+
+/* 컷 목록 */
+.ad-cut{display:grid;grid-template-columns:32px minmax(0,1fr);gap:12px;padding:12px 0;border-top:1px solid var(--line);font-size:15px;line-height:22px}
+.ad-cut:first-child{border-top:0}
+.ad-cut .n{width:32px;height:32px;border-radius:10px;background:var(--green-soft);color:var(--green-deep);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
+
+/* 대화창 — 머리말·기록·입력칸이 카드 한 장. 개선안의 `.chat` 그대로다:
+   평소엔 420px 쯤 되고, 옆 열에 맞춰 늘어나야 할 땐 height:100% 로 따라 늘어난다. */
+.ad-chat{display:flex;flex-direction:column;overflow:hidden;min-height:420px;height:100%}
+.ad-chat-h{display:flex;align-items:center;gap:10px;padding:18px 20px 0;flex:none}
+.ad-chat-h h3{margin:0;font-size:17px;font-weight:700;letter-spacing:-.3px}
+/* 🔴 min-height:0 이 없으면 flex 항목이 내용보다 작아지지 못해 overflow-y:auto 가
+   아예 안 걸린다 — 스크롤바가 안 생기고 카드만 계속 길어진다. 실제로 그랬다. */
+.ad-chat .log{flex:1;min-height:0;display:flex;flex-direction:column;gap:12px;padding:20px;overflow-y:auto}
+.ad-chat .in{flex:none;display:flex;gap:8px;padding:14px 16px;border-top:1px solid var(--line)}
+.ad-chat .in .ad-input{flex:1}
+
+/* ---------------------------------------------------------------------------
+ * 왼쪽 설정 열과 대화창의 아래끝을 맞춘다 (`.ad-split.match`)
+ *
+ * 개선안의 `.split` 은 align-items:start 라 두 열이 제각각 끝난다. 알릴 내용 화면은
+ * 왼쪽에서 정해진 컷을 보며 오른쪽에서 말하는, **두 판을 오가며 쓰는 화면**이라
+ * 끝이 어긋나면 짧은 쪽이 붕 뜬 것처럼 보인다.
+ *
+ * stretch 로 두면 긴 쪽이 행 높이를 정하고, 대화창은 `height:100%` 로 그 높이를 받아
+ * 넘치는 대화를 `.log` 안에서만 스크롤한다. 반대로 대화창이 더 길 땐 왼쪽 마지막
+ * 카드가 남는 높이를 먹어 아래끝을 맞춘다 — 어느 쪽이 길든 두 열은 같이 끝난다.
+ * ------------------------------------------------------------------------ */
+.ad-split.match{align-items:stretch}
+/* 🔴 `height:0;min-height:100%` 이 이 배치의 핵심이다. 그냥 stretch 만 두면 행 높이가
+   `auto` 라 **대화 내용 전체 높이**로 잡힌다 — 대화가 24개만 쌓여도 카드가 2190px 이 되고
+   페이지가 1458px 스크롤됐다. height:0 으로 대화창이 행 높이 계산에 끼지 않게 만들면
+   행은 왼쪽 열이 정하고, min-height:100% 가 그 높이를 도로 채운다. */
+.ad-split.match > .ad-chat{height:0;min-height:100%}
+/* 그래서 바닥값(420px)도 왼쪽 열이 진다 — 대화창은 이제 행 높이를 못 정한다. */
+.ad-split.match > section:first-child{min-height:420px}
+.ad-split.match > section > .ad-card:last-child{flex:1 1 auto}
+/* 남는 높이는 카드 안쪽 위에 두고, 버튼은 카드 바닥에 붙인다 — 눌러야 할 것이
+   허공 위가 아니라 판 끝에 놓여야 어디서 끝나는 화면인지 읽힌다. */
+.ad-split.match > section > .ad-card:last-child > .ad-row:last-child{margin-top:auto}
+
+/* 한 단으로 접히면(좁은 화면) 맞출 상대가 없다. 이때 대화창까지 길게 두면 화면을
+   통째로 먹으므로 기록만 잘라 둔다. */
+@media (max-width:860px){
+  .ad-chat{min-height:0}
+  .ad-chat .log{max-height:60vh}
+}
+.ad-chat-empty{margin:auto;max-width:340px;text-align:center;font-size:14px;line-height:22px;color:var(--mute);white-space:pre-line}
+
+/* 말풍선. 캐릭터 대화도 같은 걸 쓴다 — 개선안에서 두 화면의 대화가 같은 모양이다. */
+.ad-msg{max-width:80%;padding:12px 16px;border-radius:18px;font-size:15px;line-height:22px;white-space:pre-line;animation:pop .2s ease}
+.ad-msg.ai{background:var(--soft);color:var(--ink);border-bottom-left-radius:6px;align-self:flex-start}
+.ad-msg.me{background:var(--green);color:#fff;border-bottom-right-radius:6px;align-self:flex-end}

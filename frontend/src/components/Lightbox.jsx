@@ -95,15 +95,19 @@ export default function Lightbox({ items, index, selected, onClose, onMove, onSe
               )}
             </div>
 
+            {/* 고를 게 없는 그림도 있다(네컷). 그때는 '선택하기'를 띄우지 않는다 —
+                고를 수 없는 버튼이 있으면 무엇을 해야 하는 화면인지 흐려진다. */}
             <div style={{ display: 'flex', gap: 8 }}>
-              <PrimaryButton
-                onClick={() => { onSelect(index); onClose(); }}
-                disabled={isSelected}
-                style={{ flex: '1 1 auto', height: 48, fontSize: 15.5 }}
-              >
-                {isSelected ? '이미 고른 그림이에요' : '선택하기'}
-              </PrimaryButton>
-              <SoftButton onClick={onClose} style={{ flex: '0 0 92px', height: 48, fontSize: 15 }}>
+              {onSelect && (
+                <PrimaryButton
+                  onClick={() => { onSelect(index); onClose(); }}
+                  disabled={isSelected}
+                  style={{ flex: '1 1 auto', height: 48, fontSize: 15.5 }}
+                >
+                  {isSelected ? '이미 고른 그림이에요' : '선택하기'}
+                </PrimaryButton>
+              )}
+              <SoftButton onClick={onClose} style={{ flex: onSelect ? '0 0 92px' : '1 1 auto', height: 48, fontSize: 15 }}>
                 닫기
               </SoftButton>
             </div>

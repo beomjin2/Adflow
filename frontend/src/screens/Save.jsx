@@ -7,13 +7,46 @@ export default function Save({ state, actions }) {
   const charImg = characterImage(state);
   const saved = state.savedThisAd;
 
+  /** navigator.clipboard(HTTPS·localhost 같은 보안 컨텍스트에서만 있음)가 없거나 실패했을 때
+   *  쓰는 구식 폴백 — 임시 textarea에 넣고 선택한 뒤 execCommand('copy')로 복사한다.
+   *  지금 이 서비스가 HTTP로 떠 있어서 navigator.clipboard 자체가 없는 경우가 많다. */
+  const copyFallback = (text) => {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    // 화면 밖으로 보내되 display:none은 안 된다 — 그러면 select()가 아무것도 못 고른다.
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-1000px';
+    textarea.style.left = '-1000px';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    let ok = false;
+    try {
+      ok = document.execCommand('copy');
+    } catch {
+      ok = false;
+    }
+    document.body.removeChild(textarea);
+    return ok;
+  };
+
   const copy = async () => {
     const text = adTextForClipboard(state);
     if (!text) { actions.toast('복사할 문구가 없어요'); return; }
-    try {
-      await navigator.clipboard.writeText(text);
+
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        actions.toast('문구를 복사했어요');
+        return;
+      } catch {
+        // 아래 폴백으로 넘어간다.
+      }
+    }
+
+    if (copyFallback(text)) {
       actions.toast('문구를 복사했어요');
-    } catch {
+    } else {
       actions.toast('복사가 안 돼요 — 위 문구를 길게 눌러 직접 복사해주세요');
     }
   };

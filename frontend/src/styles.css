@@ -198,6 +198,13 @@ summary.ad-acc-sum::marker{content:''}
 .ad-cut:first-child{border-top:0}
 .ad-cut .n{width:32px;height:32px;border-radius:10px;background:var(--green-soft);color:var(--green-deep);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
 
+/* 광고 종류 예시 목업 — 실제 그림은 아직 없어서, 몇 컷으로 쪼개지는지·컷마다 무슨 역할인지만
+   칸+캡션으로 보여준다("이런 그림이 나와요"라고 오해 주지 않게). */
+.ad-mockgrid{display:grid;gap:8px}
+.ad-mockcut{aspect-ratio:1/1;border:1.5px dashed var(--input-line);border-radius:var(--r-in);background:var(--soft);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:6px;text-align:center}
+.ad-mockcut .n{width:26px;height:26px;border-radius:9px;background:#fff;border:1px solid var(--line);color:var(--sub);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12.5px;flex:none}
+.ad-mockcut .cap{font-size:11.5px;line-height:15px;color:var(--mute);font-weight:600}
+
 /* 대화창 — 머리말·기록·입력칸이 카드 한 장. 개선안의 `.chat` 그대로다:
    평소엔 420px 쯤 되고, 옆 열에 맞춰 늘어나야 할 땐 height:100% 로 따라 늘어난다. */
 .ad-chat{display:flex;flex-direction:column;overflow:hidden;min-height:420px;height:100%}

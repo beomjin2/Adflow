@@ -6,7 +6,7 @@
    "앞치마 두른 3살 곰이요"를 외형·아웃핏·나이 세 칸으로 나누고, 그 말이 어느 칸
    얘기인지(target)와 대신 정해달라는 뜻인지(wants_help)도 함께 낸다. 가이드 순서는
    안내일 뿐이라, 앞 칸으로 돌아가는 말이면 라우터가 그쪽으로 따라간다.
-2. `propose_field()` — "알아서 해줘"에 대신 값을 하나 정해 준다.
+2. `propose_field()` — 대신 정해 달라는 말에 값을 하나 제안한다.
 3. `reply()` — 사장님 말에 대답하고 다음 칸을 묻는다.
 4. `suggest_keywords()` / `detect_edit_target()` — 키워드를 뽑고, 다 찬 시트에서
    사장님이 어느 칸을 고치려는지 읽어낸다.
@@ -69,9 +69,10 @@ _EXTRACT_SYSTEM = """\
    표정·자세를 전부 담는다. 한 칸에 특징이 여럿이면 전부 이어서 적는다.
 4. 한 문장에 여러 칸이 섞여 있으면 나눠서 각 칸에 넣는다.
 5. 사장님 말이 **답이긴 한데** 어느 칸인지 불분명하면 지금 묻고 있는 칸에 넣는다.
-6. **답이 아닌 말은 어느 칸에도 넣지 않는다.** "몰라", "모르겠어", "알아서 해줘",
-   "니가 정해", "추천해줘", "아무거나", "좀 해봐" 같은 말과 인사·잡담·되묻는 질문은
-   {"fields": {}} 로 돌려준다. 그 말을 칸에 적으면 사장님이 정한 적 없는 내용이 시트에 남는다.
+6. **답이 아닌 말은 어느 칸에도 넣지 않는다.** 사장님이 그 칸의 값을 말한 게 아니라
+   모르겠다고 했거나, 대신 정해 달라고 했거나, 인사·잡담·되묻는 질문을 한 것이면
+   fields 를 {} 로 둔다. **어떤 말이 거기 해당하는지는 정해진 표현 목록이 아니라
+   뜻으로 판단한다.** 그 말을 칸에 적으면 사장님이 정한 적 없는 내용이 시트에 남는다.
 7. 이미 값이 있는 칸에 사장님이 **덧붙이는** 말을 했으면(기존 값을 부정하지 않고 특징을
    더하는 말), 기존 값과 새 내용을 자연스럽게 **합쳐서** 낸다. 덮어쓰라는 뜻이면 새 내용만 낸다.
 
@@ -80,17 +81,19 @@ _EXTRACT_SYSTEM = """\
 
 8. target — 사장님이 **지금 어느 칸 얘기를 하고 있는지** 그 키를 낸다.
    지금 묻고 있는 칸과 달라도 된다 — 앞 칸으로 돌아가는 말이면 그 칸을 낸다.
-   ("외형 자체가 그게 아니고 네가 정해달라는 거야" → look)
    어느 칸인지 알 수 없으면 빈 문자열로 둔다.
 9. wants_help — 사장님이 **그 칸을 대신 정해달라는 뜻**이면 true.
-   "몰라", "알아서 해줘", "줘봐", "추천해줘" 같은 말만이 아니다.
-   **원하는 느낌만 말하고 구체적인 생김새는 안 준 경우도 포함**한다:
-   "~하게 생긴 걸로 해줘", "~느낌으로 만들어줘", "~잘하게 생긴 놈으로"처럼.
-   이건 묘사가 아니라 **부탁**이다. 이럴 때 fields 는 반드시 비운다 —
-   그 말을 칸에 그대로 적으면 사장님이 쓴 적 없는 묘사가 시트에 남는다.
+   모르겠다고 하거나 네가 정하라고 하는 경우뿐 아니라, **원하는 느낌이나 방향만 말하고
+   그 칸에 적을 구체적인 내용은 주지 않은 경우**도 포함한다. 그건 묘사가 아니라 부탁이다.
+   여기서도 정해진 표현으로 가리지 말고 **뜻으로 판단한다.**
+   이때 fields 는 반드시 비운다 — 부탁을 칸에 적으면 사장님이 쓴 적 없는 묘사가 남는다.
 
-출력은 이 모양의 JSON만:
-{"fields": {"look": "..."}, "target": "look", "wants_help": false}
+**reasoning 을 먼저 쓴다.** 사장님 말이 무슨 뜻인지, 어느 칸 얘기인지, 값을 준 것인지
+대신 정해 달라는 것인지를 한두 문장으로 먼저 정리한 **뒤에** 나머지를 채운다.
+답부터 쓰고 이유를 붙이면 안 된다.
+
+출력은 이 모양의 JSON만 (이 순서 그대로):
+{"reasoning": "...", "target": "look", "wants_help": false, "fields": {"look": "..."}}
 칸에 넣을 게 없으면 fields 는 {} 로 둔다.
 """
 
@@ -99,8 +102,9 @@ _PROPOSE_SYSTEM = """\
 사장님이 방금 한 말에는 시트에 넣을 내용이 없다. 그게 무슨 뜻인지 가려서 JSON으로 답한다.
 
 가리는 기준:
-- "몰라", "모르겠어", "알아서 해줘", "니가 정해", "추천해줘", "아무거나", "좀 해봐"처럼
-  **대신 정해달라는 뜻**이면 intent를 "help"로 하고, 지금 묻는 칸에 넣을 값을 하나 제안한다.
+- 사장님이 **대신 정해달라는 뜻**이면 intent를 "help"로 하고, 지금 묻는 칸에 넣을 값을
+  하나 제안한다. 모르겠다고 했거나, 네가 정하라고 했거나, 원하는 느낌·방향만 말하고
+  구체적인 내용은 주지 않은 경우가 여기 해당한다 — **정해진 표현으로 가리지 말고 뜻을 본다.**
 - 인사·잡담·되묻는 질문이면 intent를 "other"로 하고 proposal은 빈 문자열로 둔다.
 
 제안을 만들 때 — **proposal은 그 칸에 그대로 적힐 값이다. 사장님에게 건네는 말이 아니다.**
@@ -123,8 +127,9 @@ _PROPOSE_SYSTEM = """\
 4. 이미 채워진 칸과 모순되지 않아야 한다. 외형이 새인데 털 얘기를 하면 안 된다 —
    그 칸은 사장님이 정한 것이라 뒤엎지 않는다.
 
-**basis → why → proposal 순서로 채운다.** 먼저 무엇을 참고할지 고르고, 왜 그런지 쓰고,
-**그다음에** 값을 만든다. 값을 먼저 쓰고 근거를 나중에 붙이면 안 된다.
+**reasoning → basis → why → proposal 순서로 채운다.** 사장님 말이 무슨 뜻인지(대신
+정해 달라는 것인지, 그냥 묻는 것인지) 먼저 한두 문장으로 정리하고, 무엇을 참고할지
+고르고, 왜 그런지 쓰고, **그다음에** 값을 만든다. 값을 먼저 쓰고 이유를 붙이면 안 된다.
 
 5. basis — 이 제안을 떠올리며 위 [가게]나 [캐릭터 시트]에서 **참고한 줄**. 최대 3개.
    - label: 그 줄의 이름 그대로 (업종 · 가게 소개 · 영업시간 · 주소 · 대표 상품 ·
@@ -138,7 +143,8 @@ _PROPOSE_SYSTEM = """\
 7. proposal — 위 둘을 정한 **뒤에** 쓴다.
 
 출력은 이 모양의 JSON만 (이 순서 그대로):
-{"intent": "help",
+{"reasoning": "...",
+ "intent": "help",
  "basis": [{"label": "...", "quote": "..."}],
  "why": "...",
  "proposal": "..."}
@@ -169,7 +175,11 @@ _REPLY_SYSTEM = """\
 10. 존댓말로, 동네 가게 사장님에게 말하듯 쉽게. 길이는 할 말에 맞춘다 — 짧게 끝날
     얘기를 늘이지 말고, 설명이 필요하면 줄이지도 않는다.
 
-출력은 이 모양의 JSON만: {"reply": "..."}
+**reasoning 을 먼저 쓴다.** 사장님이 방금 한 말이 무슨 뜻인지, 지금 무엇이 필요한지
+(질문에 답해야 하는지, 예를 줘야 하는지, 그냥 다음 칸을 물으면 되는지)를 한두 문장으로
+정리한 **뒤에** reply 를 쓴다.
+
+출력은 이 모양의 JSON만 (이 순서 그대로): {"reasoning": "...", "reply": "..."}
 """
 
 _KEYWORDS_SYSTEM = """\
@@ -184,14 +194,16 @@ _KEYWORDS_SYSTEM = """\
 3. 외모 묘사(색·몸집)보다 성격·태도를 우선한다.
 4. 아무 캐릭터에나 붙는 말(좋은·멋진·귀여운)은 피하고, 이 시트에만 맞는 말을 고른다.
 5. 뽑을 근거가 부족하면 억지로 채우지 말고 적게 낸다. 하나도 없으면 빈 목록.
-6. **basis → why → keywords 순서로 채운다.** 어느 칸을 보고 뽑을지 먼저 정하고,
-   그다음 키워드를 쓴다. 키워드를 먼저 쓰고 근거를 붙이면 안 된다.
+6. **reasoning → basis → why → keywords 순서로 채운다.** 시트를 읽고 이 캐릭터가 어떤
+   성격으로 보이는지 먼저 한두 문장으로 정리하고, 어느 칸을 근거로 삼을지 고른 뒤에
+   키워드를 쓴다. 키워드를 먼저 쓰고 근거를 붙이면 안 된다.
    basis의 label은 그 칸의 이름, quote는 그 칸에 **실제로 적혀 있는 말**에서 쓴
    부분이다. 요약하거나 지어내지 않는다. 최대 3개.
 7. why — 그 말에서 이 키워드들이 어떻게 나왔는지 설명한다. 존댓말.
 
 출력은 이 모양의 JSON만 (이 순서 그대로):
-{"basis": [{"label": "...", "quote": "..."}], "why": "...", "keywords": ["...", "..."]}
+{"reasoning": "...", "basis": [{"label": "...", "quote": "..."}],
+ "why": "...", "keywords": ["...", "..."]}
 """
 
 # "외형 다시 하고 싶어"·"아웃핏 말고 외형 바꿀래" 같은 말을 받아내기 위한 것.
@@ -206,19 +218,21 @@ name(이름) keywords(퍼스널 키워드)
 
 규칙:
 1. 특정 칸을 정하거나 다시 정하고 싶다는 뜻이면 intent를 "edit"로, field에 그 칸의
-   키를 넣는다. 그 칸의 이름을 직접 말할 수도 있고("외형 다시", "이름 바꾸고 싶어"),
-   지금 적힌 값이 마음에 안 든다는 식으로 말할 수도 있다("이거 말고 다른 걸로",
-   "지금 적힌 거 바꿔줘") — 어느 쪽이든 **그 말이 가리키는 칸**을 낸다.
+   키를 넣는다. 칸 이름을 직접 말할 수도 있고, 지금 적힌 값이 마음에 안 든다는 식으로
+   말할 수도 있다 — 어느 쪽이든 **그 말이 가리키는 칸**을 낸다.
+   정해진 표현으로 가리지 말고 뜻을 본다.
    **지금 묻고 있는 칸과 다른 칸을 말해도 그 칸을 낸다** — 사장님은 순서대로
    답할 의무가 없고, 한 칸을 정하다가 앞 칸으로 돌아갈 수도 있다.
 2. 어떻게 바꿀지까지 말했으면 value에 **그 칸에 적힐 새 값**을 넣는다. 아직 안 말했으면
    value는 빈 문자열로 둔다. value는 명사구로 쓰고 지어내지 않는다 — 사장님이 말한 것만.
 3. **캐릭터를 통째로 다시 만들고 싶다는 뜻**이면 intent를 "restart"로 한다.
-   ("처음부터 다시", "이 캐릭터 말고 새로")
 4. 그림을 다시 뽑아달라는 뜻이면 intent를 "regenerate"로 한다.
 5. 캐릭터 얘기가 아니거나 어느 칸인지 알 수 없으면 intent를 "none"으로 한다.
 
-출력은 이 모양의 JSON만: {"intent": "edit", "field": "look", "value": ""}
+**reasoning 을 먼저 쓴다.** 이 말이 무슨 뜻인지 한 문장으로 정리한 뒤에 나머지를 채운다.
+
+출력은 이 모양의 JSON만 (이 순서 그대로):
+{"reasoning": "...", "intent": "edit", "field": "look", "value": ""}
 """
 
 
@@ -257,6 +271,18 @@ def _ask(system: str, user: str, temperature: float = 0.0) -> dict:
         # 키를 로그에 흘리지 않는다 — 예외 문자열에 URL은 남아도 헤더는 남지 않는다.
         logger.warning("시트 LLM 호출 실패, 규칙 기반으로 진행합니다: %s", type(exc).__name__)
         return {}
+
+
+def _log_reasoning(where: str, parsed: dict) -> None:
+    """모델이 먼저 적은 추론을 로그에 남긴다.
+
+    값으로 쓰지는 않는다. 판단이 이상하게 나왔을 때 **무엇을 어떻게 읽었는지**를
+    되짚을 단서가 이것뿐이라 남긴다 — 예전처럼 키워드 목록으로 가리지 않으니,
+    틀렸을 때 고칠 자리는 프롬프트고 그 단서가 여기 있다.
+    """
+    reasoning = parsed.get("reasoning")
+    if isinstance(reasoning, str) and reasoning.strip():
+        logger.info("[%s] %s", where, reasoning.strip()[:200])
 
 
 def _sheet_summary(char) -> str:
@@ -391,6 +417,8 @@ def understand(char, text: str, asked_field: str = "", store=None) -> dict:
     )
     parsed = _ask(_EXTRACT_SYSTEM, prompt, _T_EXTRACT)
 
+    _log_reasoning("사장님 말 해석", parsed)
+
     target = parsed.get("target")
     target = target if target in _FILLABLE else ""
     wants_help = bool(parsed.get("wants_help"))
@@ -420,38 +448,18 @@ def understand(char, text: str, asked_field: str = "", store=None) -> dict:
         if field != asked_field and not _grounded(value, source):
             logger.info("근거 없는 칸 '%s'을(를) 버렸습니다", field)
             continue
-        # 답이 아닌 말. 위 _grounded 는 여기서 소용이 없다 — 문장을 그대로 베낀 값은
-        # 언제나 문장에 근거가 있기 때문이다.
-        if _is_refusal_value(value, text):
-            logger.info("답이 아닌 말이라 칸 '%s'을(를) 버렸습니다", field)
-            continue
         cleaned[field] = value
 
-    # 대신 정해달라는 뜻이면 시트에 넣지 않는다. 모델이 규칙을 어기고 부탁을 값으로
-    # 옮겨 적는 일이 있어서, 프롬프트만 믿지 않고 여기서 한 번 더 막는다.
+    # 대신 정해달라는 뜻이면 시트에 넣지 않는다.
+    #
+    # 예전에는 여기에 "몰라|알아서|아무거나|추천해…" 정규식이 있었다. 그건 **적어 둔 말만**
+    # 걸러서, 적지 않은 표현("형이 골라줘", "판단해줘")은 그대로 통과했다. 목록을 늘릴수록
+    # 목록 밖은 더 안 걸린다 — 말을 맞히는 방식이 애초에 틀렸다.
+    # 지금은 모델이 reasoning 으로 뜻을 먼저 정리하고 wants_help 로 답하며, 그 판단만 쓴다.
     if wants_help and cleaned:
         logger.info("대신 정해달라는 뜻이라 읽어낸 값을 시트에 넣지 않습니다: %s", list(cleaned))
         cleaned = {}
     return {"fields": cleaned, "target": target, "wants_help": wants_help}
-
-
-# "몰라" · "알아서 해줘" 는 답이 아니다. 프롬프트로 막아도 모델은 지금 묻는 칸에
-# 그대로 넣는다 — 배포된 서비스에서 성별 = "몰라 좀 해봐" 가 적히는 걸 확인했다.
-# 프롬프트는 부탁이고 이건 보장이다.
-_NON_ANSWER = re.compile(
-    "몰라|모르겠|모른다|알아서|니가정|네가정|아무거나|아무렇게|추천해|정해줘|좀해봐|맘대로|마음대로"
-)
-
-
-def _is_non_answer(text: str) -> bool:
-    return bool(_NON_ANSWER.search((text or "").replace(" ", "")))
-
-
-def _echoes_input(value: str, text: str) -> bool:
-    """값이 사장님 문장을 거의 그대로 되돌려준 것인가."""
-    v = (value or "").replace(" ", "")
-    t = (text or "").replace(" ", "")
-    return bool(v) and bool(t) and v in t and len(v) >= len(t) * 0.8
 
 
 # 제안 값에 붙어 나오는 조언 어미. 프롬프트로 "명사구로 쓰라"고 해도 모델은 사장님에게
@@ -493,23 +501,6 @@ def _as_value(text: str) -> str:
         value = _DANGLING_ADVERB.sub("", value).strip()
         value = _DANGLING_PARTICLE.sub("", value).strip()
     return value.rstrip(" .!?~,")
-
-
-def _is_refusal_value(value: str, text: str) -> bool:
-    """시트에 넣으면 안 되는 값인가. 두 갈래로 잡는다.
-
-    ① 값 자체가 "몰라"·"아무거나" 같은 말이다. ("아무거나 해줘" → 아무거나)
-    ② 답이 아닌 문장을 **통째로 되돌려준** 것이다. ("몰라 좀 해봐" → 몰라 좀 해봐)
-
-    ②가 따로 필요한 이유는 어느 조각도 단독으로는 안 걸리는 문장이 있어서고,
-    ①이 따로 필요한 이유는 모델이 문장 일부만 잘라 넣기도 해서다.
-
-    반대로 "잘 모르겠지만 갈색 곰이요" 는 '모르겠'이 들어 있어도 **외형이라는 답이
-    있다.** 잘라낸 조각('갈색 곰')은 둘 중 어느 갈래에도 안 걸려 살아남는다.
-    """
-    if _is_non_answer(value):
-        return True
-    return _is_non_answer(text) and _echoes_input(value, text)
 
 
 def _grounded(value: str, text: str) -> bool:
@@ -563,6 +554,7 @@ def propose_field(char, field: str, text: str, store=None) -> dict:
     # 제안하지 못하게 한다. 가게 정보는 참고 자료일 뿐이다.
     # 코드가 보장하는 건 형식뿐이다: 명사구인가(_as_value), 한 문단을 넘지 않는가.
     parsed = _ask(_PROPOSE_SYSTEM, prompt, _T_PROPOSE)
+    _log_reasoning("제안 판단", parsed)
     value = _proposal_from(parsed)
     # **길이로 버리지 않는다.** 예전에는 90자를 넘으면 통째로 버렸는데, 그러면 "알아서
     # 정해줘"라고 한 사장님에게 아무 제안도 못 준다. 길면 긴 대로 카드에 올리고, 보고
@@ -645,6 +637,7 @@ def reply(char, text: str, filled: dict[str, str], ask_field: str, store=None) -
         f"[사장님이 방금 한 말]\n{(text or '').strip()}",
     )
     parsed = _ask(_REPLY_SYSTEM, prompt, _T_REPLY)
+    _log_reasoning("대화 판단", parsed)
     value = parsed.get("reply")
     if not isinstance(value, str):
         return ""
@@ -664,6 +657,7 @@ def suggest_keywords(char, limit: int = 5, store=None) -> dict:
     if not available():
         return {}
     parsed = _ask(_KEYWORDS_SYSTEM, _context(char, store), _T_KEYWORDS)
+    _log_reasoning("키워드 판단", parsed)
     words = parsed.get("keywords")
     if not isinstance(words, list):
         return {}
@@ -694,6 +688,7 @@ def detect_edit_target(char, text: str, store=None) -> dict:
         _context(char, store, f"[사장님이 방금 한 말]\n{text.strip()}"),
         _T_INTENT,
     )
+    _log_reasoning("칸 판단", parsed)
     intent = parsed.get("intent")
     if intent not in ("edit", "restart", "regenerate"):
         return empty
@@ -708,7 +703,7 @@ def detect_edit_target(char, text: str, store=None) -> dict:
     value = _as_value(value) if isinstance(value, str) else ""
     # 새 값은 사장님 문장에 근거가 있어야 한다. 고치겠다는 말만 했는데 모델이 값까지
     # 지어내면 그건 사장님이 정한 적 없는 수정이 된다.
-    if value and (not _grounded(value, text) or _is_refusal_value(value, text)):
+    if value and not _grounded(value, text):
         logger.info("근거 없는 수정 값이라 값만 버리고 칸만 엽니다: %s", value[:40])
         value = ""
     return {"intent": "edit", "field": field, "value": value}

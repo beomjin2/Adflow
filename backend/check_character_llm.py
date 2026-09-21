@@ -245,8 +245,12 @@ if proposal:
         print(f"  제안 카드   : {d['label']} → \"{d['to']}\"")
     for b in (proposal.get("basis") or []):
         print(f"    근거      : [{b['label']}] “{b['quote']}”")
-literal = "생긴놈" in (looks["look"] or "") or "생긴 놈" in (looks["look"] or "")
-print(f"  판정: {'⚠ 실패 — 부탁이 그대로 적혔다' if literal else '통과 — 그대로 적히지 않았다'}")
+# 특정 표현이 들어갔는지로 보지 않는다 — 그러면 그 표현만 검사하게 된다.
+# **사장님이 친 말이 시트에 거의 그대로 옮겨졌는가**를 본다. 어떤 문장이든 통한다.
+said = "음.. 걍 베이커리 잘하게 생긴놈으로".replace(" ", "").replace(".", "")
+wrote = (looks["look"] or "").replace(" ", "")
+copied = bool(wrote) and (wrote in said or said in wrote)
+print(f"  판정: {'⚠ 실패 — 사장님 말이 그대로 옮겨졌다' if copied else '통과 — 그대로 옮기지 않았다'}")
 
 print()
 print("=" * 72)

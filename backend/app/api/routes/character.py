@@ -333,6 +333,36 @@ def _handle_non_answer(char, messages: list, text: str, asked: str, store) -> No
         ))
         return
 
+    # **사장님이 다른 칸 얘기를 하면 그 칸으로 옮긴다.** 묻고 있는 칸에 갇히면 안 된다 —
+    # 아웃핏을 묻는 중에 "고양이 말고 다른 외형 추천해줘"라고 해도 계속 아웃핏만 물었고,
+    # 심지어 외형 값("흰색 털에 긴 꼬리를 가진 강아지")을 아웃핏 칸에 제안했다.
+    # 어느 칸인지 가르는 일은 LLM이 한다 — 여기서 키워드로 정하지 않는다.
+    wanted = sheet_llm.detect_edit_target(char, text, store)
+    if wanted.get("intent") == "edit" and wanted["field"] != following:
+        following = wanted["field"]
+        char.editing = following
+        value = wanted.get("value")
+        if value:
+            # 어떻게 바꿀지까지 말했다 — 바로 카드로 올린다.
+            _open_suggestion(char, messages, {following: value}, phase="filling")
+            return
+        # 칸만 옮겼다. 그 칸을 묻되, 대신 정해달라는 뜻이면 아래 제안으로 이어진다.
+        proposal = sheet_llm.propose_field(char, following, text, store)
+        if not proposal:
+            current = sheet.value_of(char, following)
+            _say(messages, _guide(
+                char, text, {}, following, store,
+                fallback=(f"'{_label(following)}'은(는) 지금 \"{current}\"예요. 어떻게 바꿀까요?"
+                          if current else sheet.QUESTIONS.get(following, "")),
+            ))
+            return
+        _open_suggestion(
+            char, messages, {following: proposal["value"]}, phase="filling",
+            lead=sheet_llm.reply(char, text, {}, following, store),
+            basis=proposal.get("basis"), why=proposal.get("why"),
+        )
+        return
+
     proposal = sheet_llm.propose_field(char, following, text, store)
     if proposal:
         char.editing = following

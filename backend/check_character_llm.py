@@ -189,6 +189,46 @@ print(f"  판정: {'통과' if len(filled) >= 4 else '⚠ 적게 읽었다'}")
 
 print()
 print("=" * 72)
+print("3-b. 채우는 중에 다른 칸으로 옮겨갈 수 있는가 (실사용에서 막혔던 지점)")
+print("=" * 72)
+# 배포 서버 실사용: 아웃핏을 묻는 중에 "고양이 말고 다른 외형 추천해줘"라고 했더니
+# 계속 아웃핏만 물었고, 외형 값("흰색 털에 긴 꼬리를 가진 강아지")을 아웃핏 칸에 제안했다.
+reset()
+set_store("베이커리", "동네 빵집", ["소금빵"])
+say("안녕하세요")
+data = say("몰라 베이커리 잘하게 생기게")
+pid, proposal = open_proposal(data)
+if proposal:
+    data = call(route.accept_suggestion, pid)
+print(f"  외형 채운 뒤 묻는 칸: {data['editing']}  (아웃핏이어야 정상)")
+
+data = say("아 고양이 말고 다른거 할래 외형 뭐 다른거 추천좀")
+pid, proposal = open_proposal(data)
+target = list(proposal["payload"]["changes"])[0] if proposal else ""
+print(f"\n  '외형 뭐 다른거 추천좀' →")
+print(f"    열린 칸   : {data['editing']}")
+print(f"    제안된 칸 : {target or '(제안 없음)'}")
+if proposal:
+    for d in proposal["diffs"]:
+        print(f"    {d['label']}: \"{d['to']}\"")
+ok = data["editing"] == "look" and (not target or target == "look")
+print(f"    판정: {'통과 — 외형 쪽으로 옮겨갔다' if ok else '⚠ 실패 — 아웃핏에 갇혔다'}")
+if proposal:
+    data = call(route.decline_suggestion, pid)
+
+data = say("강아지")
+looks = {r["field"]: r["value"] for r in data["sheet"]}
+print(f"\n  이어서 '강아지' →")
+print(f"    외형 : {looks['look']}")
+print(f"    아웃핏: {looks['outfit'] or '(비어 있음)'}")
+pid, proposal = open_proposal(data)
+if proposal:
+    for d in proposal["diffs"]:
+        print(f"    제안: {d['label']} → \"{d['to']}\"")
+print(f"    판정: {'통과 — 아웃핏에 안 들어갔다' if '강아지' not in (looks['outfit'] or '') else '⚠ 실패 — 아웃핏에 들어갔다'}")
+
+print()
+print("=" * 72)
 print("4. 시트 정보가 그림 프롬프트로 얼마나 넘어가는가")
 print("=" * 72)
 with SessionLocal() as db:

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { colors } from '../theme.js';
 import { TextInput, Select } from '../components/ui/Field.jsx';
 import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
@@ -111,18 +111,24 @@ export default function Trend({ state, actions }) {
 
   // 처음 들어오면 오른쪽이 비어 있어 화면이 허전하다. 목록 맨 위 밈을 자동으로 연다.
   // 필터·검색·정렬로 목록이 바뀌어 고른 밈이 사라지면 다시 맨 위로 옮긴다.
+  // 단, 상세 패널 "닫기"로 일부러 선택을 비웠을 땐 자동으로 다시 채우지 않는다 —
+  // closedRef가 없으면 닫기가 trendSel을 ''로 만드는 순간 이 effect가 "선택이
+  // 사라졌다"고 보고 곧장 맨 위 밈을 다시 선택해버려서, 닫기 버튼이 아예 안 먹혔다.
+  const closedRef = useRef(false);
   useEffect(() => {
     if (!sorted.length) {
       if (trendSel) actions.set('trendSel', '');
       return;
     }
+    if (trendSel === '' && closedRef.current) return;
     if (!sorted.some((m) => m.id === trendSel)) actions.set('trendSel', sorted[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sorted, trendSel]);
 
   const selected = trendItems.find((m) => m.id === trendSel) || null;
   const selStatus = selected ? trendStatus(selected, baseDate) : null;
-  const selectMeme = (id) => actions.set('trendSel', id);
+  const selectMeme = (id) => { closedRef.current = false; actions.set('trendSel', id); };
+  const closeSelected = () => { closedRef.current = true; actions.set('trendSel', ''); };
 
   const filterChip = (label, on, onClick) => (
     <button
@@ -360,7 +366,7 @@ export default function Trend({ state, actions }) {
                   원문에서 보기
                 </a>
               )}
-              <SecondaryButton onClick={() => actions.set('trendSel', '')} style={{ flex: 'none', height: 44, padding: '0 16px' }}>
+              <SecondaryButton onClick={closeSelected} style={{ flex: 'none', height: 44, padding: '0 16px' }}>
                 닫기
               </SecondaryButton>
             </div>

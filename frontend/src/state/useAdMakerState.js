@@ -271,11 +271,13 @@ export function useAdMakerState() {
 
   /** 추천 결과 팝업에서 밈 자체를 누르면, 리스트에서 그 밈을 고른 것처럼 선택만 해두고
    *  팝업만 닫는다 — 광고 만들기로 곧장 넘어가지 않아서, 유래·활용예시를 아래 상세
-   *  패널에서 먼저 훑어보고 판단할 수 있다. */
+   *  패널에서 먼저 훑어보고 판단할 수 있다. 검색어도 같이 비운다 — 예전에 쳐둔 검색어가
+   *  추천된 밈의 이름·유래·활용예시와 안 겹치면 리스트에서 걸러져서, Trend.jsx의 "선택이
+   *  안 보이면 맨 위로 되돌리는" 로직이 방금 고른 밈을 곧장 다른 밈으로 덮어써버린다. */
   const selectTrendRecommendMeme = useCallback(() => {
     const s = stateRef.current;
     if (!s.trendRecommendResult) return;
-    update({ trendSel: s.trendRecommendResult.meme.id, trendRecommendResult: null });
+    update({ trendSel: s.trendRecommendResult.meme.id, trendRecommendResult: null, trendSearch: '' });
   }, [update]);
 
   /** 추천받은 밈을 그대로 고른 걸로 치고 광고 만들기로 넘어간다. */

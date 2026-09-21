@@ -222,6 +222,19 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
         # 그래서 "몰라 좀 해봐"가 설명 칸에, "모른다고"가 능력 칸에 그대로 적혔다.
         # 답이 아닌 말은 답이 아니다. 시트는 사장님이 **정한 것**만 담아야 한다.
         filling = dict(fields)
+
+        # **이미 값이 있는 칸을 덮어쓰려 하면 한 번 더 묻는다.**
+        # "외형 다른거할래" 같은 말에서 모델이 "다른거"를 값으로 뽑아내는 일이 있다.
+        # 그대로 덮어쓰면 사장님 캐릭터가 그 조각으로 바뀌고, 대화는 가이드 순서대로
+        # 다음 칸으로 가 버린다 — 정작 사장님은 그 칸을 다시 정하자고 한 것이다.
+        # 덮어쓰기는 흔치 않으니 그때만 칸 판단을 한 번 더 부른다(비용도 그때만 든다).
+        if any(sheet.value_of(char, f) for f in filling):
+            wanted = sheet_llm.detect_edit_target(char, text, store)
+            if wanted.get("intent") == "edit" and not wanted.get("value"):
+                # 어떻게 바꿀지는 아직 안 말했다. 그 칸을 열고 다시 묻는다.
+                filling = {}
+                char.editing = asked = wanted["field"]
+
         if not filling and asked and not sheet_llm.available():
             # LLM이 없을 때만 규칙 기반으로 되돌아간다 — 그때는 이것 말고 방법이 없다.
             filling = {asked: text}
@@ -503,6 +516,9 @@ def _open_suggestion(char, messages: list, changes: dict, phase: str = "editing"
         "phase": phase,
         # 승인 뒤 가이드 제안의 기준점. 여러 칸이면 가이드 순서상 가장 뒤쪽을 기준으로 삼는다.
         "field": max(real, key=_rank),
+        # 빈 칸을 채우는 게 아니라 **이미 있던 값을 고치는 것**인가. 승인 뒤에 어디로
+        # 갈지를 이걸로 가른다 — 고친 거면 그 칸에 머물러야 한다.
+        "redo": any(sheet.value_of(char, f) for f in real),
         "diffs": diffs,
         "payload": {"changes": real},
         # 우리가 대신 정해준 값일 때만 근거가 붙는다. 사장님이 직접 말한 수정에는
@@ -555,6 +571,18 @@ def accept_suggestion(pid: str, db: Session = Depends(get_db)):
         label = ", ".join(_label(f) for f in changes)
 
         if proposal.get("phase") == "filling":
+            # **고친 것이면 그 칸에 머문다.** 사장님이 "외형 다른거"라고 해서 고쳐 놓고
+            # 곧바로 다음 칸을 물으면, 방금 고친 게 마음에 드는지 말할 틈이 없다.
+            # 실제로 외형을 고친 직후 설명을 물어 버려서 사장님이 같은 말을 반복했다.
+            if proposal.get("redo"):
+                stay = proposal["field"]
+                char.editing = stay
+                following = sheet.next_field(char)
+                nxt = f" 이대로 괜찮으시면 다음은 '{_label(following)}'이에요." if following else ""
+                _say(messages, f"{label} 이렇게 바꿨어요. 더 고칠 게 있으면 말씀해주세요.{nxt}")
+                char.messages = messages
+                return _out(char, db)
+
             # 빈 칸을 대신 정해준 제안이었다. 가이드가 아니라 **남은 빈 칸**으로 이어간다.
             following = sheet.next_field(char)
             if following:

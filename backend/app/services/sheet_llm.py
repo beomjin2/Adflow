@@ -247,6 +247,47 @@ _KEYWORDS_SYSTEM = """\
  "why": "...", "keywords": ["...", "..."]}
 """
 
+_AUTOFILL_SYSTEM = """\
+너는 한국 소상공인 사장님의 가게 마스코트 캐릭터를 **한 번에 하나로** 만들어 낸다.
+사장님이 "알아서 전부 만들어 달라"고 버튼을 누른 상황이다.
+
+칸마다 담는 것:
+- look(외형): 종류·몸집·색·눈매·털이나 피부·얼굴 특징. **입거나 쓰는 것은 여기가 아니다.**
+- outfit(아웃핏): 입은 옷, 앞치마, 모자, 장신구, 손에 든 소품.
+- desc(설명): 성격, 말투, 가게에서 맡은 역할.
+- abilities(능력): 잘하는 일, 특기.
+- age(나이): "세 살", "어린" 처럼. gender(성별): 정하지 않아도 되면 "없음".
+- name(이름): 부르기 쉬운 이름.
+- keywords(퍼스널 키워드): 성격을 나타내는 말 3~5개를 쉼표로 이어서.
+
+규칙:
+1. **[지금까지 채워진 캐릭터 시트]에 이미 값이 있는 칸은 그대로 둔다.** 그 칸은 JSON 에서
+   아예 뺀다. 사장님이 적어 둔 것을 덮어쓰면 안 된다 — 빈 칸만 채운다.
+2. **이미 적힌 칸과 어울리게 짓는다.** 외형이 새라고 적혀 있으면 털 얘기를 하지 않는다.
+   빈 칸들끼리도 **한 캐릭터로 말이 되어야** 한다 — 따로 지은 여덟 조각이 아니다.
+3. 위 [가게]는 **참고 자료**다. 도움이 되면 쓰고, 비어 있으면 없는 대로 짓는다.
+   소재·종류·색·성격에 금지된 것은 없다.
+4. 눈에 보이는 칸(외형·아웃핏)은 **그대로 그림을 그릴 수 있게** 적는다. 느낌만 적지 않는다.
+5. 값은 명사구로. "~해보세요", "~예요" 같은 어미를 붙이지 않는다. 시트 칸에 적히는 값이다.
+6. 길이는 칸에 필요한 만큼. 억지로 늘이거나 줄이지 않는다.
+
+**reasoning → basis → why → fields → say 순서로 채운다.** 어떤 캐릭터로 갈지 먼저
+정리하고, 무엇을 참고했는지 고른 뒤에 값을 짓는다.
+
+- basis: 참고한 줄을 [가게]나 [캐릭터 시트]에서 그대로 인용(최대 3개). 참고한 게 없으면 빈 목록.
+- why: 왜 이런 캐릭터로 지었는지 사장님에게 한두 문장. 존댓말.
+- say: 다 만들었다고 건네는 한두 문장. 되묻지 않는다.
+
+출력은 이 모양의 JSON만 (이 순서 그대로):
+{"reasoning": "...",
+ "basis": [{"label": "...", "quote": "..."}],
+ "why": "...",
+ "fields": {"look": "...", "outfit": "...", "desc": "...", "abilities": "...",
+            "age": "...", "gender": "...", "name": "...", "keywords": "..."},
+ "say": "..."}
+"""
+
+
 # "외형 다시 하고 싶어"·"아웃핏 말고 외형 바꿀래" 같은 말을 받아내기 위한 것.
 # **시트를 채우는 중에도 쓴다** — 아웃핏을 묻고 있는데 사장님이 외형 얘기를 하면
 # 그쪽으로 옮겨가야 한다. 이게 없으면 묻는 칸에 갇혀 같은 질문만 반복했다.
@@ -776,3 +817,55 @@ def detect_edit_target(char, text: str, store=None) -> dict:
         logger.info("근거 없는 수정 값이라 값만 버리고 칸만 엽니다: %s", value[:40])
         value = ""
     return {"intent": "edit", "field": field, "value": value}
+
+
+def autofill(char, store=None) -> dict:
+    """빈 칸을 **한 번에** 채울 값을 짓는다. 사장님이 "알아서 전부" 버튼을 눌렀을 때 쓴다.
+
+    돌려주는 모양: {"fields": {...}, "basis": [...], "why": "...", "say": "..."}
+    못 하면 빈 dict.
+
+    **이미 적힌 칸은 건드리지 않는다.** 프롬프트로도 막고 여기서 한 번 더 거른다 —
+    사장님이 공들여 적어 둔 값이 버튼 한 번에 사라지면 안 된다.
+
+    한 호출로 전부 짓는 이유는 **한 캐릭터로 말이 되게** 하려는 것이다. 칸마다 따로
+    부르면 외형은 새인데 털 얘기를 하는 여덟 조각이 나온다.
+    """
+    from app.services import character_sheet as sheet
+
+    if not available():
+        return {}
+    empty = [f for f in sheet.ORDER if not sheet.value_of(char, f)]
+    if not sheet.value_of(char, sheet.KEYWORDS_FIELD):
+        empty.append(sheet.KEYWORDS_FIELD)
+    if not empty:
+        return {}
+
+    labels = ", ".join(f"{sheet.LABELS.get(f, sheet.KEYWORDS_LABEL)}({f})" for f in empty)
+    parsed = _ask(
+        _AUTOFILL_SYSTEM,
+        _context(char, store, f"[지금 비어 있어 채워야 할 칸]\n{labels}"),
+        _T_PROPOSE,
+    )
+    _log_reasoning("전부 만들기", parsed)
+
+    fields = parsed.get("fields")
+    if not isinstance(fields, dict):
+        return {}
+
+    cleaned = {}
+    for field, value in fields.items():
+        if field not in empty or not isinstance(value, str):
+            continue  # 이미 찬 칸이거나 없는 칸 — 덮어쓰지 않는다
+        value = _as_value(value)
+        if value:
+            cleaned[field] = value
+    if not cleaned:
+        return {}
+
+    spoken = parsed.get("say")
+    return {
+        "fields": cleaned,
+        "say": spoken.strip() if isinstance(spoken, str) else "",
+        **evidence_from(parsed, char, store),
+    }

@@ -136,6 +136,8 @@ export const CharacterAPI = {
   rerollCandidate: (i) => post(`/api/character/candidates/${i}/reroll`).then(mapCharacterProgress),
   select: (i) => post(`/api/character/select/${i}`).then(mapCharacterProgress),
   loadPrevious: () => post('/api/character/load-previous').then(mapCharacterProgress),
+  // 빈 칸을 한 번에 채워 승인 카드 한 장으로 올린다. 이미 적은 칸은 그대로 둔다.
+  autofill: () => post('/api/character/autofill').then(mapCharacterProgress),
   reset: () => post('/api/character/reset').then(mapCharacter),
   confirm: () => post('/api/character/confirm').then(mapCharacter),
 };

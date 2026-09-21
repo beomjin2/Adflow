@@ -438,6 +438,12 @@ def _propose_keywords(char, messages: list, store=None) -> None:
     뽑을 말이 없으면 지어내지 않고 사장님에게 직접 묻는다. 그럴듯한 형용사를 채워
     넣으면 그건 사장님이 정한 적 없는 성격이 된다.
     """
+    # 이미 채워져 있으면 다시 제안하지 않는다. "전부 만들기"가 키워드까지 한 번에
+    # 채우는데, 그 뒤에 또 물으면 방금 정한 걸 되묻는 꼴이 된다.
+    if sheet.value_of(char, sheet.KEYWORDS_FIELD):
+        _announce_ready(char, messages)
+        return
+
     # LLM이 붙어 있으면 문장의 뜻을 보고 고르고, 어느 칸에서 뽑았는지도 같이 내놓는다.
     # 없으면 사장님이 쓴 형용사를 정규식으로 집어낸다 — 그때 근거는 "직접 쓰신 말"이다.
     proposal = sheet_llm.suggest_keywords(char, store=store)
@@ -543,6 +549,41 @@ def _open_suggestion(char, messages: list, changes: dict, phase: str = "editing"
     else:
         _say(messages, f"{labels}을(를) 이렇게 바꿀까요?")
     messages.append({"role": "ai", "kind": "confirm", "pid": pid})
+
+
+@router.post("/autofill", response_model=schemas.CharacterOut)
+def autofill_sheet(db: Session = Depends(get_db)):
+    """빈 칸을 한 번에 채워 **승인 카드 한 장**으로 올린다.
+
+    사장님이 "알아서 전부 만들기"를 눌렀을 때 온다. 대화로 한 칸씩 가는 게 번거로운
+    분을 위한 지름길이다.
+
+    **이미 적어 둔 칸은 건드리지 않는다** — 빈 칸만 채운다. 그래서 반쯤 채우다 눌러도
+    앞서 정한 게 그대로 남는다.
+
+    바로 시트에 넣지 않고 카드로 올리는 건 다른 제안과 같은 이유다: 우리가 지어낸
+    값이니 무엇을 지어냈는지 보고 사장님이 정한다. 한 번에 승인된다.
+    """
+    char = _get(db)
+    store = _store(db)
+
+    if sheet.ready_to_generate(char):
+        raise HTTPException(400, "시트가 이미 다 채워져 있어요. 고치고 싶은 칸을 말씀해주세요")
+
+    made = sheet_llm.autofill(char, store)
+    if not made:
+        raise HTTPException(503, "지금은 만들어 드리지 못했어요. 잠시 뒤 다시 눌러주세요")
+
+    messages = list(char.messages or [])
+    messages.append({"role": "me", "kind": "text", "text": "알아서 전부 만들어줘"})
+    char.editing = ""
+    _open_suggestion(
+        char, messages, made["fields"], phase="filling",
+        lead=made.get("say") or "빈 칸을 이렇게 채워봤어요. 이대로 할까요?",
+        basis=made.get("basis"), why=made.get("why"),
+    )
+    char.messages = messages
+    return _out(char, db)
 
 
 @router.post("/suggestions/{pid}/accept", response_model=schemas.CharacterOut)

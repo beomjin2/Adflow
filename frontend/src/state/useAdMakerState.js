@@ -386,6 +386,19 @@ export function useAdMakerState() {
   // runGenerating 안에서 부르므로 PUT이 실패해도 같은 경로(fail)로 토스트가 뜬다.
   const syncCharSheet = useCallback(() => CharacterAPI.update(sheetFields(stateRef.current)), []);
 
+  /** 빈 칸을 한 번에 채워 달라고 한다. 대화로 한 칸씩 가는 게 번거로운 분을 위한 지름길.
+   *  **이미 적어 둔 칸은 그대로 둔다** — 반쯤 채우다 눌러도 앞서 정한 게 남는다.
+   *  누르기 전에 시트에 직접 타이핑한 내용을 먼저 저장한다. 안 그러면 방금 친 글자가
+   *  빈 칸으로 취급돼 덮어써진다. */
+  const autofillChar = useCallback(async () => {
+    update({ charThinking: true });
+    try {
+      await syncCharSheet();
+      update(await CharacterAPI.autofill());
+    } catch (e) { fail(e); } finally { update({ charThinking: false }); }
+  }, [update, fail, syncCharSheet]);
+
+
   /** 후보 3장 뽑기. 시트가 덜 찼으면 백엔드가 400 + 남은 칸 이름을 돌려준다. */
   const genCandidates = useCallback(async () => {
     const s = stateRef.current;
@@ -723,7 +736,7 @@ export function useAdMakerState() {
       openAdEntry, closeAdEntry, pickAdEntryTrend, pickAdEntryDirect,
       editStore, saveStore, toggleClosedDay, uploadStoreImage, deleteStoreImage,
       genCandidates, sendChar, selectCand, rerollCand, loadChar, resetChar, confirmChar, toggleCharEdit,
-      saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion,
+      saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion, autofillChar,
       confirmPending, declinePending,
       applyAd,
       toggleSbSet, toggleSbProd, sendSb, makeComic, rerollCut, proposeStory, addMeme, pickMemeCard,

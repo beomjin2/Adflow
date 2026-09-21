@@ -43,10 +43,13 @@ export default function Storyboard({ state, actions }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div className="ad-card" style={{ padding: '4px 20px' }}>
             <Accordion open={state.sbSetOpen} onToggle={actions.toggleSbSet} label="광고 설정" pill={sbSummary}>
-              <span className="ad-hint">종류와 느낌을 바꾸려면 이전 화면으로 돌아가세요.</span>
-              <button className="ad-btn sec sm" style={{ alignSelf: 'flex-start' }} onClick={actions.goAd}>
-                설정 바꾸기
-              </button>
+              <div className="ad-row" style={{ alignItems: 'center' }}>
+                <span className="ad-hint">종류와 느낌은 버튼을 눌러 바꿀 수 있어요.</span>
+                <span className="ad-grow" />
+                <button className="ad-btn sec sm" onClick={actions.goAd}>
+                  설정 바꾸기
+                </button>
+              </div>
             </Accordion>
 
             <Accordion

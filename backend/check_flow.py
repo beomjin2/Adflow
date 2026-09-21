@@ -157,6 +157,17 @@ turn("알아서 해줘", expect_field="look")
 turn("아니 외형 말고 이름부터 정하자", expect_field="name")
 turn("이름부터 하자니까", expect_field="name")
 
+scenario("J. 능력 칸 — 설명과 헷갈리기 쉽다")
+turn("갈색 털에 큰 눈을 가진 곰", expect_field="look")
+turn("흰 앞치마와 빵집 모자", expect_field="outfit")
+turn("느긋하지만 손님 이름은 다 외워요", expect_field="desc")
+turn("알아서 해줘", expect_field="abilities", note="(대신 정해주기)")
+turn("소금빵을 진짜 잘 구워요", expect_field="abilities", note="(직접 말하기)")
+
+scenario("K. 덮어쓰기 — 사장님 말이 버려지면 안 된다")
+turn("하얀 고양이", expect_field="look")
+turn("아니 까만 고양이로", expect_field="look", note="(말한 값이 살아야 한다)")
+
 scenario("H. 잡담·딴소리")
 turn("오늘 날씨 좋네", accept=False)
 turn("ㅋㅋㅋ", accept=False)

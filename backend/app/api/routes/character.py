@@ -223,17 +223,20 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
         # 답이 아닌 말은 답이 아니다. 시트는 사장님이 **정한 것**만 담아야 한다.
         filling = dict(fields)
 
-        # **이미 값이 있는 칸을 덮어쓰려 하면 한 번 더 묻는다.**
-        # "외형 다른거할래" 같은 말에서 모델이 "다른거"를 값으로 뽑아내는 일이 있다.
-        # 그대로 덮어쓰면 사장님 캐릭터가 그 조각으로 바뀌고, 대화는 가이드 순서대로
-        # 다음 칸으로 가 버린다 — 정작 사장님은 그 칸을 다시 정하자고 한 것이다.
-        # 덮어쓰기는 흔치 않으니 그때만 칸 판단을 한 번 더 부른다(비용도 그때만 든다).
-        if any(sheet.value_of(char, f) for f in filling):
-            wanted = sheet_llm.detect_edit_target(char, text, store)
-            if wanted.get("intent") == "edit" and not wanted.get("value"):
-                # 어떻게 바꿀지는 아직 안 말했다. 그 칸을 열고 다시 묻는다.
-                filling = {}
-                char.editing = asked = wanted["field"]
+        # **이미 값이 있는 칸은 조용히 갈아치우지 않고 승인 카드로 올린다.**
+        # 빈 칸을 채우는 건 보여줄 전/후가 없어 바로 넣지만, 덮어쓰기는 사장님이 공들여
+        # 적은 게 사라지는 일이라 한 번 보여주고 받는다.
+        #
+        # 예전에는 여기서 읽어낸 값을 **버리고** 제안으로 돌렸다. 그랬더니 사장님이
+        # "소금빵을 진짜 잘 구워요" 처럼 값을 똑똑히 말해도 그 말이 통째로 버려졌다.
+        overwriting = {f: v for f, v in filling.items() if sheet.value_of(char, f)}
+        if overwriting:
+            char.editing = max(overwriting, key=_rank)
+            labels = ", ".join(f"'{_label(f)}'" for f in overwriting)
+            _open_suggestion(char, messages, overwriting, phase="filling",
+                             lead=f"{labels}을(를) 말씀하신 대로 바꿀까요?")
+            char.messages = messages
+            return _out(char, db)
 
         if not filling and asked and not sheet_llm.available():
             # LLM이 없을 때만 규칙 기반으로 되돌아간다 — 그때는 이것 말고 방법이 없다.

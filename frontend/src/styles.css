@@ -198,12 +198,11 @@ summary.ad-acc-sum::marker{content:''}
 .ad-cut:first-child{border-top:0}
 .ad-cut .n{width:32px;height:32px;border-radius:10px;background:var(--green-soft);color:var(--green-deep);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:14px}
 
-/* 광고 종류 예시 목업 — 실제 그림은 아직 없어서, 몇 컷으로 쪼개지는지·컷마다 무슨 역할인지만
-   칸+캡션으로 보여준다("이런 그림이 나와요"라고 오해 주지 않게). */
-.ad-mockgrid{display:grid;gap:8px}
-.ad-mockcut{aspect-ratio:1/1;border:1.5px dashed var(--input-line);border-radius:var(--r-in);background:var(--soft);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:6px;text-align:center}
-.ad-mockcut .n{width:26px;height:26px;border-radius:9px;background:#fff;border:1px solid var(--line);color:var(--sub);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12.5px;flex:none}
-.ad-mockcut .cap{font-size:11.5px;line-height:15px;color:var(--mute);font-weight:600}
+/* 광고 종류 예시 목업 — 실제 그림은 아직 없어서, 몇 컷짜리 만화로 나뉘는지만 작은 칸으로
+   보여준다("이런 그림이 나와요"라고 오해 주지 않게 캡션 없이 숫자만). 4컷만화는 2×2, 그 외는
+   1행으로 놓아서 실제 컷 배치처럼 보이게 한다(gridTemplateColumns는 Ad.jsx에서 정함). */
+.ad-mockgrid{display:grid;gap:6px}
+.ad-mockcut{aspect-ratio:1/1;border-radius:8px;border:1.5px dashed var(--input-line);background:var(--soft);color:var(--sub);display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
 
 /* 대화창 — 머리말·기록·입력칸이 카드 한 장. 개선안의 `.chat` 그대로다:
    평소엔 420px 쯤 되고, 옆 열에 맞춰 늘어나야 할 땐 height:100% 로 따라 늘어난다. */

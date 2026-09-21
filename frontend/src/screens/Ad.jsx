@@ -1,12 +1,9 @@
 const AD_TYPES = ['인스타 게시물', '4컷만화'];
 const AD_CONCEPTS = ['유쾌함', '감성', '정보형', '담백함'];
 
-// 대화(story_llm.cut_count)가 실제로 나누는 컷 수·역할 그대로 — 아직 예시 그림이 없어서
-// 실제 그림 대신 칸+캡션 목업으로 "몇 컷으로, 어떤 순서로 만들어지는지"만 미리 보여준다.
-const CUT_CAPTIONS = {
-  '4컷만화': ['상황 소개', '전개', '전개', '가게 정보로 마무리'],
-  '인스타 게시물': ['상황 소개', '전개', '가게 정보로 마무리'],
-};
+// 대화(story_llm.cut_count)가 실제로 나누는 컷 수 그대로 — 아직 예시 그림이 없어서
+// 실제 그림 대신 칸 목업으로 "몇 컷으로 나뉘는지"만 미리 보여준다.
+const CUT_COUNTS = { '4컷만화': 4, '인스타 게시물': 3 };
 
 /** 3단계 — 광고 종류와 느낌을 고른다.
  *
@@ -57,24 +54,18 @@ export default function Ad({ state, actions }) {
           </div>
         </div>
 
-        {state.adType && CUT_CAPTIONS[state.adType] && (
+        {state.adType && CUT_COUNTS[state.adType] && (
           <div className="ad-field">
-            <span className="ad-lbl">이렇게 만들어져요 — {CUT_CAPTIONS[state.adType].length}컷</span>
+            <span className="ad-lbl">이렇게 만들어져요 — {CUT_COUNTS[state.adType]}컷</span>
             <div
               className="ad-mockgrid"
-              style={{
-                gridTemplateColumns: `repeat(${CUT_CAPTIONS[state.adType].length === 4 ? 2 : 3}, 1fr)`,
-                maxWidth: 300,
-              }}
+              style={{ gridTemplateColumns: `repeat(${CUT_COUNTS[state.adType] === 4 ? 2 : 3}, 52px)` }}
             >
-              {CUT_CAPTIONS[state.adType].map((cap, i) => (
-                <div className="ad-mockcut" key={i}>
-                  <span className="n">{i + 1}</span>
-                  <span className="cap">{cap}</span>
-                </div>
+              {Array.from({ length: CUT_COUNTS[state.adType] }, (_, i) => (
+                <span className="ad-mockcut" key={i}>{i + 1}</span>
               ))}
             </div>
-            <span className="ad-hint">진짜 그림은 대화로 내용을 정한 뒤에 캐릭터로 그려져요. 이건 컷이 몇 개로, 어떤 순서로 나뉘는지 보여주는 예시예요.</span>
+            <span className="ad-hint">진짜 그림은 대화로 내용을 정한 뒤에 캐릭터로 그려져요. 이건 컷이 몇 개로 나뉘는지 보여주는 예시예요.</span>
           </div>
         )}
 

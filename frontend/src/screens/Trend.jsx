@@ -5,10 +5,18 @@ import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
 
 /** 화면에 보여줄 날짜 — periodStart(스파이크 구간 시작일) > peakDate(스파이크 정점일)
  *  > published(등록일) 순으로 있는 값을 쓴다. 스파이크를 못 찾은 밈은 peakDate까지
- *  비어 있을 수 있어 등록일로 대신하고, 위픽레터처럼 등록일도 없는 소스는 결국
- *  "정보없음"으로 남는다. */
+ *  비어 있을 수 있어 등록일로 대신한다.
+ *
+ *  표기를 "2026.09.06" 하나로 맞춘다. 값마다 출처가 달라 모양이 제각각이다 —
+ *  네이버에서 온 periodStart 는 "2026-09-06", Trend A Word 등록일은 "2026.09.09",
+ *  고구마팜 등록일은 "2026. 08. 26". 그대로 두면 한 목록에 세 가지가 섞인다.
+ *  숫자 8자리를 못 뽑으면(형식을 모르는 값이면) 원문 그대로 둔다 — 지어내지 않는다.
+ *  정렬은 이 함수 결과에서 숫자만 다시 뽑아 쓰므로 표기를 바꿔도 순서는 그대로다. */
 function trendDate(m) {
-  return m.periodStart || m.peakDate || m.published || '';
+  const raw = m.periodStart || m.peakDate || m.published || '';
+  const d = raw.replace(/\D/g, '');
+  if (d.length < 8) return raw;
+  return `${d.slice(0, 4)}.${d.slice(4, 6)}.${d.slice(6, 8)}`;
 }
 
 /** "2026-08-26" / "2026. 08. 26" 같은 표기에서 숫자만 뽑아 날짜로 만든다. 값이 없으면

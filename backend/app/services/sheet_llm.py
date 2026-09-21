@@ -407,12 +407,34 @@ def _store_summary(store) -> str:
     return "\n".join(known)
 
 
+def _recent_talk(char, limit: int = 6) -> str:
+    """직전 대화 몇 마디. 판단하는 모든 호출이 이걸 같이 본다.
+
+    이게 없으면 매 호출이 **그 한 문장만** 보고 판단한다. 그래서 "아니 외형
+    아웃핏말고" 처럼 앞말을 받아야 뜻이 서는 말을 못 가렸다 — 사람도 앞뒤 없이는
+    애매한 문장이다. 대화처럼 굴려면 대화를 보여줘야 한다.
+
+    카드·그림 같은 건 빼고 **말만** 넘긴다.
+    """
+    lines = []
+    for m in (char.messages or []):
+        text = (m.get("text") or "").strip()
+        if not text:
+            continue
+        who = "사장님" if m.get("role") == "me" else "나"
+        lines.append(f"{who}: {text}")
+    return "\n".join(lines[-limit:])
+
+
 def _context(char, store, extra: str = "") -> str:
-    """모델에게 주는 배경 전부 — 가게 + 시트. 모든 호출이 같은 배경을 본다."""
+    """모델에게 주는 배경 전부 — 가게 + 시트 + 직전 대화. 모든 호출이 같은 배경을 본다."""
     block = (
         f"[가게]\n{_store_summary(store)}\n\n"
         f"[지금까지 채워진 캐릭터 시트]\n{_sheet_summary(char)}"
     )
+    talk = _recent_talk(char)
+    if talk:
+        block += f"\n\n[직전 대화]\n{talk}"
     return f"{block}\n\n{extra}" if extra else block
 
 

@@ -245,9 +245,7 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
                 _say(messages, f"{labels}까지 적어뒀어요. 시트가 다 채워졌어요.")
                 _propose_keywords(char, messages, store)
         else:
-            # target을 이미 반영했으니 칸을 다시 가릴 필요는 없다.
-            _handle_non_answer(char, messages, text, asked, store,
-                               target_known=bool(target), wants_help=wants_help)
+            _handle_non_answer(char, messages, text, asked, store, wants_help=wants_help)
     else:
         # ---- 다 찬 뒤의 수정 — 승인받고 반영한다 ----
         # 시트에서 칸을 눌러 '이 칸을 고치겠다'고 한 게 asked다. 그게 없어도
@@ -320,7 +318,7 @@ def _handle_complete_chat(char, messages: list, text: str, store) -> None:
 
 
 def _handle_non_answer(char, messages: list, text: str, asked: str, store,
-                       target_known: bool = False, wants_help: bool = False) -> None:
+                       wants_help: bool = False) -> None:
     """시트에 넣을 내용이 없는 말에 답한다. **사장님 말이 시트에 적히는 일은 없다.**
 
     세 갈래다.
@@ -349,7 +347,11 @@ def _handle_non_answer(char, messages: list, text: str, asked: str, store,
     # 아웃핏을 묻는 중에 "고양이 말고 다른 외형 추천해줘"라고 해도 계속 아웃핏만 물었고,
     # 심지어 외형 값("흰색 털에 긴 꼬리를 가진 강아지")을 아웃핏 칸에 제안했다.
     # 어느 칸인지 가르는 일은 LLM이 한다 — 여기서 키워드로 정하지 않는다.
-    wanted = {} if target_known else sheet_llm.detect_edit_target(char, text, store)
+    # **칸 판단은 언제나 한 번 더 묻는다.** understand()가 이미 target을 냈더라도
+    # 건너뛰지 않는다 — 그게 틀렸을 때 되돌릴 길이 없어진다. 실제로 능력을 묻는 중에
+    # "외형자체가 그게 아니고 너가 정해달라는거야"라고 했는데 능력에 갇혔다.
+    # 이쪽은 "어느 칸 얘기인가" 하나만 보는 전문 판단이라 더 믿을 만하다.
+    wanted = sheet_llm.detect_edit_target(char, text, store)
     if wanted.get("intent") == "edit" and wanted["field"] != following:
         following = wanted["field"]
         char.editing = following

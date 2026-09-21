@@ -241,7 +241,14 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
         # ---- 다 찬 뒤의 수정 — 승인받고 반영한다 ----
         # 시트에서 칸을 눌러 '이 칸을 고치겠다'고 한 게 asked다. 그게 없어도
         # LLM이 어느 칸 얘기인지 읽어낼 수 있으면 대화만으로 고칠 수 있어야 한다.
-        changes = read or ({asked: text} if asked else {})
+        #
+        # **지금과 똑같은 값은 '바꿀 내용'이 아니다.** "외형 다시 하고 싶어"처럼 고치겠다는
+        # 말만 하면 추출 쪽이 지금 외형을 그대로 되돌려주는데, 그걸 수정으로 치면
+        # "지금 시트와 같은 내용이에요"로 끝나고 칸이 열리지 않는다 — 배포 서버에서
+        # 실제로 그랬다. 무의미한 값은 걷어내고 무엇을 고치려는 말인지 읽는 쪽으로 넘긴다.
+        changes = {f: v for f, v in (read or {}).items() if sheet.value_of(char, f) != v}
+        if not changes and asked and sheet.value_of(char, asked) != text:
+            changes = {asked: text}
         if changes:
             _open_suggestion(char, messages, changes)
         else:

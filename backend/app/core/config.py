@@ -42,6 +42,8 @@ class Settings(BaseSettings):
     # 쓰므로 base_url을 보지 않는다.
     openai_base_url: str = "https://api.openai.com/v1"
     openai_timeout_seconds: int = 20
+    # 네컷 대사 GPT 의 temperature. 0.4 는 사장님 문장을 그대로 쪼개는 답만 냈다(09-22) → 0.9.
+    story_temperature: float = 0.9
 
     # deepghs/site_tags(HF, CC-BY-4.0)의 danbooru.donmai.us/tags.parquet 미러 경로.
     # backend/ 기준 상대경로(또는 절대경로) — GPT가 뽑은 태그 후보의 실존·게시물수를 검증한다.

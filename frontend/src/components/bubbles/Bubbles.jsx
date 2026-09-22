@@ -303,6 +303,102 @@ export function OptionsBubble({ items, pending, onConfirm }) {
   );
 }
 
+/** 밈 추천 3개. 하나만 던지면 "이게 최선인가"를 확인할 길이 없어서 셋을 놓고 고르게 한다.
+ *
+ *  각 줄은 이름·상황·고른 이유만 짧게 보여주고, 누르면 팝업에서 **트렌드 화면과 같은
+ *  원본**(유래·활용예시·출처·유행 시기)을 그대로 본다. 대화창에 유래를 통째로 펼치면
+ *  스크롤이 대화를 덮어서, 짧게 보여주고 눌러서 깊이 보는 쪽으로 나눴다. */
+export function MemeOptionsBubble({ items, pending, onConfirm }) {
+  const [open, setOpen] = useState(null); // 팝업에 띄운 항목
+  const statusOf = (pid) => ((pending || {})[pid] || {}).status;
+  const decided = (items || []).some((it) => statusOf(it.pid) !== 'open');
+
+  const Detail = ({ it, onClose }) => {
+    const m = it.meme || {};
+    const 기간 = [m.period_start, m.period_end].filter(Boolean).join(' ~ ');
+    const rows = [
+      ['유래', m.origin], ['활용 예시', m.usage_example], ['활용 상황', m.situation],
+      ['유행 시기', 기간 || m.peak_date || m.published], ['출처', m.source_label],
+    ].filter(([, v]) => String(v || '').trim());
+    return (
+      <div onClick={onClose} style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 60,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18,
+      }}>
+        <div onClick={(e) => e.stopPropagation()} style={{
+          background: '#fff', borderRadius: 16, padding: 20, maxWidth: 520, width: '100%',
+          maxHeight: '82vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 17, fontWeight: 800, color: colors.text }}>{m.name}</span>
+            {m.situation && <span style={{ fontSize: 11.5, fontWeight: 700, color: colors.primarySoftText, background: colors.onboardBg, borderRadius: 999, padding: '3px 9px' }}>{m.situation}</span>}
+            <span style={{ flex: 1 }} />
+            <button onClick={onClose} style={{ border: 0, background: 'none', fontSize: 20, cursor: 'pointer', color: colors.textFaint, lineHeight: 1 }}>×</button>
+          </div>
+          {m.image && <img src={m.image} alt={m.name} style={{ width: '100%', borderRadius: 10, objectFit: 'cover', maxHeight: 260 }} />}
+          <div style={{ background: colors.onboardBg, borderRadius: 10, padding: '10px 12px' }}>
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: colors.primarySoftText }}>왜 골랐냐면</span>
+            <div style={{ fontSize: 13.5, lineHeight: '20px', color: colors.text, marginTop: 4 }}>{it.reason}</div>
+          </div>
+          {rows.map(([label, value]) => (
+            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 800, color: colors.textFaint }}>{label}</span>
+              <span style={{ fontSize: 13.5, lineHeight: '20px', color: colors.textSub, whiteSpace: 'pre-wrap' }}>{value}</span>
+            </div>
+          ))}
+          {m.url && <a href={m.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: colors.primary }}>원문 보기 ↗</a>}
+          {statusOf(it.pid) === 'open' && !decided && (
+            <button onClick={() => { onClose(); onConfirm(it.pid); }} style={{
+              height: 48, borderRadius: 11, border: 0, background: colors.primary, color: '#fff',
+              fontSize: 15, fontWeight: 700, cursor: 'pointer',
+            }}>이 밈으로 할게요</button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ maxWidth: '96%', display: 'flex', flexDirection: 'column', gap: 8, animation: 'pop .22s ease' }}>
+      {(items || []).map((it) => {
+        const m = it.meme || {};
+        const status = statusOf(it.pid);
+        const chosen = status === 'applied';
+        return (
+          <div key={it.pid} style={{
+            background: '#fff', border: `1.5px solid ${chosen ? colors.primary : colors.onboardBorder}`,
+            borderRadius: 13, padding: 12, display: 'flex', flexDirection: 'column', gap: 8,
+            opacity: decided && !chosen ? 0.55 : 1,
+          }}>
+            <button onClick={() => setOpen(it)} style={{
+              border: 0, background: 'none', padding: 0, textAlign: 'left', cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', gap: 5,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 14.5, fontWeight: 800, color: colors.text }}>{m.name}</span>
+                {m.situation && <span style={{ fontSize: 11, fontWeight: 700, color: colors.primarySoftText, background: colors.onboardBg, borderRadius: 999, padding: '2px 8px' }}>{m.situation}</span>}
+                <span style={{ fontSize: 11.5, color: colors.textFaint }}>눌러서 자세히 ›</span>
+              </div>
+              <span style={{ fontSize: 13, lineHeight: '19px', color: colors.textSub }}>{it.reason}</span>
+            </button>
+            {status === 'open' && !decided ? (
+              <button onClick={() => onConfirm(it.pid)} style={{
+                height: 42, borderRadius: 10, border: 0, background: colors.primary, color: '#fff',
+                fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              }}>이 밈으로 할게요</button>
+            ) : (
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: chosen ? colors.primary : colors.textFaint }}>
+                {chosen ? '이 밈으로 정했어요' : '이건 안 골랐어요'}
+              </span>
+            )}
+          </div>
+        );
+      })}
+      {open && <Detail it={open} onClose={() => setOpen(null)} />}
+    </div>
+  );
+}
+
 function Field({ label, children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>

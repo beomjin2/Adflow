@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { colors, inputStyle, TAP } from '../theme.js';
-import { TextBubble, CandidatesBubble, ComicBubble, PlanBubble, ProdBubble, ConfirmBubble, OptionsBubble } from './bubbles/Bubbles.jsx';
+import { TextBubble, CandidatesBubble, ComicBubble, PlanBubble, ProdBubble, ConfirmBubble, OptionsBubble, MemeOptionsBubble } from './bubbles/Bubbles.jsx';
 
 export default function ChatPanel({
   messages, thinking, thinkingLabel = '생각하는 중…',
@@ -111,6 +111,10 @@ export default function ChatPanel({
           // 카드가 여러 장이라 pid 를 카드마다 따로 넘긴다.
           if (m.kind === 'options') return (
             <OptionsBubble key={i} items={m.items} pending={pending} onConfirm={onConfirm} />
+          );
+          // 밈 추천 3개. 눌러서 자세히 보는 팝업은 이 말풍선 안에서 연다.
+          if (m.kind === 'meme_options') return (
+            <MemeOptionsBubble key={i} items={m.items} pending={pending} onConfirm={onConfirm} />
           );
           return null;
         })}

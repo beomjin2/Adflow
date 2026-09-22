@@ -69,7 +69,13 @@ const mapStore = (s) => ({
  *  덮어쓰면 사장님이 타이핑하던 글자가 사라진다. 그래서 둘을 나눠 둔다.
  *
  *  charSheet(읽기 전용 8줄)는 진행 쪽에 둔다 — 대화가 채운 값을 바로 비춰야 하고,
- *  사장님이 직접 고치는 건 charLook 같은 개별 입력 상태이지 이 배열이 아니다. */
+ *  사장님이 직접 고치는 건 charLook 같은 개별 입력 상태이지 이 배열이 아니다.
+ *
+ *  🔴 **이걸 쓰는 건 폴링뿐이다.** 사장님이 버튼을 눌러 일어나는 일(대화 전송,
+ *  이전 캐릭터 불러오기, 전부 채우기…)에는 mapCharacter 를 쓴다. 그때는 입력칸에서
+ *  포커스가 이미 빠져 있고(onBlur 가 저장한다), 값을 안 실어 오면 **대화가 채운 칸이
+ *  펼쳐진 입력칸에 안 나타난다.** 09-22 실측: 설명이 DB 에는 들어갔는데 시트에는
+ *  "—" 로 남았다. */
 const mapCharacterProgress = (c) => ({
   charConfirmed: c.confirmed,
   charCands: (c.candidates || []).map(mapSlot),
@@ -131,22 +137,22 @@ export const CharacterAPI = {
   get: () => get('/api/character').then(mapCharacter),
   getProgress: () => get('/api/character').then(mapCharacterProgress),
   update: (fields) => put('/api/character', fields).then(mapCharacter),
-  chat: (text) => post('/api/character/chat', { text }).then(mapCharacterProgress),
+  chat: (text) => post('/api/character/chat', { text }).then(mapCharacter),
   // 시트에서 칸을 눌러 "이 칸을 대화로 고치겠다"고 알린다.
-  focus: (field) => post(`/api/character/focus/${field}`).then(mapCharacterProgress),
+  focus: (field) => post(`/api/character/focus/${field}`).then(mapCharacter),
   acceptSuggestion: (pid) => post(`/api/character/suggestions/${pid}/accept`).then(mapCharacter),
-  declineSuggestion: (pid) => post(`/api/character/suggestions/${pid}/decline`).then(mapCharacterProgress),
+  declineSuggestion: (pid) => post(`/api/character/suggestions/${pid}/decline`).then(mapCharacter),
   genCandidates: () => post('/api/character/candidates').then(mapCharacterProgress),
   rerollCandidate: (i) => post(`/api/character/candidates/${i}/reroll`).then(mapCharacterProgress),
   select: (i) => post(`/api/character/select/${i}`).then(mapCharacterProgress),
-  loadPrevious: () => post('/api/character/load-previous').then(mapCharacterProgress),
+  loadPrevious: () => post('/api/character/load-previous').then(mapCharacter),
   // 마스코트 보관소 — 확정할 때마다 한 장씩 쌓인다(character 행은 하나뿐이라
   // 새로 만들면 이전 것이 덮어써진다).
   listMascots: () => get('/api/character/mascots'),
   useMascot: (id) => post(`/api/character/mascots/${id}/use`).then(mapCharacter),
   deleteMascot: (id) => del(`/api/character/mascots/${id}`),
   // 빈 칸을 한 번에 채워 승인 카드 한 장으로 올린다. 이미 적은 칸은 그대로 둔다.
-  autofill: () => post('/api/character/autofill').then(mapCharacterProgress),
+  autofill: () => post('/api/character/autofill').then(mapCharacter),
   reset: () => post('/api/character/reset').then(mapCharacter),
   confirm: () => post('/api/character/confirm').then(mapCharacter),
 };

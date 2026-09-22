@@ -70,10 +70,15 @@ function Row({ row, state, actions, asking, open, onToggle, divider }) {
   const edge = divider ? { borderTop: `1px solid ${colors.cardBorder}` } : null;
 
   // 묻고 있는 칸은 항상 펼친다. 나머지는 사장님이 누를 때만.
+  //
+  // 접힌 줄은 **서버가 준 값(row.value)** 을 그린다. 입력 상태(state[key])가 아니다 —
+  // 그건 사장님이 손으로 친 것만 들고 있어서, **대화가 채운 칸이 화면에 안 나타났다.**
+  // 09-22 실측: 설명에 "가게 오너"가 DB에도 API 응답에도 들어 있는데 시트에는 "—"로
+  // 보였다. 칸 수만 3/8로 늘어서 사장님은 "또 반영이 안 되네"라고 하셨다.
   if (!asking && !open) {
     return (
       <div style={edge}>
-        <CompactRow row={row} value={value} onOpen={onToggle} />
+        <CompactRow row={row} value={row.value ?? value} onOpen={onToggle} />
       </div>
     );
   }

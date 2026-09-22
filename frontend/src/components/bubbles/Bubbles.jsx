@@ -3,6 +3,7 @@ import { colors } from '../../theme.js';
 import ImageSlot, { formatEta } from '../ImageSlot.jsx';
 import Lightbox from '../Lightbox.jsx';
 import ComicPanels from '../ComicPanels.jsx';
+import { situationLabel } from '../../lib/situationLabel.js';
 
 
 /** 말풍선. 모양은 styles.css 의 `.ad-msg` 가 정한다 — 개선안에서 캐릭터 대화와
@@ -313,7 +314,7 @@ export function MemeOptionsBubble({ items, pending, onConfirm }) {
     const m = it.meme || {};
     const 기간 = [m.period_start, m.period_end].filter(Boolean).join(' ~ ');
     const rows = [
-      ['유래', m.origin], ['활용 예시', m.usage_example], ['활용 상황', m.situation],
+      ['유래', m.origin], ['활용 예시', m.usage_example], ['활용 상황', m.situation && situationLabel(m.situation)],
       ['유행 시기', 기간 || m.peak_date || m.published], ['출처', m.source_label],
     ].filter(([, v]) => String(v || '').trim());
     // 배경을 충분히 어둡게 하고 블러를 준다 — 뒤가 대화 기록이라 옅게 깔면
@@ -331,7 +332,7 @@ export function MemeOptionsBubble({ items, pending, onConfirm }) {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 17, fontWeight: 800, color: colors.text }}>{m.name}</span>
-            {m.situation && <span style={{ fontSize: 11.5, fontWeight: 700, color: colors.primarySoftText, background: colors.onboardBg, borderRadius: 999, padding: '3px 9px' }}>{m.situation}</span>}
+            {m.situation && <span style={{ fontSize: 11.5, fontWeight: 700, color: colors.primarySoftText, background: colors.onboardBg, borderRadius: 999, padding: '3px 9px' }}>{situationLabel(m.situation)}</span>}
             <span style={{ flex: 1 }} />
             <button onClick={onClose} style={{ border: 0, background: 'none', fontSize: 20, cursor: 'pointer', color: colors.textFaint, lineHeight: 1 }}>×</button>
           </div>
@@ -376,7 +377,7 @@ export function MemeOptionsBubble({ items, pending, onConfirm }) {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 14.5, fontWeight: 800, color: colors.text }}>{m.name}</span>
-                {m.situation && <span style={{ fontSize: 11, fontWeight: 700, color: colors.primarySoftText, background: colors.onboardBg, borderRadius: 999, padding: '2px 8px' }}>{m.situation}</span>}
+                {m.situation && <span style={{ fontSize: 11, fontWeight: 700, color: colors.primarySoftText, background: colors.onboardBg, borderRadius: 999, padding: '2px 8px' }}>{situationLabel(m.situation)}</span>}
                 <span style={{ fontSize: 11.5, color: colors.textFaint }}>눌러서 자세히 ›</span>
               </div>
               <span style={{ fontSize: 13, lineHeight: '19px', color: colors.textSub }}>{it.reason}</span>

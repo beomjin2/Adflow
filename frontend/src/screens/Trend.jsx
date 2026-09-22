@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { colors } from '../theme.js';
 import { TextInput, Select } from '../components/ui/Field.jsx';
 import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
+import { situationLabel } from '../lib/situationLabel.js';
 
 /** 화면에 보여줄 날짜 — periodStart(스파이크 구간 시작일) > peakDate(스파이크 정점일)
  *  > published(등록일) 순으로 있는 값을 쓴다. 스파이크를 못 찾은 밈은 peakDate까지
@@ -204,7 +205,7 @@ export default function Trend({ state, actions }) {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {filterChip(`전체 (${trendItems.length})`, trendFilter === '전체', () => actions.set('trendFilter', '전체'))}
               {situations.map((s) => filterChip(
-                `${s.situation} (${s.count})`,
+                `${situationLabel(s.situation)} (${s.count})`,
                 trendFilter === s.situation,
                 () => actions.set('trendFilter', s.situation),
               ))}
@@ -264,7 +265,7 @@ export default function Trend({ state, actions }) {
                     fontSize: 10.5, fontWeight: 800, color: on ? colors.primarySoftText : colors.textSub,
                     background: on ? colors.primarySoft : colors.softBg, borderRadius: 7, padding: '4px 2px',
                     flex: 'none', width: 92, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>{m.situation || '미분류'}</span>
+                  }}>{situationLabel(m.situation)}</span>
                   {trendStatus(m, baseDate).ongoing && (
                     <span
                       title="아직 유행 중"
@@ -470,7 +471,7 @@ export default function Trend({ state, actions }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{ fontSize: 11.5, fontWeight: 800, color: colors.primaryHover, letterSpacing: .02 }}>GPT 추천</span>
               <span style={{ fontSize: 13, color: colors.textSub }}>
-                지금은 <b style={{ color: colors.text }}>{trendRecommendResult.situation}</b> 상황이라고 보고, 그 안에서 하나 골랐어요.
+                지금은 <b style={{ color: colors.text }}>{situationLabel(trendRecommendResult.situation)}</b> 쪽 밈이 어울린다고 보고, 그 안에서 하나 골랐어요.
               </span>
             </div>
 

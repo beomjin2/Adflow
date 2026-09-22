@@ -87,6 +87,8 @@ function initialState() {
 
     sbMsgs: [], sbInput: '', sbThinking: false,
     plan: [], sbSetOpen: false, sbProdOpen: false, sbStoreOpen: false, pending: {},
+    // 컷을 손으로 고치는 중인가. 캐릭터 시트의 charInfoReadOnly 와 같은 규칙이다.
+    planReadOnly: true,
     // 네컷 그림 칸과 진행 상태 — 캐릭터 후보와 같은 규칙(status: empty|generating|done|failed)
     comicCuts: [], sbGenerating: false, sbEta: 0,
     // "보관함에 저장"을 한 번 누르면 같은 구성으로 또 눌러도 중복 저장 안 되게 잠근다.
@@ -496,6 +498,29 @@ export function useAdMakerState() {
     } catch (e) { fail(e); }
   }, [update, toast, fail, stopPolling]);
 
+  /** 컷 한 칸을 화면에서만 고친다. 서버로는 "수정 완료"를 누를 때 한 번에 보낸다 —
+   *  글자마다 PATCH 를 쏘면 응답이 늦게 도착해 방금 친 글자를 덮어쓴다(ProdBubble 과 같은 이유). */
+  const setPlanCut = useCallback((n, field, value) => {
+    update((s) => ({
+      plan: (s.plan || []).map((c) => (c.n === n ? { ...c, [field]: value } : c)),
+    }));
+  }, [update]);
+
+  /** 캐릭터 시트의 toggleCharEdit 과 같은 모양 — 고치는 중이면 저장하고 잠근다. */
+  const togglePlanEdit = useCallback(async () => {
+    const s = stateRef.current;
+    if (s.planReadOnly) {
+      update({ planReadOnly: false });
+      return;
+    }
+    try {
+      const cuts = (s.plan || []).map((c) => ({ n: c.n, line: c.line || '', action: c.action || '' }));
+      const sb = await StoryboardAPI.updatePlan(cuts);
+      update({ ...sb, planReadOnly: true });
+      toast('컷을 저장했어요');
+    } catch (e) { fail(e); }
+  }, [update, toast, fail]);
+
   const sendSb = useCallback(async () => {
     const text = stateRef.current.sbInput.trim();
     if (!text) return;
@@ -741,6 +766,7 @@ export function useAdMakerState() {
       confirmPending, declinePending,
       applyAd,
       toggleSbSet, toggleSbProd, toggleSbStore, sendSb, resetSb, suggestStory, recommendMeme, makeComic,
+      setPlanCut, togglePlanEdit,
       openResult, backToSb, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,

@@ -174,6 +174,8 @@ export const StoryboardAPI = {
   // 네컷 + 대사를 한 장으로 구워 준다. 화면 말풍선은 CSS 레이어라 원본만 받으면
   // 대사가 사라진다(backend/app/services/comic_compose.py).
   poster: () => post('/api/storyboard/poster'),
+  // 사장님이 컷을 직접 고친다 — 캐릭터 시트의 '수정하기'와 같은 자리.
+  updatePlan: (cuts) => put('/api/storyboard/plan', { cuts }).then(mapStoryboard),
 };
 
 // ---------- production ----------

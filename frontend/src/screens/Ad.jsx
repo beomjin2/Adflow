@@ -3,7 +3,7 @@ const AD_CONCEPTS = ['유쾌함', '감성', '정보형', '담백함'];
 
 // 대화(story_llm.cut_count)가 실제로 나누는 컷 수 그대로 — 아직 예시 그림이 없어서
 // 실제 그림 대신 칸 목업으로 "몇 컷으로 나뉘는지"만 미리 보여준다.
-const CUT_COUNTS = { '4컷만화': 4, '인스타 게시물': 3 };
+const CUT_COUNTS = { '4컷만화': 4, '인스타 게시물': 1 };
 
 /** 3단계 — 광고 종류와 느낌을 고른다.
  *
@@ -59,7 +59,7 @@ export default function Ad({ state, actions }) {
             <span className="ad-lbl">이렇게 만들어져요 — {CUT_COUNTS[state.adType]}컷</span>
             <div
               className="ad-mockgrid"
-              style={{ gridTemplateColumns: `repeat(${CUT_COUNTS[state.adType] === 4 ? 2 : 3}, 52px)` }}
+              style={{ gridTemplateColumns: `repeat(${CUT_COUNTS[state.adType]}, 52px)` }}
             >
               {Array.from({ length: CUT_COUNTS[state.adType] }, (_, i) => (
                 <span className="ad-mockcut" key={i}>{i + 1}</span>

@@ -102,13 +102,15 @@ const mapStoryboard = (sb) => ({
   sbEta: sb.eta_seconds || 0,
   // 트렌드 화면에서 미리 골라 온 밈(있으면) — 대화가 자동으로 참고 중인 것.
   sbTrendMemeId: sb.trend_meme_id || '', sbTrendMemeName: sb.trend_meme_name || '',
+  // GPT가 확정된 plan으로 새로 쓴 SNS 캡션(있으면). 없으면 화면이 컷 이어붙이기로 대신 만든다.
+  sbCaption: sb.caption || '',
 });
 
 const mapRecord = (r) => ({
   id: r.id, name: r.name, qty: r.qty, date: r.date, time: r.time, soldOut: r.sold_out,
 });
 
-const mapHistory = (h) => ({ id: h.id, title: h.title, meta: h.meta, cuts: h.cuts || [] });
+const mapHistory = (h) => ({ id: h.id, title: h.title, meta: h.meta, cuts: h.cuts || [], caption: h.caption || '' });
 
 // ---------- store ----------
 export const StoreAPI = {
@@ -161,9 +163,19 @@ export const StoryboardAPI = {
   chat: (text) => post('/api/storyboard/chat', { text }).then(mapStoryboard),
   // 사장님이 아무것도 안 적고 "스토리 제안받기" 버튼을 눌렀을 때만 부른다 — 자동으로는 안 부른다.
   suggest: () => post('/api/storyboard/suggest').then(mapStoryboard),
+  // "밈 추천받기" 버튼 — 지금까지 대화에서 쓴 문장을 근거로 밈을 추천받는다. 결과는
+  // confirm 카드로 오고, 승인해야 trend_meme_id가 바뀐다.
+  recommendMeme: () => post('/api/storyboard/recommend-meme').then(mapStoryboard),
   confirm: (pid) => post(`/api/storyboard/confirm/${pid}`).then(mapStoryboard),
   decline: (pid) => post(`/api/storyboard/decline/${pid}`).then(mapStoryboard),
   makeComic: () => post('/api/storyboard/comic').then(mapStoryboard),
+  // 대화가 꼬였을 때 빠져나갈 길. 트렌드에서 골라 온 밈은 남는다(백엔드 reset_chat 참고).
+  reset: () => post('/api/storyboard/reset').then(mapStoryboard),
+  // 네컷 + 대사를 한 장으로 구워 준다. 화면 말풍선은 CSS 레이어라 원본만 받으면
+  // 대사가 사라진다(backend/app/services/comic_compose.py).
+  poster: () => post('/api/storyboard/poster'),
+  // 사장님이 컷을 직접 고친다 — 캐릭터 시트의 '수정하기'와 같은 자리.
+  updatePlan: (cuts) => put('/api/storyboard/plan', { cuts }).then(mapStoryboard),
 };
 
 // ---------- production ----------

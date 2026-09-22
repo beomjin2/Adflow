@@ -63,7 +63,7 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 
  *  그건 대화가 아니라 화면이 하나 더 열린 것이고, 스크롤도 그만큼 길어진다.
  *
  *  대사가 얹힌 큰 네컷은 결과 화면의 몫이다. */
-export function ComicBubble({ cuts, eta = 0, onReroll }) {
+export function ComicBubble({ cuts, eta = 0 }) {
   const [preview, setPreview] = useState(-1);
   const items = cuts || [];
   if (!items.length) return null;
@@ -88,13 +88,13 @@ export function ComicBubble({ cuts, eta = 0, onReroll }) {
         {items.map((c, i) => (
           <ImageSlot
             key={c.n ?? i} slot={c} size={92} eta={eta}
-            selectable onClick={() => setPreview(i)} onReroll={() => onReroll?.(c.n)}
+            selectable onClick={() => setPreview(i)}
           />
         ))}
       </div>
       {failed > 0 && (
         <span style={{ ...hintStyle, color: colors.warnText }}>
-          {failed}컷은 그리지 못했어요. ↻ 를 누르면 그 자리만 다시 그려요.
+          {failed}컷은 그리지 못했어요. "네컷 다시 그리기"를 눌러 다시 시도해주세요.
         </span>
       )}
       {/* 네컷은 고르는 게 아니라 보는 것이라 onSelect를 주지 않는다. */}
@@ -175,6 +175,12 @@ const CONFIRM_COPY = {
   keywords: { title: '퍼스널 키워드 제안', yes: '이 키워드로 할게요', no: '직접 적을게요' },
   field: { title: '캐릭터 시트 수정', yes: '이대로 바꾸기', no: '그대로 두기' },
   plan: { title: '스토리 변경 제안', yes: '이대로 바꾸기', no: '그대로 두기' },
+  meme: { title: '밈 추천', yes: '이 밈으로 바꾸기', no: '괜찮아요' },
+  // 대화에서 "소금빵 50개 구웠어요" 같은 말이 나왔을 때. 스토리와 별개로 곁들여 뜬다.
+  prod_add: { title: '생산 기록으로 남길까요?', yes: '남길게요', no: '안 남길래요' },
+  // 가게 정보는 덮어쓰기라 '남길까요'가 아니라 '바꿀까요'다. diffs 가 before→after 를
+  // 보여주고, basis 가 그렇게 읽은 근거(사장님 말 그대로)를 같이 보여준다.
+  store_edit: { title: '가게 정보를 바꿀까요?', yes: '이렇게 바꾸기', no: '그대로 두기' },
 };
 
 /** 우리가 대신 정해준 값일 때, **무엇을 보고 정했는지**를 보여준다.
@@ -242,6 +248,153 @@ export function ConfirmBubble({ pending, onConfirm, onDecline }) {
             : '바꾸지 않았어요'}
         </span>
       )}
+    </div>
+  );
+}
+
+/** 고를 수 있는 스토리 제안 카드 묶음.
+ *
+ *  ConfirmBubble 은 "이대로 할까요?"라 예/아니오뿐이다. 여기는 서로 다른 스토리
+ *  2~3개를 나란히 놓고 **고르게** 한다 — 사장님이 "뭐 만들까?"라고 했을 때
+ *  막다른 길로 되돌려보내지 않으려고 만든 것이다.
+ *
+ *  하나를 고르면 백엔드가 같은 묶음의 나머지를 status:"closed"로 닫는다. 화면에서도
+ *  버튼을 내려 다시 못 누르게 한다 — 스크롤을 올려 다른 걸 또 누르면 방금 정한
+ *  구성이 조용히 덮어써지기 때문이다. */
+export function OptionsBubble({ items, pending, onConfirm }) {
+  const statusOf = (pid) => ((pending || {})[pid] || {}).status;
+  const decided = (items || []).some((it) => statusOf(it.pid) !== 'open');
+
+  return (
+    <div style={{ maxWidth: '96%', display: 'flex', flexDirection: 'column', gap: 10, animation: 'pop .22s ease' }}>
+      {(items || []).map((it) => {
+        const status = statusOf(it.pid);
+        const chosen = status === 'applied';
+        return (
+          <div key={it.pid} style={{
+            background: '#fff',
+            border: `1.5px solid ${chosen ? colors.primary : colors.onboardBorder}`,
+            borderRadius: 14, padding: 13, display: 'flex', flexDirection: 'column', gap: 9,
+            opacity: decided && !chosen ? 0.55 : 1,
+          }}>
+            <span style={bubbleTitleStyle}>{it.topic}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, background: colors.bg, borderRadius: 10, padding: '9px 11px' }}>
+              {(it.cuts || []).map((c) => (
+                <div key={c.n} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                  <span style={{ flex: 'none', fontSize: 11.5, fontWeight: 800, color: colors.textFaint, minWidth: 14 }}>{c.n}</span>
+                  <span style={{ fontSize: 14, lineHeight: '20px', color: colors.text }}>{c.line}</span>
+                </div>
+              ))}
+            </div>
+            {status === 'open' && !decided ? (
+              <button onClick={() => onConfirm(it.pid)} style={{
+                height: 46, borderRadius: 11, border: 0, background: colors.primary, color: '#fff',
+                fontSize: 15, fontWeight: 700, cursor: 'pointer', boxShadow: '0 5px 10px rgba(22,160,107,.28)',
+              }}>이걸로 할게요</button>
+            ) : (
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: chosen ? colors.primary : colors.textFaint }}>
+                {chosen ? '이걸로 정했어요' : '이건 안 골랐어요'}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 밈 추천 3개. 하나만 던지면 "이게 최선인가"를 확인할 길이 없어서 셋을 놓고 고르게 한다.
+ *
+ *  각 줄은 이름·상황·고른 이유만 짧게 보여주고, 누르면 팝업에서 **트렌드 화면과 같은
+ *  원본**(유래·활용예시·출처·유행 시기)을 그대로 본다. 대화창에 유래를 통째로 펼치면
+ *  스크롤이 대화를 덮어서, 짧게 보여주고 눌러서 깊이 보는 쪽으로 나눴다. */
+export function MemeOptionsBubble({ items, pending, onConfirm }) {
+  const [open, setOpen] = useState(null); // 팝업에 띄운 항목
+  const statusOf = (pid) => ((pending || {})[pid] || {}).status;
+  const decided = (items || []).some((it) => statusOf(it.pid) !== 'open');
+
+  const Detail = ({ it, onClose }) => {
+    const m = it.meme || {};
+    const 기간 = [m.period_start, m.period_end].filter(Boolean).join(' ~ ');
+    const rows = [
+      ['유래', m.origin], ['활용 예시', m.usage_example], ['활용 상황', m.situation],
+      ['유행 시기', 기간 || m.peak_date || m.published], ['출처', m.source_label],
+    ].filter(([, v]) => String(v || '').trim());
+    return (
+      <div onClick={onClose} style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 60,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18,
+      }}>
+        <div onClick={(e) => e.stopPropagation()} style={{
+          background: '#fff', borderRadius: 16, padding: 20, maxWidth: 520, width: '100%',
+          maxHeight: '82vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 17, fontWeight: 800, color: colors.text }}>{m.name}</span>
+            {m.situation && <span style={{ fontSize: 11.5, fontWeight: 700, color: colors.primarySoftText, background: colors.onboardBg, borderRadius: 999, padding: '3px 9px' }}>{m.situation}</span>}
+            <span style={{ flex: 1 }} />
+            <button onClick={onClose} style={{ border: 0, background: 'none', fontSize: 20, cursor: 'pointer', color: colors.textFaint, lineHeight: 1 }}>×</button>
+          </div>
+          {m.image && <img src={m.image} alt={m.name} style={{ width: '100%', borderRadius: 10, objectFit: 'cover', maxHeight: 260 }} />}
+          <div style={{ background: colors.onboardBg, borderRadius: 10, padding: '10px 12px' }}>
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: colors.primarySoftText }}>왜 골랐냐면</span>
+            <div style={{ fontSize: 13.5, lineHeight: '20px', color: colors.text, marginTop: 4 }}>{it.reason}</div>
+          </div>
+          {rows.map(([label, value]) => (
+            <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 800, color: colors.textFaint }}>{label}</span>
+              <span style={{ fontSize: 13.5, lineHeight: '20px', color: colors.textSub, whiteSpace: 'pre-wrap' }}>{value}</span>
+            </div>
+          ))}
+          {m.url && <a href={m.url} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, color: colors.primary }}>원문 보기 ↗</a>}
+          {statusOf(it.pid) === 'open' && !decided && (
+            <button onClick={() => { onClose(); onConfirm(it.pid); }} style={{
+              height: 48, borderRadius: 11, border: 0, background: colors.primary, color: '#fff',
+              fontSize: 15, fontWeight: 700, cursor: 'pointer',
+            }}>이 밈으로 할게요</button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ maxWidth: '96%', display: 'flex', flexDirection: 'column', gap: 8, animation: 'pop .22s ease' }}>
+      {(items || []).map((it) => {
+        const m = it.meme || {};
+        const status = statusOf(it.pid);
+        const chosen = status === 'applied';
+        return (
+          <div key={it.pid} style={{
+            background: '#fff', border: `1.5px solid ${chosen ? colors.primary : colors.onboardBorder}`,
+            borderRadius: 13, padding: 12, display: 'flex', flexDirection: 'column', gap: 8,
+            opacity: decided && !chosen ? 0.55 : 1,
+          }}>
+            <button onClick={() => setOpen(it)} style={{
+              border: 0, background: 'none', padding: 0, textAlign: 'left', cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', gap: 5,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 14.5, fontWeight: 800, color: colors.text }}>{m.name}</span>
+                {m.situation && <span style={{ fontSize: 11, fontWeight: 700, color: colors.primarySoftText, background: colors.onboardBg, borderRadius: 999, padding: '2px 8px' }}>{m.situation}</span>}
+                <span style={{ fontSize: 11.5, color: colors.textFaint }}>눌러서 자세히 ›</span>
+              </div>
+              <span style={{ fontSize: 13, lineHeight: '19px', color: colors.textSub }}>{it.reason}</span>
+            </button>
+            {status === 'open' && !decided ? (
+              <button onClick={() => onConfirm(it.pid)} style={{
+                height: 42, borderRadius: 10, border: 0, background: colors.primary, color: '#fff',
+                fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              }}>이 밈으로 할게요</button>
+            ) : (
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: chosen ? colors.primary : colors.textFaint }}>
+                {chosen ? '이 밈으로 정했어요' : '이건 안 골랐어요'}
+              </span>
+            )}
+          </div>
+        );
+      })}
+      {open && <Detail it={open} onClose={() => setOpen(null)} />}
     </div>
   );
 }

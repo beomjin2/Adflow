@@ -86,7 +86,9 @@ function initialState() {
     trendRecommendPopupOpen: false,
 
     sbMsgs: [], sbInput: '', sbThinking: false,
-    plan: [], sbSetOpen: false, sbProdOpen: false, pending: {},
+    plan: [], sbSetOpen: false, sbProdOpen: false, sbStoreOpen: false, pending: {},
+    // 컷을 손으로 고치는 중인가. 캐릭터 시트의 charInfoReadOnly 와 같은 규칙이다.
+    planReadOnly: true,
     // 네컷 그림 칸과 진행 상태 — 캐릭터 후보와 같은 규칙(status: empty|generating|done|failed)
     comicCuts: [], sbGenerating: false, sbEta: 0,
     // "보관함에 저장"을 한 번 누르면 같은 구성으로 또 눌러도 중복 저장 안 되게 잠근다.
@@ -481,6 +483,43 @@ export function useAdMakerState() {
   // ---------- 광고 구성(스토리보드) ----------
   const toggleSbSet = useCallback(() => update((s) => ({ sbSetOpen: !s.sbSetOpen })), [update]);
   const toggleSbProd = useCallback(() => update((s) => ({ sbProdOpen: !s.sbProdOpen })), [update]);
+  // 광고에 실제로 쓰이는 가게 정보를 대화 옆에서 바로 확인한다. 비어 있는 칸은
+  // LLM이 쓰지 않으므로(story_llm._context), 어디가 비었는지 보이는 게 중요하다.
+  const toggleSbStore = useCallback(() => update((s) => ({ sbStoreOpen: !s.sbStoreOpen })), [update]);
+
+  /** 광고 대화를 처음 상태로. 대화·컷 구성·네컷이 전부 사라진다 — 꼬였을 때 빠져나갈 길이다.
+   *  트렌드에서 골라 온 밈은 백엔드가 남겨 준다(reset_chat). */
+  const resetSb = useCallback(async () => {
+    try {
+      stopPolling();
+      const cleared = await StoryboardAPI.reset();
+      update({ ...cleared, sbInput: '', sbThinking: false, savedThisAd: false });
+      toast('광고 대화를 처음 상태로 되돌렸어요');
+    } catch (e) { fail(e); }
+  }, [update, toast, fail, stopPolling]);
+
+  /** 컷 한 칸을 화면에서만 고친다. 서버로는 "수정 완료"를 누를 때 한 번에 보낸다 —
+   *  글자마다 PATCH 를 쏘면 응답이 늦게 도착해 방금 친 글자를 덮어쓴다(ProdBubble 과 같은 이유). */
+  const setPlanCut = useCallback((n, field, value) => {
+    update((s) => ({
+      plan: (s.plan || []).map((c) => (c.n === n ? { ...c, [field]: value } : c)),
+    }));
+  }, [update]);
+
+  /** 캐릭터 시트의 toggleCharEdit 과 같은 모양 — 고치는 중이면 저장하고 잠근다. */
+  const togglePlanEdit = useCallback(async () => {
+    const s = stateRef.current;
+    if (s.planReadOnly) {
+      update({ planReadOnly: false });
+      return;
+    }
+    try {
+      const cuts = (s.plan || []).map((c) => ({ n: c.n, line: c.line || '', action: c.action || '' }));
+      const sb = await StoryboardAPI.updatePlan(cuts);
+      update({ ...sb, planReadOnly: true });
+      toast('컷을 저장했어요');
+    } catch (e) { fail(e); }
+  }, [update, toast, fail]);
 
   const sendSb = useCallback(async () => {
     const text = stateRef.current.sbInput.trim();
@@ -502,8 +541,33 @@ export function useAdMakerState() {
     } catch (e) { update({ sbThinking: false }); fail(e); }
   }, [update, fail]);
 
+  /** "밈 추천받기" 버튼 — 지금까지 대화에서 쓴 문장을 근거로 밈을 추천받는다. 자동으로는
+   *  안 뜨고 이 버튼을 눌러야만 부른다. 결과는 confirm 카드로 오고 승인해야 반영된다. */
+  const recommendMeme = useCallback(async () => {
+    update({ sbThinking: true });
+    try {
+      const updated = await StoryboardAPI.recommendMeme();
+      update({ ...updated, sbThinking: false });
+    } catch (e) { update({ sbThinking: false }); fail(e); }
+  }, [update, fail]);
+
   const confirmPending = useCallback(async (pid) => {
-    try { update(await StoryboardAPI.confirm(pid)); toast('반영했어요'); } catch (e) { fail(e); }
+    try {
+      // 무엇을 승인하는지는 보내기 전에 봐 둔다 — 응답을 반영하고 나면 status 가 바뀐다.
+      const kind = ((stateRef.current.pending || {})[pid] || {}).kind;
+      const sb = await StoryboardAPI.confirm(pid);
+      update(sb);
+      // 대화에서 생산 기록을 남기면 백엔드가 kind:"prod" 메시지를 붙여 보낸다. 그런데
+      // 스토리보드 응답에는 기록 목록이 없어서, 그대로 두면 ProdBubble이 그릴 기록을
+      // 못 찾아 빈 칸이 된다. 새 기록이 보일 때만 목록을 다시 받는다.
+      const known = new Set((stateRef.current.prods || []).map((p) => p.id));
+      const hasNew = (sb.sbMsgs || []).some((m) => m.kind === 'prod' && !known.has(m.prodId));
+      if (hasNew) update({ prods: await ProductionAPI.listRecords() });
+      // 가게 정보를 대화로 고쳤으면 가게 상태도 다시 받는다. 안 받으면 스토리보드 왼쪽
+      // "가게 정보" 칸이 옛 값을 그대로 보여준다 — 방금 바꿨는데 안 바뀐 것처럼 보인다.
+      if (kind === 'store_edit') update(await StoreAPI.get());
+      toast('반영했어요');
+    } catch (e) { fail(e); }
   }, [update, toast, fail]);
 
   const declinePending = useCallback(async (pid) => {
@@ -532,12 +596,11 @@ export function useAdMakerState() {
       if (!ready) { toast('먼저 네컷 그리기를 끝내주세요'); return; }
     }
     // 히스토리에서 옛 항목을 봤을 때(viewingHistory) 켜둔 값이 남아있을 수 있으니,
-    // 새로 만드는 흐름으로 들어올 땐 항상 꺼둔다 — "이대로 저장" 버튼이 이 값으로 갈린다.
+    // 새로 만드는 흐름으로 들어올 땐 항상 꺼둔다 — "보관함에 저장" 버튼이 이 값으로 갈린다.
     update({ viewingHistory: false });
     go('result');
   }, [go, toast, update]);
   const backToSb = useCallback(() => update((s) => ({ screen: 'sb', stack: s.stack.filter((x) => x !== 'result') })), [update]);
-  const confirmResult = useCallback(() => go('save'), [go]);
 
   const download = useCallback(async () => {
     const s = stateRef.current;
@@ -558,6 +621,7 @@ export function useAdMakerState() {
             status: drawn?.status || 'empty',
           };
         }),
+        caption: s.sbCaption || '',
       });
       update((st) => ({ history: [entry, ...st.history], savedThisAd: true }));
       toast('구성을 보관함에 저장했어요');
@@ -582,6 +646,8 @@ export function useAdMakerState() {
         n: c.n ?? i + 1, short: c.short || '', line: c.line || '',
         image: c.image || null, status: c.image ? 'done' : 'empty',
       })),
+      // 저장 시점의 SNS 캡션도 같이 복원한다 — 없으면(옛 항목) 컷 이어붙이기로 대신 보여준다.
+      sbCaption: h.caption || '',
       // 이미 저장된 항목을 보는 것뿐이라 "이대로 저장"은 필요 없다 — Result.jsx가 이 값으로 숨긴다.
       viewingHistory: true,
     });
@@ -699,8 +765,9 @@ export function useAdMakerState() {
       saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion, autofillChar,
       confirmPending, declinePending,
       applyAd,
-      toggleSbSet, toggleSbProd, sendSb, suggestStory, makeComic,
-      openResult, backToSb, confirmResult, download,
+      toggleSbSet, toggleSbProd, toggleSbStore, sendSb, resetSb, suggestStory, recommendMeme, makeComic,
+      setPlanCut, togglePlanEdit,
+      openResult, backToSb, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,
       exportData, importFile,

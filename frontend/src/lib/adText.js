@@ -21,7 +21,7 @@ function tagify(word) {
 }
 
 /**
- * @returns {{headline: string, lines: string[], info: string, tags: string[], empty: boolean}}
+ * @returns {{headline: string, lines: string[], info: string, tags: string[], caption: string, empty: boolean}}
  */
 export function buildAdText(state) {
   const plan = state.plan || [];
@@ -44,12 +44,18 @@ export function buildAdText(state) {
     tagify(neighborhood(state.storeAddress)),
   ].filter((t, i, arr) => t && arr.indexOf(t) === i);
 
-  return { headline, lines, info, tags, empty: lines.length === 0 };
+  // GPT가 확정된 컷으로 새로 쓴 SNS 캡션(있으면) — 컷 대사를 그대로 이어붙인 것보다
+  // 이모지·줄바꿈·해시태그가 있는 진짜 SNS 톤이다. 없으면(생성 실패 등) 빈 문자열이고,
+  // 그때는 화면이 headline/lines/info/tags로 직접 조립해서 보여준다.
+  const caption = state.sbCaption || '';
+
+  return { headline, lines, info, tags, caption, empty: lines.length === 0 };
 }
 
 /** 인스타에 그대로 붙여 넣을 수 있는 한 덩어리 텍스트. */
 export function adTextForClipboard(state) {
-  const { lines, info, tags } = buildAdText(state);
+  const { lines, info, tags, caption } = buildAdText(state);
+  if (caption) return caption;
   return [lines.join('\n'), info, tags.join(' ')].filter(Boolean).join('\n\n');
 }
 

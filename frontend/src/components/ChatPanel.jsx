@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { colors, inputStyle, TAP } from '../theme.js';
-import { TextBubble, CandidatesBubble, ComicBubble, PlanBubble, ProdBubble, ConfirmBubble } from './bubbles/Bubbles.jsx';
+import { TextBubble, CandidatesBubble, ComicBubble, PlanBubble, ProdBubble, ConfirmBubble, OptionsBubble, MemeOptionsBubble } from './bubbles/Bubbles.jsx';
 
 export default function ChatPanel({
   messages, thinking, thinkingLabel = '생각하는 중…',
@@ -13,11 +13,14 @@ export default function ChatPanel({
   comic, comicEta = 0,
   prods, onPatchProd,
   pending, onConfirm, onDecline,
-  onSuggest,
+  onSuggest, onRecommendMeme, onReset,
   title = '',
+  disclaimer = '',
   height = 430
 }) {
   const listRef = useRef(null);
+  // '처음부터'를 누르면 확인 단계로 바뀐다. 한 번에 지우지 않는다.
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     const el = listRef.current;
@@ -39,11 +42,43 @@ export default function ChatPanel({
         <div className="ad-chat-h">
           <h3>{title}</h3>
           <span className="ad-grow" />
-          {onSuggest && (
-            <button className="ad-btn tint sm" onClick={onSuggest} disabled={thinking}>
-              ✨ 스토리 제안받기
-            </button>
-          )}
+          {/* 두 버튼을 한 덩어리로 묶어서, 좁은 화면에서 줄바꿈될 때도 따로 떨어지지 않고
+              같이 다음 줄로 넘어간다. */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {onRecommendMeme && (
+              <button className="ad-btn sec sm" onClick={onRecommendMeme} disabled={thinking}>
+                밈 추천받기
+              </button>
+            )}
+            {onSuggest && (
+              <button className="ad-btn tint sm" onClick={onSuggest} disabled={thinking}>
+                스토리 제안받기
+              </button>
+            )}
+            {/* 되돌릴 수 없으니 한 번 더 묻는다. 모양·문구·동작 전부 캐릭터 화면의
+                "처음부터 다시"(Character.jsx)와 같게 맞춰 뒀다 — 같은 일을 하는 버튼이
+                화면마다 다르게 생기면 사장님은 그게 같은 일인지 알 수가 없다. */}
+            {onReset && (resetting ? (
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
+                <span style={{ fontSize: 12, color: colors.textSub }}>전부 지울까요?</span>
+                <button onClick={() => { setResetting(false); onReset(); }} style={{
+                  height: 36, padding: '0 11px', borderRadius: 8, border: 0,
+                  background: colors.warnAccent, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                }}>네</button>
+                <button onClick={() => setResetting(false)} style={{
+                  height: 36, padding: '0 11px', borderRadius: 8, border: 0,
+                  background: colors.softBg, color: colors.textSub, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                }}>아니오</button>
+              </div>
+            ) : (
+              <button onClick={() => setResetting(true)} disabled={thinking} style={{
+                flex: 'none', border: 0, background: 'transparent',
+                color: thinking ? colors.cardBorder : colors.textFaint,
+                fontSize: 12.5, fontWeight: 700, cursor: thinking ? 'not-allowed' : 'pointer',
+                textDecoration: 'underline', padding: '6px 2px',
+              }}>처음부터 다시</button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -83,6 +118,15 @@ export default function ChatPanel({
             <ConfirmBubble key={i} pending={(pending || {})[m.pid]}
               onConfirm={() => onConfirm(m.pid)} onDecline={() => onDecline(m.pid)} />
           );
+          // 고를 수 있는 스토리 제안 묶음. confirm 과 같은 pending/confirm 경로를 쓰고,
+          // 카드가 여러 장이라 pid 를 카드마다 따로 넘긴다.
+          if (m.kind === 'options') return (
+            <OptionsBubble key={i} items={m.items} pending={pending} onConfirm={onConfirm} />
+          );
+          // 밈 추천 3개. 눌러서 자세히 보는 팝업은 이 말풍선 안에서 연다.
+          if (m.kind === 'meme_options') return (
+            <MemeOptionsBubble key={i} items={m.items} pending={pending} onConfirm={onConfirm} />
+          );
           return null;
         })}
         {thinking && (
@@ -93,6 +137,12 @@ export default function ChatPanel({
           }}>{thinkingLabel}</div>
         )}
       </div>
+
+      {card && disclaimer && (
+        <span style={{ fontSize: 11.5, lineHeight: '16px', color: colors.textFaint, padding: '0 20px' }}>
+          {disclaimer}
+        </span>
+      )}
 
       <div className={card ? 'in' : undefined} style={card ? undefined : { display: 'flex', gap: 8 }}>
         <input

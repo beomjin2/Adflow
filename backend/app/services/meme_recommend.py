@@ -57,16 +57,19 @@ def _client() -> AsyncOpenAI:
 
 async def recommend(note: str, character_desc: str, store_desc: str, candidates: list[dict], n: int = 1) -> dict:
     """candidates: [{"id","name","situation","origin","usage_example"}, ...] — situation별로
-    미리 좁히지 않은 전체 후보("미분류"는 호출부에서 미리 뺀다).
+    미리 좁히지 않은 전체 후보. "미분류"도 정상적인 situation 중 하나로 그대로 들어온다.
     반환: {"situation": str, "picks": [{"meme_id","reason"}, ...]} (picks 1~n개).
     situation이 후보 목록에 없거나, 유효한 pick이 하나도 안 남으면 RuntimeError."""
     situations = sorted({c["situation"] for c in candidates if c.get("situation")})
     if not situations:
         raise RuntimeError("분류된 밈이 없어요")
 
+    # 이름·유래·활용예시를 자르지 않고 그대로 넘긴다 — 후보가 25개뿐이라 원문을
+    # 통째로 넣어도 토큰 부담이 적다. 잘라서 넘기면 GPT가 정작 중요한 부분을 못 보고
+    # 엉뚱한 이유를 댈 수 있다.
     lines = [
         f"- id: {c['id']} / 상황: {c.get('situation') or ''} / 이름: {c['name']} "
-        f"/ 유래: {(c['origin'] or '')[:120]} / 활용예시: {(c['usage_example'] or '')[:120]}"
+        f"/ 유래: {c['origin'] or ''} / 활용예시: {c['usage_example'] or ''}"
         for c in candidates
     ]
     user = (

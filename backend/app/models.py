@@ -88,12 +88,17 @@ class Storyboard(Base):
     prod_logged = Column(Boolean, default=False)
     pending = Column(JSON, default=dict)   # {pid: {which, kind, diffs, payload, status}}
     # 트렌드 확인 화면에서 미리 골라 온 밈(Meme.id). 광고 설정을 확정할 때(POST /api/ad/apply)
-    # 같이 저장되고, 대화(story_llm.plan_from_text)가 스토리를 만들 때 자동으로 참고한다.
-    # 안 골랐으면 빈 문자열 — 그때는 GPT가 크롤링된 밈 중 스스로 어울리는 걸 찾아본다.
+    # 같이 저장되고, 대화(story_llm.plan_from_text)가 스토리를 만들 때 참고한다.
+    # 안 골랐으면 빈 문자열 — 그때는 밈 얘기 자체를 안 한다(GPT가 스스로 고르지 않는다).
     trend_meme_id = Column(String, default="")
     # 위 밈의 이름 — 화면에 바로 보여주려고 같이 저장해 둔다(그때마다 memes 테이블을
     # 다시 조회하지 않는다). trend_meme_id를 정할 때 한 번만 같이 채운다.
     trend_meme_name = Column(String, default="")
+    # 인스타에 올릴 캡션 — 컷 대사(plan[].line)는 말풍선용이라 40자 제한이 있어 그대로
+    # 이어붙이면 SNS 톤이 안 산다. plan을 승인할 때마다(POST /confirm) GPT가 이모지·
+    # 줄바꿈·해시태그가 있는 캡션을 따로 새로 쓴다(story_llm.generate_caption). 실패하면
+    # 빈 문자열로 남고, 그때는 화면이 옛 방식(컷 이어붙이기)으로 대신 보여준다.
+    caption = Column(String, default="")
 
 
 class ProductionItem(Base):
@@ -174,3 +179,4 @@ class HistoryEntry(Base):
     title = Column(String, default="")
     meta = Column(String, default="")
     cuts = Column(JSON, default=list)  # 저장 시점의 컷 목록
+    caption = Column(String, default="")  # 저장 시점의 SNS 캡션(있으면)

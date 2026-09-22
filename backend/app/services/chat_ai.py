@@ -166,6 +166,60 @@ def comic_prompt(char_part_text: str, cut_line: str, camera: str = "") -> str:
     return ", ".join(p for p in pieces if p)
 
 
+# ── 연출 슬롯 경로 (2026-09-22). 접두어에서 `solo, full body`를 뺐다 — 둘은 컷마다 바뀌는 슬롯
+# (count·size)이라 접두어에 고정하면 "멀리서" 컷도 전신 클로즈업이 됐다(09-21 실측 20/20 가운데 고정).
+COMIC_GLOBAL_TAGS = "masterpiece, best quality, score_7, safe, (chibi:1.3)"
+
+# 닫힌 슬롯 — 한국어 선택지 → 실존 Danbooru 태그(전부 2,000장 이상 확인). GPT 없이 표로 바꾼다.
+SHOT_SIZE = {"아주작게": "wide_shot", "작게": "full_body", "보통": "cowboy_shot", "크게": "upper_body", "아주크게": "close-up"}
+SHOT_ANGLE = {"정면": "straight-on", "위에서": "from_above", "아래에서": "from_below", "옆에서": "from_side", "뒤에서": "from_behind"}
+SHOT_COUNT = {"혼자": "solo", "여럿": "multiple_others"}
+# 시선. 정면(카메라 응시)만 쓰면 증명사진이 된다 — 연출이 네 컷 중 한 컷만 카메라를 보게 고른다.
+GAZE = {"정면": "looking_at_viewer", "옆": "looking_to_the_side", "아래": "looking_down",
+        "상대": "looking_at_another", "눈감음": "closed_eyes"}
+# 위치(왼쪽·가운데·오른쪽)는 태그가 없다(사전에 없음, 09-18 실측 33%). 넓게 뽑아 자르는 방식(image_gen.POSITION_CROP).
+OPEN_SLOTS = ("expression", "pose", "place", "props", "light")
+
+
+def comic_prompt_slots(char_part_text: str, slots: dict) -> tuple[str, dict]:
+    """연출 슬롯 → 한 컷 프롬프트. (프롬프트, 계단별 기록). 전역 + 캐릭터(4컷 고정) + 컷 슬롯(변함).
+    닫힌 슬롯은 표로, 열린 슬롯은 칸 이름을 붙여 슬롯 전용 태거(kind="slot")로 1~3개씩. 같은 태그는 한 번만."""
+    trace: dict = {"closed": {}, "open": {}}
+    parts: list[str] = [COMIC_GLOBAL_TAGS, char_part_text]
+    shot = slots.get("shot") or {}
+    for key, table in (("size", SHOT_SIZE), ("angle", SHOT_ANGLE), ("count", SHOT_COUNT)):
+        val = str(shot.get(key) or "").strip()
+        tag = table.get(val, "")
+        trace["closed"][f"shot.{key}"] = {"in": val, "tag": tag, "ok": bool(tag)}
+        if tag:
+            parts.append(tag)
+    gaze_in = str(slots.get("gaze") or "").strip()
+    gaze_tag = GAZE.get(gaze_in, "")
+    trace["closed"]["gaze"] = {"in": gaze_in, "tag": gaze_tag, "ok": bool(gaze_tag)}
+    if gaze_tag:
+        parts.append(gaze_tag)
+    pos = str(shot.get("position") or "").strip()
+    trace["closed"]["shot.position"] = {"in": pos, "tag": "", "ok": bool(pos), "how": "넓게 뽑아 자름" if pos else ""}
+    for key in OPEN_SLOTS:
+        raw = slots.get(key)
+        text = ", ".join(str(x) for x in raw) if isinstance(raw, list) else str(raw or "")
+        text = text.strip()
+        tags = tags_for_look(f"{key}: {text}", kind="slot") if text else []
+        trace["open"][key] = {"in": text, "tags": tags}
+        if tags:
+            parts.append(", ".join(tags))
+    seen: set[str] = set()
+    tokens: list[str] = []
+    for p in parts:
+        for tok in (x.strip() for x in p.split(",")):
+            if tok and tok not in seen:
+                seen.add(tok)
+                tokens.append(tok)
+    prompt = ", ".join(tokens)
+    trace["prompt"] = prompt
+    return prompt, trace
+
+
 def pending_candidates(count: int = 3) -> list[dict]:
     """생성 대기 칸 count개. 이미지는 백그라운드 워커가 나중에 채운다."""
     return [

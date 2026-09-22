@@ -174,7 +174,7 @@ export const StoryboardAPI = {
   // 대화가 꼬였을 때 빠져나갈 길. 트렌드에서 골라 온 밈은 남는다(백엔드 reset_chat 참고).
   reset: () => post('/api/storyboard/reset').then(mapStoryboard),
   // 네컷 + 대사를 한 장으로 구워 준다. 화면 말풍선은 CSS 레이어라 원본만 받으면
-  // 대사가 사라진다(backend/app/services/comic_compose.py).
+  // 대사가 사라진다(backend/app/services/comic_bake.py).
   poster: () => post('/api/storyboard/poster'),
   // 사장님이 컷을 직접 고친다 — 캐릭터 시트의 '수정하기'와 같은 자리.
   updatePlan: (cuts) => put('/api/storyboard/plan', { cuts }).then(mapStoryboard),

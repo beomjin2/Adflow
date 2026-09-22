@@ -36,6 +36,11 @@ function Accordion({ open, onToggle, label, pill, pillTone = '', children }) {
 export default function Storyboard({ state, actions }) {
   const missingProds = state.prods.filter((p) => !p.soldOut);
   const sbSummary = [state.adType, state.adConcept, state.charName].filter(Boolean).join(' · ') || '아직 안 정함';
+  // 4컷만화는 그림이 광고의 핵심이라 "네컷 그리기"를 먼저 끝내야 다음으로 넘어갈 수 있다.
+  // 인스타 게시물은 문구만으로도 올릴 수 있는 형식이라 그림을 요구하지 않는다(openResult와 같은 규칙).
+  const needsComic = state.adType === '4컷만화';
+  const comicReady = !needsComic
+    || (state.comicCuts.length >= state.plan.length && state.comicCuts.every((c) => c.status === 'done'));
 
   return (
     <div className="ad-split match">
@@ -121,8 +126,10 @@ export default function Storyboard({ state, actions }) {
                   : (state.comicCuts || []).length ? '네컷 다시 그리기' : '네컷 그리기'}
             </button>
             <button className="ad-btn pri" style={{ flex: 1, minWidth: 160 }}
-              onClick={actions.openResult} disabled={!state.plan.length}>
-              {state.plan.length ? '이 내용으로 광고 만들기' : '대화로 내용을 먼저 정해주세요'}
+              onClick={actions.openResult} disabled={!state.plan.length || !comicReady}>
+              {!state.plan.length ? '대화로 내용을 먼저 정해주세요'
+                : !comicReady ? '네컷 그리기를 먼저 해주세요'
+                  : '이 내용으로 광고 만들기'}
             </button>
           </div>
         </div>
@@ -142,7 +149,6 @@ export default function Storyboard({ state, actions }) {
         plan={state.plan}
         comic={state.comicCuts}
         comicEta={state.sbEta}
-        onRerollCut={actions.rerollCut}
         prods={state.prods}
         onPatchProd={actions.patchProd}
         pending={state.pending}

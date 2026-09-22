@@ -164,7 +164,6 @@ export const StoryboardAPI = {
   confirm: (pid) => post(`/api/storyboard/confirm/${pid}`).then(mapStoryboard),
   decline: (pid) => post(`/api/storyboard/decline/${pid}`).then(mapStoryboard),
   makeComic: () => post('/api/storyboard/comic').then(mapStoryboard),
-  rerollCut: (n) => post(`/api/storyboard/comic/${n}/reroll`).then(mapStoryboard),
 };
 
 // ---------- production ----------

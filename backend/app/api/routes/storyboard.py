@@ -351,22 +351,6 @@ def make_comic(db: Session = Depends(get_db)):
     return schemas.storyboard_out(sb, jobs.queue_depth())
 
 
-@router.post("/comic/{n}/reroll", response_model=schemas.StoryboardOut)
-def reroll_cut(n: int, db: Session = Depends(get_db)):
-    """컷 하나만 다시 뽑는다."""
-    sb = _get(db)
-    cuts = list(sb.comic_cuts or [])
-    index = next((i for i, c in enumerate(cuts) if c.get("n") == n), None)
-    if index is None:
-        raise HTTPException(404, "cut not found")
-    char = db.get(models.Character, 1)
-    if not char or not char.confirmed:
-        raise HTTPException(400, "캐릭터를 먼저 확정해주세요")
-    _start_cuts(sb, char, [index], db)
-    db.refresh(sb)
-    return schemas.storyboard_out(sb, jobs.queue_depth())
-
-
 @router.post("/confirm/{pid}", response_model=schemas.StoryboardOut)
 def confirm_pending(pid: str, db: Session = Depends(get_db)):
     sb = _get(db)

@@ -142,6 +142,21 @@ class ApplyAdOut(BaseModel):
 
 
 # ---------- storyboard ----------
+class PlanCutPatch(BaseModel):
+    """컷 하나에서 사장님이 직접 고칠 수 있는 칸. 비워 보낸 칸은 안 바꾼다.
+
+    n(번호)·camera·props 는 받지 않는다 — 번호는 자리이고, 구도·소품은 그림
+    프롬프트로 그대로 나가는 태그라 손으로 고칠 자리가 아니다(story_llm.CAMERA_TAGS).
+    """
+    n: int
+    line: str | None = None
+    action: str | None = None
+
+
+class PlanUpdate(BaseModel):
+    cuts: list[PlanCutPatch]
+
+
 class StoryboardOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     messages: list[dict[str, Any]]

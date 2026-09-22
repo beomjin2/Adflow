@@ -554,6 +554,38 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     return schemas.storyboard_out(sb, jobs.queue_depth())
 
 
+@router.put("/plan", response_model=schemas.StoryboardOut)
+def update_plan(body: schemas.PlanUpdate, db: Session = Depends(get_db)):
+    """사장님이 컷을 **직접** 고친다. 캐릭터 시트의 "수정하기"와 같은 자리다.
+
+    대화로만 고칠 수 있으면 한 글자 바꾸려고 문장을 새로 말해야 하고, 그러면 GPT가
+    나머지 컷까지 다시 쓴다. 손으로 고치는 길이 따로 있어야 한다.
+
+    확인 카드를 안 거친다 — 사장님이 직접 친 글자다. 지어낼 여지가 없다.
+    """
+    sb = _get(db)
+    current = {c.get("n"): dict(c) for c in (sb.plan or [])}
+    for patch in body.cuts:
+        cut = current.get(patch.n)
+        if cut is None:
+            continue
+        if patch.line is not None:
+            cut["line"] = patch.line.strip()
+            # short 는 목록에서 줄여 보여줄 때 쓰는 값이라 대사를 고치면 같이 따라가야 한다.
+            cut["short"] = cut["line"][:14]
+        if patch.action is not None:
+            cut["action"] = patch.action.strip()
+        current[patch.n] = cut
+    sb.plan = [current[n] for n in sorted(current)]
+
+    # 캡션은 확정된 컷으로 쓴 글이라 컷이 바뀌면 같이 다시 쓴다(confirm 과 같은 규칙).
+    # 실패해도 조용히 빈 문자열이고, 화면이 옛 방식(컷 이어붙이기)으로 대신 보여준다.
+    sb.caption = _generate_caption(sb, db) or ""
+    db.commit()
+    db.refresh(sb)
+    return schemas.storyboard_out(sb, jobs.queue_depth())
+
+
 @router.post("/poster")
 def make_poster(db: Session = Depends(get_db)):
     """네컷 + 대사를 **한 장으로 구워** 내려받을 URL을 돌려준다.

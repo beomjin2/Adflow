@@ -140,6 +140,11 @@ export const CharacterAPI = {
   rerollCandidate: (i) => post(`/api/character/candidates/${i}/reroll`).then(mapCharacterProgress),
   select: (i) => post(`/api/character/select/${i}`).then(mapCharacterProgress),
   loadPrevious: () => post('/api/character/load-previous').then(mapCharacterProgress),
+  // 마스코트 보관소 — 확정할 때마다 한 장씩 쌓인다(character 행은 하나뿐이라
+  // 새로 만들면 이전 것이 덮어써진다).
+  listMascots: () => get('/api/character/mascots'),
+  useMascot: (id) => post(`/api/character/mascots/${id}/use`).then(mapCharacter),
+  deleteMascot: (id) => del(`/api/character/mascots/${id}`),
   // 빈 칸을 한 번에 채워 승인 카드 한 장으로 올린다. 이미 적은 칸은 그대로 둔다.
   autofill: () => post('/api/character/autofill').then(mapCharacterProgress),
   reset: () => post('/api/character/reset').then(mapCharacter),

@@ -171,6 +171,27 @@ class Meme(Base):
     ad_safe = Column(Boolean, nullable=True)
 
 
+class Mascot(Base):
+    """확정한 마스코트 보관소 — 확정할 때마다 그 시점 시트와 그림을 한 장으로 남긴다.
+
+    왜 따로 두나. `character` 는 **행 하나(id=1)** 로 "지금 쓰는 캐릭터"만 들고 있다.
+    새로 만들면 이전 것이 그대로 덮어써져 사라졌다 — 공들여 만든 마스코트를
+    되찾을 길이 없었다("전에 만든 캐릭터 불러오기"는 그 한 행이 아직 확정
+    상태일 때만 되는 것이라, 새로 만들기 시작하면 이미 늦다).
+
+    그림 파일(media/)은 여기서도 안 지운다. 참조만 들고 있는다.
+    """
+    __tablename__ = "mascots"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, default="")
+    sheet = Column(JSON, default=dict)     # 확정 시점의 시트 8칸
+    image = Column(String, default="")     # 고른 그림 URL
+    candidates = Column(JSON, default=list)  # 후보 전부 — 되살릴 때 그대로 복원한다
+    selected_index = Column(Integer, default=-1)
+    created_at = Column(String, default="")
+
+
 class HistoryEntry(Base):
     """저장된(다운로드한) 광고 히스토리."""
     __tablename__ = "history"

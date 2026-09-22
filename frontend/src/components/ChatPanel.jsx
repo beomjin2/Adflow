@@ -103,10 +103,15 @@ export default function ChatPanel({
 
         {messages.map((m, i) => {
           if (m.kind === 'text') return <TextBubble key={i} role={m.role} text={m.text} />;
-          if (m.kind === 'cands') return (
-            <CandidatesBubble key={i} items={cands || []} selected={charSelected} eta={eta}
-              onSelect={onSelectCand} onReroll={onRerollCand} />
-          );
+          // 지난 후보 카드에는 그때 그린 그림이 박혀 있다(items). 그건 가만히 둔다.
+          // 살아 있는 목록을 비추는 건 **아직 얼지 않은 마지막 카드 하나**뿐이다 —
+          // 예전에는 모든 카드가 같은 목록을 비춰서, 다시 뽑으면 위쪽 카드까지 "그리는 중"이 됐다.
+          if (m.kind === 'cands') return m.items
+            ? <CandidatesBubble key={i} items={m.items} frozen />
+            : (
+              <CandidatesBubble key={i} items={cands || []} selected={charSelected} eta={eta}
+                onSelect={onSelectCand} onReroll={onRerollCand} />
+            );
           if (m.kind === 'comic') return (
             <ComicBubble key={i} cuts={comic || []} eta={comicEta} onReroll={onRerollCut} />
           );

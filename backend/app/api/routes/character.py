@@ -81,16 +81,64 @@ def _supersede(char, fields) -> None:
     targets = {f for f in fields if f}
     if not targets:
         return
+    _close_open(char, lambda proposal: bool(_fields_of(proposal) & targets))
+
+
+def _close_open(char, match=None) -> None:
+    """열려 있는 제안을 닫는다. match 를 안 주면 **전부** 닫는다.
+
+    새 카드를 올리기 직전에 전부 닫는 이유 — 다른 칸 카드라도 남아 있으면 화면에
+    승인 버튼이 여러 개 떠 있게 된다. 09-22 실측에서 외형·아웃핏·설명 카드가 **동시에
+    세 장** 열려 있었고, 대화는 이미 한참 앞으로 가 있었다. 사장님이 그중 아무거나
+    누르면 지나간 값이 지금 시트에 들어온다. 대화는 한 번에 하나를 묻는다.
+    """
     pending = dict(char.pending or {})
     stale = [
         pid for pid, proposal in pending.items()
-        if proposal.get("status") == "open" and _fields_of(proposal) & targets
+        if proposal.get("status") == "open" and (match is None or match(proposal))
     ]
     if not stale:
         return
     for pid in stale:
         pending[pid] = {**pending[pid], "status": "superseded"}
     char.pending = pending
+
+
+def _shown_values(char, field: str) -> list:
+    """그 칸에 대해 **이미 보여 드린** 값들. 같은 제안을 또 내지 않으려고 모은다.
+
+    이게 없으면 "좀 더 자세히"에 **글자 하나 안 바뀐 값**이 다시 온다 — 09-22 실측.
+    """
+    seen = []
+    for proposal in (char.pending or {}).values():
+        if proposal.get("kind") != "field":
+            continue
+        value = ((proposal.get("payload") or {}).get("changes") or {}).get(field)
+        if isinstance(value, str) and value.strip():
+            seen.append(value.strip())
+    current = (sheet.value_of(char, field) or "").strip()
+    if current:
+        seen.append(current)
+    return seen
+
+
+def _recorded_line(char, filling: dict) -> str:
+    """무엇을 **어느 칸에** 적었는지 한 문장.
+
+    _guide 는 다음에 할 말을 통째로 LLM 에게 맡기는데, 모델은 이 확인을 자주 빼먹고
+    곧바로 다음 칸을 묻는다. 그러면 사장님은 자기 말이 어디에 적혔는지 모른다 —
+    09-22 실측: 설명을 적어 두고도 "설명 안들어갔는데?"가 세 번 나왔다.
+    이 문장만은 모델에 맡기지 않고 우리가 만든다.
+    """
+    parts = []
+    for field in sorted(filling, key=_rank):
+        value = (sheet.value_of(char, field) or "").strip()
+        if not value:
+            continue
+        if len(value) > 40:
+            value = value[:40] + "…"
+        parts.append(f"'{_label(field)}'에 \"{value}\"라고 적어뒀어요.")
+    return " ".join(parts)
 
 
 def _out(char, db: Session) -> schemas.CharacterOut:
@@ -206,6 +254,7 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     read = sheet_llm.understand(char, text, asked or sheet.next_field(char), store)
     fields = read.get("fields") or {}
     wants_help = read.get("wants_help", False)
+    wants_all = read.get("wants_all", False)
 
     # **사장님이 가리킨 칸이 가이드 순서보다 우선이다.** 아웃핏을 묻는 중에 외형
     # 얘기를 하면 외형으로 옮겨간다. 예전에는 라우터가 "지금 묻는 칸"에 못 박아 둬서,
@@ -213,6 +262,13 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     target = read.get("target") or ""
     if target and target != asked:
         char.editing = asked = target
+
+    # **"나머지 알아서 만들어"는 한 칸 부탁이 아니다.** 남은 빈 칸을 한 카드에 모아 올린다.
+    # 예전에는 이 말에도 칸 하나짜리 제안이 나가서, 사장님이 같은 말을 세 번 해야 했다
+    # (09-22 실측: "나머지 알아서 만들어" -> 설명 하나만, 그것도 직전과 거의 같은 값).
+    if wants_all and _offer_autofill(char, messages, store):
+        char.messages = messages
+        return _out(char, db)
 
     if not complete_before:
         # ---- 빈 칸 채우기 ----
@@ -248,17 +304,19 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
             # 사장님이 그 칸을 직접 말해서 채웠다 — 같은 칸을 두고 띄워 둔 제안은
             # 이미 지나간 얘기다. 안 닫으면 옛 제안 카드가 화면에 남는다.
             _supersede(char, filling)
-            labels = ", ".join(f"'{sheet.LABELS[f]}'" for f in filling if f in sheet.LABELS)
+            # 적힌 줄을 눈으로 확인할 수 있게 **우리가** 앞에 붙인다(_recorded_line).
+            recorded = _recorded_line(char, filling)
 
             following = sheet.next_field(char)
             if following:
                 char.editing = following
-                _say(messages, _guide(char, text, filling, following, store,
-                                      fallback=f"{labels} 적어뒀어요. {sheet.QUESTIONS[following]}"))
+                said = _guide(char, text, filling, following, store,
+                              fallback=sheet.QUESTIONS[following])
+                _say(messages, f"{recorded} {said}".strip())
             else:
                 # 묻는 칸이 다 찼다 — 키워드를 뽑아 제안한다.
                 char.editing = ""
-                _say(messages, f"{labels}까지 적어뒀어요. 시트가 다 채워졌어요.")
+                _say(messages, f"{recorded} 시트가 다 채워졌어요.".strip())
                 _propose_keywords(char, messages, store)
         else:
             _handle_non_answer(char, messages, text, asked, store, wants_help=wants_help)
@@ -371,50 +429,45 @@ def _handle_non_answer(char, messages: list, text: str, asked: str, store,
     if wanted.get("intent") == "edit" and wanted["field"] != following:
         following = wanted["field"]
         char.editing = following
-        value = wanted.get("value")
-        if value:
-            # 어떻게 바꿀지까지 말했다 — 바로 카드로 올린다.
+        value = (wanted.get("value") or "").strip()
+        # **지금과 같은 값은 수정이 아니다.** "능력채워"처럼 그 칸을 손봐 달라는 말에
+        # 추출 쪽이 지금 값을 그대로 되돌려주는 일이 잦은데, 그걸 카드로 올리면
+        # "'능력'에는 이미 이렇게 적혀 있어요"로 끝난다 — 부탁을 거절한 셈이다
+        # (09-22 실측). 그런 값은 버리고 아래 제안 갈래로 내려간다.
+        if value and value != (sheet.value_of(char, following) or "").strip():
             _open_suggestion(char, messages, {following: value}, phase="filling")
             return
-        # 칸만 옮겼다. 그 칸을 묻되, 대신 정해달라는 뜻이면 아래 제안으로 이어진다.
-        proposal = sheet_llm.propose_field(char, following, text, store)
-        if not proposal:
-            current = sheet.value_of(char, following)
-            _say(messages, _guide(
-                char, text, {}, following, store,
-                fallback=(f"'{_label(following)}'은(는) 지금 \"{current}\"예요. 어떻게 바꿀까요?"
-                          if current else sheet.QUESTIONS.get(following, "")),
-            ))
-            return
-        # 카드에 무엇을 왜 정했는지(why)가 실린다. 여기에 되묻는 말까지 얹으면
-        # "제안해 놓고 다시 뭘 원하냐고 묻는" 꼴이 된다 — 그게 대화를 설문지로 만든다.
-        _open_suggestion(
-            char, messages, {following: proposal["value"]}, phase="filling",
-            lead=proposal.get("say") or sheet_llm.reply(char, text, {}, following, store),
-            basis=proposal.get("basis"), why=proposal.get("why"),
-        )
-        return
 
-    proposal = sheet_llm.propose_field(char, following, text, store)
-    if proposal:
-        char.editing = following
-        # 물어보신 말에 먼저 답하고, 그 답의 결론을 카드로 올린다. 카드만 띄우면
-        # "왜 앞치마인가"가 없어서 사장님은 근거 없이 정해진 값으로 읽는다.
-        # 무엇을 보고 정했는지(basis)도 카드에 같이 싣는다.
-        _open_suggestion(
-            char, messages, {following: proposal["value"]}, phase="filling",
-            lead=proposal.get("say") or sheet_llm.reply(char, text, {}, following, store),
-            basis=proposal.get("basis"), why=proposal.get("why"),
-        )
-        return
+    # 🔴 **제안은 사장님이 부탁했을 때만 낸다.**
+    # 예전에는 값이 안 읽히기만 하면 무조건 제안 카드를 띄웠다. 그래서 되묻는 말에도,
+    # 잡담에도 승인 카드가 올라왔다 — 사장님 말로 "제안이 내가 원할 때 나와야 되는거고".
+    # 부탁인지 아닌지는 understand() 가 이미 뜻으로 가려 놓았다(wants_help).
+    if wants_help:
+        # 이미 보여 드린 값과 같은 건 안 받는다 — 같은 제안이 두 번 오면 대화가 멈춘다.
+        proposal = sheet_llm.propose_field(
+            char, following, text, store, avoid=_shown_values(char, following))
+        if proposal:
+            char.editing = following
+            # 물어보신 말에 먼저 답하고, 그 답의 결론을 카드로 올린다. 카드만 띄우면
+            # "왜 앞치마인가"가 없어서 사장님은 근거 없이 정해진 값으로 읽는다.
+            # 무엇을 보고 정했는지(basis)도 카드에 같이 싣는다.
+            _open_suggestion(
+                char, messages, {following: proposal["value"]}, phase="filling",
+                lead=proposal.get("say") or sheet_llm.reply(char, text, {}, following, store),
+                basis=proposal.get("basis"), why=proposal.get("why"),
+            )
+            return
 
     # 시트에 넣을 건 없지만 **할 말은 있다.** 질문이었을 수도 있고 고민이었을 수도 있다.
     # 여기서 정해진 문장만 돌려주면 "무슨 말을 해도 같은 소리를 한다"가 된다.
     label = sheet.LABELS[following]
     char.editing = following
+    current = (sheet.value_of(char, following) or "").strip()
     _say(messages, _guide(
         char, text, {}, following, store,
         fallback=(
+            f"'{label}'에는 지금 \"{current}\"라고 적혀 있어요. 어떻게 바꿀까요?"
+            if current else
             f"방금 말씀은 시트에 넣지 않았어요. '{label}'은(는) 편하게 적어주셔도 되고, "
             "정하기 어려우시면 '알아서 정해줘'라고 하시면 제가 하나 제안해 드릴게요."
         ),
@@ -526,9 +579,9 @@ def _open_suggestion(char, messages: list, changes: dict, phase: str = "editing"
         _say(messages, "지금 시트와 같은 내용이에요. 그대로 둘게요.")
         return
 
-    # 같은 칸을 다루던 낡은 카드를 먼저 닫는다. 새 카드를 그 위에 쌓으면 둘이 동시에
-    # 열려 있게 되고, 사장님은 지나간 제안을 승인할 수 있게 된다.
-    _supersede(char, real)
+    # 열린 카드를 **전부** 닫는다. 같은 칸만 닫으면 다른 칸 카드가 그대로 남아,
+    # 화면에 승인 버튼이 여러 개 떠 있게 된다(_close_open 주석 참고).
+    _close_open(char)
 
     diffs = []
     for field, value in real.items():
@@ -565,6 +618,25 @@ def _open_suggestion(char, messages: list, changes: dict, phase: str = "editing"
     messages.append({"role": "ai", "kind": "confirm", "pid": pid})
 
 
+def _offer_autofill(char, messages: list, store) -> bool:
+    """남은 빈 칸을 **한 카드에 모아** 제안한다. 올렸으면 True.
+
+    버튼('알아서 전부 만들기')과 대화("나머지 알아서 만들어")가 같은 길을 쓴다 —
+    사장님에게는 같은 부탁인데 눌렀을 때만 되는 건 말이 안 된다.
+    빈 칸이 없거나 LLM 이 못 만들면 False 를 돌려준다. 그때는 부르는 쪽이 이어간다.
+    """
+    made = sheet_llm.autofill(char, store)
+    if not made or not made.get("fields"):
+        return False
+    char.editing = ""
+    _open_suggestion(
+        char, messages, made["fields"], phase="filling",
+        lead=made.get("say") or "남은 칸을 이렇게 채워봤어요. 이대로 할까요?",
+        basis=made.get("basis"), why=made.get("why"),
+    )
+    return True
+
+
 @router.post("/autofill", response_model=schemas.CharacterOut)
 def autofill_sheet(db: Session = Depends(get_db)):
     """빈 칸을 한 번에 채워 **승인 카드 한 장**으로 올린다.
@@ -584,18 +656,10 @@ def autofill_sheet(db: Session = Depends(get_db)):
     if sheet.ready_to_generate(char):
         raise HTTPException(400, "시트가 이미 다 채워져 있어요. 고치고 싶은 칸을 말씀해주세요")
 
-    made = sheet_llm.autofill(char, store)
-    if not made:
-        raise HTTPException(503, "지금은 만들어 드리지 못했어요. 잠시 뒤 다시 눌러주세요")
-
     messages = list(char.messages or [])
     messages.append({"role": "me", "kind": "text", "text": "알아서 전부 만들어줘"})
-    char.editing = ""
-    _open_suggestion(
-        char, messages, made["fields"], phase="filling",
-        lead=made.get("say") or "빈 칸을 이렇게 채워봤어요. 이대로 할까요?",
-        basis=made.get("basis"), why=made.get("why"),
-    )
+    if not _offer_autofill(char, messages, store):
+        raise HTTPException(503, "지금은 만들어 드리지 못했어요. 잠시 뒤 다시 눌러주세요")
     char.messages = messages
     return _out(char, db)
 
@@ -749,15 +813,35 @@ def _require_full_sheet(char) -> None:
     raise HTTPException(400, f"캐릭터 시트를 먼저 다 채워주세요. 남은 칸: {left}")
 
 
+def _freeze_cands(messages: list, cands: list) -> None:
+    """대화에 남아 있는 후보 카드에 **그때 그린 그림**을 박아 둔다.
+
+    후보 카드는 원래 살아 있는 목록(char.candidates)을 가리키기만 한다("ref": "cands").
+    카드가 한 장일 때는 맞는 얘기였는데, 다시 뽑기를 누르면 **대화에 쌓인 지난 카드까지
+    전부** 그 목록을 비춘다 — 이미 다 그려 둔 위쪽 그림 석 장이 한꺼번에 "그리는 중"으로
+    바뀐다(09-22 사장님 화면). 다 끝난 일이 진행 중인 것처럼 보이고, 그동안 그림은 사라진다.
+
+    그래서 새로 뽑기 **직전에** 지난 카드에 그때의 그림을 박는다. 그림 파일은 안 지우니
+    계속 보인다. 한 번 얼린 카드는 다시 안 건드린다.
+    """
+    done = [c for c in cands if isinstance(c, dict) and c.get("image")]
+    for i, m in enumerate(messages):
+        if m.get("kind") == "cands" and "items" not in m:
+            messages[i] = {**m, "items": done}
+
+
 @router.post("/candidates", response_model=schemas.CharacterOut)
 def gen_candidates(db: Session = Depends(get_db)):
     """후보 3장을 뽑는다. **사장님이 버튼을 눌렀을 때만** 여기 온다."""
     char = _get(db)
     _require_full_sheet(char)
 
+    messages = list(char.messages or [])
+    # 지난 카드를 먼저 얼린다 — char.candidates 를 갈아치우기 전이어야 그림이 남는다.
+    _freeze_cands(messages, char.candidates or [])
+
     char.candidates = pending_candidates(3)
     char.selected_index = -1
-    messages = list(char.messages or [])
     _say(messages, f"시트대로 3장 그려볼게요. 약 {eta_seconds(3)}초 걸려요 — 창을 닫으셔도 서버에서 계속 그립니다.")
     messages.append({"role": "ai", "kind": "cands", "ref": "cands"})
     char.messages = messages

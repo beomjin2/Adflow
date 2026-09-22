@@ -12,7 +12,12 @@ export function TextBubble({ role, text }) {
   return <div className={`ad-msg ${role === 'me' ? 'me' : 'ai'}`}>{text}</div>;
 }
 
-export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 }) {
+/** 후보 그림 석 장.
+ *
+ *  `frozen` 은 **지나간 묶음**이다. 다시 뽑기를 누르면 그 전 카드가 이 모양으로 굳는다 —
+ *  그림은 그대로 보이되 고르거나 다시 그릴 수는 없다. 지금 고를 수 있는 건 맨 아래
+ *  살아 있는 카드 하나뿐이어야 한다. */
+export function CandidatesBubble({ items, selected = -1, onSelect, onReroll, eta = 0, frozen = false }) {
   // 크게 보고 있는 후보의 번호. -1이면 팝업이 닫혀 있다.
   const [preview, setPreview] = useState(-1);
 
@@ -22,31 +27,33 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 
 
   return (
     <div style={bubbleCardStyle}>
-      <span style={bubbleTitleStyle}>
-        {drawing > 0
-          ? `그림을 그리고 있어요 — ${drawing}장 남았어요`
-          : done > 0
-            ? '후보가 나왔어요 — 눌러서 크게 보고 고르세요'
-            : '아직 그림이 없어요'}
+      <span style={{ ...bubbleTitleStyle, ...(frozen ? { color: colors.textFaint } : null) }}>
+        {frozen
+          ? '먼저 뽑았던 후보예요 — 새로 뽑은 건 아래에 있어요'
+          : drawing > 0
+            ? `그림을 그리고 있어요 — ${drawing}장 남았어요`
+            : done > 0
+              ? '후보가 나왔어요 — 눌러서 크게 보고 고르세요'
+              : '아직 그림이 없어요'}
       </span>
-      {drawing > 0 && eta > 0 && (
+      {!frozen && drawing > 0 && eta > 0 && (
         <span style={hintStyle}>약 {formatEta(eta)}. 이 화면을 닫아도 계속 그려요.</span>
       )}
       <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
         {items.map((c, i) => (
           <ImageSlot
-            key={i} slot={c} size={96} eta={eta}
-            selectable selected={selected === i}
-            onClick={() => setPreview(i)} onReroll={() => onReroll(i)}
+            key={i} slot={c} size={96} eta={frozen ? 0 : eta}
+            selectable={!frozen} selected={selected === i}
+            onClick={() => setPreview(i)} onReroll={frozen ? undefined : () => onReroll(i)}
           />
         ))}
       </div>
-      {failed > 0 && (
+      {!frozen && failed > 0 && (
         <span style={{ ...hintStyle, color: colors.warnText }}>
           {failed}장은 그리지 못했어요. ↻ 를 누르면 그 자리만 다시 그려요.
         </span>
       )}
-      {done > 0 && drawing === 0 && (
+      {!frozen && done > 0 && drawing === 0 && (
         <span style={hintStyle}>↻ 는 설정을 그대로 두고 그림만 다시 뽑아요. 고치고 싶은 점은 그냥 말해주세요.</span>
       )}
 
@@ -54,7 +61,8 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 
           누르는 것과 정하는 것은 다른 일이다. */}
       <Lightbox
         items={items} index={preview} selected={selected}
-        onClose={() => setPreview(-1)} onMove={setPreview} onSelect={onSelect}
+        onClose={() => setPreview(-1)} onMove={setPreview}
+        onSelect={frozen ? undefined : onSelect}
       />
     </div>
   );

@@ -17,6 +17,8 @@
 #
 # 절대 건드리지 않는 것 — 지우면 복구할 수 없다:
 #   backend/.env  ·  backend/app.db  ·  backend/uploads/  ·  backend/media/  ·  *.log
+#   crawling/naver_key.json (네이버 API 키 — 저장소에 없다, 사람이 직접 둔다)
+#   crawling/logs/ (크롤링 실행 기록)  ·  crawling/images/ 의 기존 파일 (크롤링이 받아 둔 밈 이미지)
 set -euo pipefail
 
 BASE=/home/sprint05/part4_3team
@@ -74,6 +76,19 @@ if [ -x .venv/bin/pip ]; then
   echo "   완료"
 else
   echo "   [!] .venv 를 못 찾았다 — 의존성 설치를 건너뛴다. 재시작 전에 직접 확인할 것"
+fi
+
+say "3.5/4  밈 크롤링 코드 배치 (crawling/, backend/import_memes.py)"
+# 크롤링 파이프라인은 웹 서비스와 따로 도는 프로그램이라 backend/app 밖에 있다.
+# 코드(.py)와 저장소의 밈 데이터·이미지만 덮어쓰고, 키·실행 기록·VM에서 받은 이미지는 건드리지 않는다.
+mkdir -p "$BASE/crawling/images" "$BASE/crawling/logs"
+cp "$SRC"/crawling/*.py "$BASE/crawling/"
+[ -f "$SRC/crawling/memes_all.json" ] && cp "$SRC/crawling/memes_all.json" "$BASE/crawling/"
+cp -n "$SRC"/crawling/images/* "$BASE/crawling/images/" 2>/dev/null || true   # -n: 있는 파일은 안 덮어씀
+cp "$SRC/backend/import_memes.py" "$BASE/backend/import_memes.py"
+echo "   크롤링 코드: $(ls "$BASE"/crawling/*.py | xargs -n1 basename | tr '\n' ' ')"
+if [ ! -f "$BASE/crawling/naver_key.json" ] && [ -z "${NAVER_CLIENT_ID:-}" ]; then
+  echo "   [!] crawling/naver_key.json 이 없다 — 크롤링의 유행 날짜 단계만 건너뛰게 된다(나머지는 돈다)"
 fi
 
 say "4/4  프론트 교체 (이전 것은 frontend.bak-${STAMP} 로 남긴다)"

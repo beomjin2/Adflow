@@ -38,7 +38,9 @@ export default function ComicPanels({ cuts, eta = 0, onReroll, bubbles = true, g
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap }}>
+      {/* 인스타 게시물(1컷)은 한 칸짜리라 2열 그리드를 그대로 쓰면 오른쪽 절반이 빈 채로
+          남는다 — 컷 수만큼만 열을 잡는다(최대 2열, 4컷만화는 기존처럼 2×2). */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(cuts.length, 2) || 1}, minmax(0, 1fr))`, gap }}>
         {cuts.map((c) => {
           const done = c.status === 'done' && !!c.image;
           return (

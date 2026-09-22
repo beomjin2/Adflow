@@ -130,8 +130,8 @@ def _ask(system: str, user: str) -> dict | None:
 
 
 def cut_count(ad_type: str) -> int:
-    """광고 종류가 정하는 컷 수. 4컷만화는 네 컷, 나머지는 세 컷."""
-    return 4 if (ad_type or "").strip() == "4컷만화" else 3
+    """광고 종류가 정하는 컷 수. 4컷만화는 네 컷, 인스타 게시물은 한 장짜리 게시물이라 한 컷."""
+    return 4 if (ad_type or "").strip() == "4컷만화" else 1
 
 
 def _context(store: dict, char: dict, ad: dict, prods: list[dict], current_plan: list[dict]) -> str:
@@ -234,8 +234,10 @@ def plan_from_text(
             "props": [str(p) for p in (c.get("props") or []) if str(p).strip()],
         })
 
-    # 한 컷짜리 광고는 컷 구성이라고 부를 수 없다. 모델이 형식을 놓친 것으로 본다.
-    if len(cuts) < 2:
+    # 컷이 하나도 안 왔으면 모델이 형식을 놓친 것으로 본다. 인스타 게시물은 원래
+    # 한 컷이 정상이라 여기서 최소 개수를 강제하지 않는다 — n이 몇 개를 요구했는지는
+    # 위에서 이미 raw[:n]로 잘라냈다.
+    if not cuts:
         return None
 
     # trend_meme이 있으면 이미 정해진 값을 그대로 쓴다(GPT의 echo를 믿을 필요가 없다).
@@ -265,7 +267,7 @@ _CAPTION_SYSTEM = """\
    마무리(질문·초대 등). 컷 대사를 그대로 나열하지 않는다 — 하나의 글로 자연스럽게 잇는다.
 3. 광고 느낌(컨셉)을 말투에 반영한다. 느낌을 설명하는 문장을 쓰지 않는다.
 4. 마지막 줄에 해시태그 3~5개(#으로 시작, 공백 없이) — 업종·동네·컷에 나온 품목에서 뽑는다.
-5. 전체 200자를 넘기지 않는다.
+5. 전체 300자를 넘기지 않는다.
 {meme_rule}
 
 출력은 캡션 텍스트만 — 설명, 따옴표, 마크다운 없이 그대로.
@@ -328,7 +330,7 @@ def generate_caption(
         logger.warning("캡션 생성 실패, 컷 이어붙이기로 진행합니다: %s", type(exc).__name__)
         return None
 
-    if not caption or len(caption) > 400:
+    if not caption or len(caption) > 500:
         return None
     if _invents_numbers(caption, cuts_text + " " + context):
         logger.info("가게에 없는 숫자를 지어내 캡션을 버렸습니다")

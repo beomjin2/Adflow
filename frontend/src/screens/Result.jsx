@@ -78,8 +78,13 @@ export default function Result({ state, actions }) {
           {caption ? (
             // GPT가 확정된 컷으로 새로 쓴 캡션 — 이모지·줄바꿈·해시태그가 이미 한 덩어리
             // 글로 들어 있어서, headline/lines/info/tags로 쪼개지 않고 그대로 보여준다.
+            // 해시태그만 옛 문구 카드처럼 초록색으로 눈에 띄게 한다.
             <span style={{ fontSize: 15, lineHeight: '23px', color: colors.text, whiteSpace: 'pre-line' }}>
-              {caption}
+              {caption.split(/(\s+)/).map((part, i) => (
+                /^#\S+$/.test(part)
+                  ? <span key={i} style={{ color: colors.primarySoftText, fontWeight: 600 }}>{part}</span>
+                  : part
+              ))}
             </span>
           ) : (
             <>

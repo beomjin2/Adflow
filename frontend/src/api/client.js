@@ -169,6 +169,8 @@ export const StoryboardAPI = {
   confirm: (pid) => post(`/api/storyboard/confirm/${pid}`).then(mapStoryboard),
   decline: (pid) => post(`/api/storyboard/decline/${pid}`).then(mapStoryboard),
   makeComic: () => post('/api/storyboard/comic').then(mapStoryboard),
+  // 대화가 꼬였을 때 빠져나갈 길. 트렌드에서 골라 온 밈은 남는다(백엔드 reset_chat 참고).
+  reset: () => post('/api/storyboard/reset').then(mapStoryboard),
 };
 
 // ---------- production ----------

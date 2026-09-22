@@ -104,6 +104,21 @@ def reset_storyboard(db: Session, trend_meme_id: str | None = None) -> models.St
     return sb
 
 
+def set_trend_meme(db: Session, trend_meme_id: str | None) -> models.Storyboard:
+    """대화는 그대로 두고 참고할 밈만 바꾼다.
+
+    `reset_storyboard`와 짝이다. 광고 설정을 다시 확정해도 **컷 수가 그대로면 대화를
+    지우지 않는다**(ad.apply_ad 참고) — 그때 밈만 맞춰 넣으려고 따로 뒀다.
+    """
+    sb = _get(db)
+    sb.trend_meme_id = trend_meme_id or ""
+    meme = db.get(models.Meme, trend_meme_id) if trend_meme_id else None
+    sb.trend_meme_name = meme.meme_name if meme else ""
+    db.commit()
+    db.refresh(sb)
+    return sb
+
+
 def _cuts_from_text(text: str) -> list[dict]:
     """사장님이 쓴 문장을 컷으로 쪼갠다. 한 문장이면 한 컷이다."""
     parts = [p.strip() for p in _SPLIT_RE.split(text or "")]
@@ -327,6 +342,27 @@ def _offer_store_edit(sb: models.Storyboard, db: Session, edit: dict, messages: 
     return True
 
 
+# 밈 추천도 하나만 던지면 "이게 최선인가"를 확인할 길이 없다. 셋을 놓고 고르게 한다.
+MEME_OPTIONS = 3
+
+
+def _meme_card(meme: models.Meme) -> dict:
+    """대화창에서 밈을 설명할 때 쓰는 한 장. 트렌드 화면이 보여주는 것과 **같은 원본**이다
+    (요약해 둔 카드가 따로 없다 — models.Meme 참고).
+
+    유래·활용예시를 자르지 않고 그대로 넘긴다. 사장님이 "이 밈이 뭔데?"를 묻는 자리라
+    여기서 줄이면 결국 트렌드 화면으로 돌아가야 한다.
+    """
+    return {
+        "id": meme.id, "name": meme.meme_name, "situation": meme.situation or "",
+        "origin": meme.origin or "", "usage_example": meme.usage_example or "",
+        "image": meme.image or "", "source_label": meme.source_label or "",
+        "url": meme.url or "", "published": meme.published_date or "",
+        "period_start": meme.period_start or "", "period_end": meme.period_end or "",
+        "peak_date": meme.peak_date or "", "views": meme.views,
+    }
+
+
 # 제안 하나당 LLM 호출이 하나다. 늘리면 사장님이 기다리는 시간과 비용이 같이 는다.
 MAX_OPTIONS = 3
 
@@ -518,6 +554,26 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     return schemas.storyboard_out(sb, jobs.queue_depth())
 
 
+@router.post("/reset", response_model=schemas.StoryboardOut)
+def reset_chat(db: Session = Depends(get_db)):
+    """광고 대화를 처음 상태로 되돌린다. 대화가 꼬였을 때 빠져나갈 길이 필요하다
+    (캐릭터 쪽 `POST /api/character/reset`과 같은 이유·같은 모양이다).
+
+    **트렌드 화면에서 골라 온 밈은 남긴다.** 그건 이 대화에서 정한 게 아니라 앞 화면에서
+    고르고 들어온 것이라, 대화를 지운다고 사라지면 사장님이 밈을 다시 고르러 가야 한다.
+
+    그려둔 그림 파일(media/)은 안 지운다 — 참조만 끊는다. 지우는 건 나중에도 할 수
+    있지만 되돌리는 건 못 한다(캐릭터 reset과 같은 판단).
+
+    생산 기록과 가게 정보는 **안 건드린다.** 대화로 남겼더라도 그건 이 대화의 산출물이
+    아니라 가게의 기록이다.
+    """
+    sb = _get(db)
+    return schemas.storyboard_out(
+        reset_storyboard(db, sb.trend_meme_id or None), jobs.queue_depth(),
+    )
+
+
 @router.post("/suggest", response_model=schemas.StoryboardOut)
 def suggest(db: Session = Depends(get_db)):
     """대화창의 "스토리 제안받기" 버튼 — 자동으로는 절대 안 뜬다(사장님이 버튼을
@@ -593,6 +649,7 @@ async def recommend_meme_from_chat(db: Session = Depends(get_db)):
                  "origin": m.origin, "usage_example": m.usage_example}
                 for m in all_memes
             ],
+            n=MEME_OPTIONS,
         )
     except RuntimeError as e:
         raise HTTPException(400, str(e))
@@ -601,24 +658,35 @@ async def recommend_meme_from_chat(db: Session = Depends(get_db)):
         raise HTTPException(502, "추천을 만들지 못했어요. 잠시 뒤 다시 시도해 주세요")
 
     by_id = {m.id: m for m in all_memes}
-    pick = result["picks"][0]
-    meme = by_id[pick["meme_id"]]
-
     pending = dict(sb.pending or {})
-    pid = new_pid()
-    pending[pid] = {
-        "which": "sb", "kind": "meme",
-        "diffs": [{"label": "트렌드 밈", "from": sb.trend_meme_name or "아직 없음", "to": meme.meme_name}],
-        "why": pick["reason"],
-        "payload": {"meme_id": meme.id, "meme_name": meme.meme_name},
-        "status": "open",
-    }
-    sb.pending = pending
-    messages.append({
-        "role": "ai", "kind": "text",
-        "text": f"지금까지 나눈 얘기를 보니 '{meme.meme_name}' 밈이 어울릴 것 같아요.",
-    })
-    messages.append({"role": "ai", "kind": "confirm", "pid": pid})
+    group = new_pid()
+    items = []
+    for pick in result["picks"]:
+        meme = by_id.get(pick["meme_id"])
+        if not meme:
+            continue  # GPT가 후보 밖 id를 냈다 — 그 줄만 버린다
+        pid = new_pid()
+        pending[pid] = {
+            # group — 하나를 고르면 나머지를 닫는다(confirm_pending).
+            "which": "sb", "kind": "meme", "group": group,
+            "diffs": [{"label": "트렌드 밈", "from": sb.trend_meme_name or "아직 없음",
+                       "to": meme.meme_name}],
+            "why": pick["reason"],
+            "payload": {"meme_id": meme.id, "meme_name": meme.meme_name},
+            "status": "open",
+        }
+        items.append({"pid": pid, "reason": pick["reason"], "meme": _meme_card(meme)})
+
+    if not items:
+        messages.append({"role": "ai", "kind": "text", "text": "지금 추천할 수 있는 밈이 없어요."})
+    else:
+        sb.pending = pending
+        messages.append({
+            "role": "ai", "kind": "text",
+            "text": f"'{result['situation']}' 상황에 어울리는 밈 {len(items)}개를 골랐어요. "
+                    "눌러서 어떤 밈인지 보고 하나만 골라주세요.",
+        })
+        messages.append({"role": "ai", "kind": "meme_options", "group": group, "items": items})
     sb.messages = messages
     db.commit()
     db.refresh(sb)

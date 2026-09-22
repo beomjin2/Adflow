@@ -23,14 +23,19 @@ confirm 카드로 올려 사장님이 승인해야 plan이 된다. 서비스가 
 GPT 추천(meme_recommend.recommend)을 한 번 더 돌린다. 결과도 confirm 카드로 올려
 승인해야 trend_meme_id가 바뀐다(kind="meme").
 
-생산 기록은 여기서 안 받는다 — "내 정보 > 생산 기록" 탭에서만 남긴다. 예전엔 대화
-첫 마디를 생산 기록으로 파싱했는데, 대화 한 번으로 두 가지 일을 하는 게 헷갈린다는
-판단으로 뺐다. `_plan_cuts`가 매번 최근 생산 기록을 조회해서 스토리에 반영하는 건
-그대로다 — 그 기록을 만드는 자리만 옮긴 것이다.
+생산 기록은 대화에서도 남길 수 있다 — 단 **물어보고 승인해야** 남는다(`_offer_record`).
+예전엔 정규식이 대화 첫 마디를 훑어 **사장님 모르게** 기록을 만들었고, 그건 PR #37에서
+통째로 지웠다. 지금 것은 그 되돌리기가 아니다. 다른 점이 둘이다:
+- 확인 카드를 띄우고 사장님이 눌러야 DB에 들어간다.
+- **스토리와 갈라지지 않는다.** "소금빵 50개 구웠어요"는 기록이면서 동시에 스토리
+  소재라, 기록 카드는 곁들임으로 붙고 스토리는 그대로 만들어진다.
+"내 정보 > 생산 기록" 탭은 그대로 있다 — 자리가 하나 늘었을 뿐이다.
 """
 
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -128,15 +133,13 @@ def _meme_context(sb: models.Storyboard, db: Session) -> dict | None:
     return None
 
 
-def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> tuple[list[dict], dict | None] | None:
-    """사장님 문장 → (컷 구성, 반영한 밈).
+def _plan_context(sb: models.Storyboard, db: Session) -> dict:
+    """LLM에 넘길 재료를 DB에서 한 번에 읽어 둔다.
 
-    GPT가 있으면 GPT가 가게·캐릭터·광고 느낌·(있으면) 밈을 함께 보고 컷으로 나눈다. 못 쓰면
-    (키 없음·호출 실패·형식 이상) 문장부호에서 자르는 옛 규칙으로 조용히 되돌아간다(이땐
-    밈은 반영 안 됨).
-
-    **None은 "규칙으로도 되돌아가지 않는다"는 뜻이다.** GPT가 사장님 말을 인사·잡담으로
-    본 경우에만 나온다 — 그때 규칙으로 쪼개면 "안녕하세요"가 1컷이 되어 버린다.
+    🔴 **읽기를 여기서 끝내는 이유가 있다.** 제안 여러 개를 동시에 만들 때
+    (`_propose_options`) 스레드마다 DB를 건드리면 안 된다 — SQLAlchemy 세션은
+    스레드 안전하지 않다. 그래서 스레드에는 이 dict만 넘긴다. `story_llm`은 HTTP
+    호출뿐이라 스레드에서 돌아도 된다.
     """
     store = db.get(models.Store, 1)
     char = db.get(models.Character, 1)
@@ -145,24 +148,39 @@ def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> tuple[list[dict
         db.query(models.ProductionRecord)
         .order_by(models.ProductionRecord.id.desc()).limit(10).all()
     )
-    trend_meme = _meme_context(sb, db)
-    proposed = story_llm.plan_from_text(
-        text,
-        store={"category": store.category, "address": store.address,
-               "hours": store.hours, "desc": store.desc} if store else {},
-        char={"name": char.name, "look": char.look, "outfit": char.outfit,
-              "desc": char.desc} if char else {},
-        ad={"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {},
-        prods=[{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time,
-                "sold_out": p.sold_out} for p in prods],
-        current_plan=list(sb.plan or []),
-        trend_meme=trend_meme,
-    )
+    return {
+        "store": {"category": store.category, "address": store.address,
+                  "hours": store.hours, "desc": store.desc} if store else {},
+        "char": {"name": char.name, "look": char.look, "outfit": char.outfit,
+                 "desc": char.desc} if char else {},
+        "ad": {"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {},
+        "prods": [{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time,
+                   "sold_out": p.sold_out} for p in prods],
+        "current_plan": list(sb.plan or []),
+        "trend_meme": _meme_context(sb, db),
+    }
+
+
+def _plan_with(ctx: dict, text: str) -> tuple[list[dict], dict | None] | None:
+    """재료 + 사장님 문장 → (컷 구성, 반영한 밈). **DB를 안 건드린다** — 스레드에서 불러도 된다.
+
+    GPT를 못 쓰면(키 없음·호출 실패·형식 이상) 문장부호에서 자르는 옛 규칙으로 조용히
+    되돌아간다(이땐 밈은 반영 안 됨).
+
+    **None은 "규칙으로도 되돌아가지 않는다"는 뜻이다.** GPT가 "알릴 거리가 없다"고
+    본 경우에만 나온다 — 그때 규칙으로 쪼개면 "안녕하세요"가 1컷이 되어 버린다.
+    """
+    proposed = story_llm.plan_from_text(text, **ctx)
     if proposed is None:
         return _cuts_from_text(text), None
     if not proposed["cuts"]:
         return None
     return proposed["cuts"], proposed["meme_used"]
+
+
+def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> tuple[list[dict], dict | None] | None:
+    """재료를 읽고 컷 구성을 한 번 만든다. 한 건만 만들 때 쓰는 기존 입구다."""
+    return _plan_with(_plan_context(sb, db), text)
 
 
 def _generate_caption(sb: models.Storyboard, db: Session) -> str | None:
@@ -198,8 +216,8 @@ def _propose_intro(meme_used: dict | None) -> str:
     return "스토리를 만들었어요. 마음에 들면 아래에서 이대로 바꾸기를 눌러주세요."
 
 
-def _propose_plan(sb: models.Storyboard, cuts: list[dict], messages: list[dict]) -> None:
-    """만든 컷 구성을 확인 카드로 올린다. 승인하기 전까지 plan은 바뀌지 않는다."""
+def _plan_diffs(sb: models.Storyboard, cuts: list[dict]) -> list[dict]:
+    """"이렇게 바뀝니다"에 쓸 before→after. 확인 카드와 제안 카드가 같이 쓴다."""
     current = list(sb.plan or [])
     diffs = []
     for cut in cuts:
@@ -212,15 +230,208 @@ def _propose_plan(sb: models.Storyboard, cuts: list[dict], messages: list[dict])
         })
     for old in current[len(cuts):]:
         diffs.append({"label": f"{old['n']}컷", "from": old["line"], "to": "삭제"})
+    return diffs
 
+
+def _propose_plan(sb: models.Storyboard, cuts: list[dict], messages: list[dict]) -> None:
+    """만든 컷 구성을 확인 카드로 올린다. 승인하기 전까지 plan은 바뀌지 않는다."""
     pending = dict(sb.pending or {})
     pid = new_pid()
     pending[pid] = {
-        "which": "sb", "kind": "plan", "diffs": diffs,
+        "which": "sb", "kind": "plan", "diffs": _plan_diffs(sb, cuts),
         "payload": {"plan": cuts}, "status": "open",
     }
     sb.pending = pending
     messages.append({"role": "ai", "kind": "confirm", "pid": pid})
+
+
+def _kst_now() -> datetime:
+    """한국 시간. 서버는 UTC라 그냥 now()를 쓰면 **한국 시간 오전 9시 전에 날짜가 하루 밀린다**
+    — 새벽에 빵을 굽는 가게가 많아서 그대로 쓰면 기록이 어제로 남는다.
+    (프론트의 `today()`가 같은 이유로 toISOString()을 안 쓴다.)"""
+    return datetime.now(timezone(timedelta(hours=9)))
+
+
+def _offer_record(sb: models.Storyboard, rec: dict | None, messages: list[dict]) -> None:
+    """사장님 말에 "무엇을 몇 개 만들었다"가 있으면 **기록으로 남길지 물어본다.**
+
+    🔴 **스토리와 갈라지지 않는다.** "소금빵 50개 구웠어요"는 생산 기록이면서 동시에
+    스토리 소재다. 여기서 분기해 기록만 만들면 #42에서 고친 것(그 문장이 스토리를
+    만드는 것)이 도로 깨진다. 기록 카드는 **곁들임**이지 갈림길이 아니다 — 안 눌러도
+    스토리는 그대로 나온다.
+
+    PR #37이 지운 것과 다른 물건이다. 거기서 지운 건 정규식이 대화를 훑어 **사장님
+    모르게** 기록을 만들던 코드였다. 여기는 **물어보고 승인해야** 남는다.
+
+    rec — 호출부가 스토리 만들기와 **병렬로** 미리 뽑아 둔 것(story_llm.extract_record).
+    여기서 다시 부르면 순차가 되어 사장님이 기다리는 시간이 늘어난다.
+    """
+    if not rec:
+        return
+
+    now = _kst_now()
+    when = now - timedelta(days=1) if rec["when"] == "yesterday" else now
+    date = when.strftime("%Y-%m-%d")
+    qty_label = f" {rec['qty']}개" if rec["qty"] else ""
+
+    pending = dict(sb.pending or {})
+    pid = new_pid()
+    pending[pid] = {
+        "which": "sb", "kind": "prod_add",
+        "diffs": [{
+            "label": "생산 기록",
+            "from": "아직 없음",
+            "to": f"{rec['name']}{qty_label} · {date} {now.strftime('%H:%M')}",
+        }],
+        "payload": {"name": rec["name"], "qty": rec["qty"],
+                    "date": date, "time": now.strftime("%H:%M"), "sold_out": ""},
+        "status": "open",
+    }
+    sb.pending = pending
+    messages.append({"role": "ai", "kind": "confirm", "pid": pid})
+
+
+def _offer_store_edit(sb: models.Storyboard, db: Session, edit: dict, messages: list[dict]) -> bool:
+    """사장님 말이 가게 정보를 고치라는 말이면 before→after 카드를 띄운다. 띄웠으면 True.
+
+    🔴 **저장 잠금(store.saved)을 여기서 존중하지 않는다.** 처음엔 잠겨 있으면
+    가게 화면으로 보내려 했는데, 광고를 만들 때쯤이면 `store.saved`는 **항상 참**이다
+    (저장해야 다음 단계로 넘어간다). 그대로 두면 이 기능이 영영 안 도는 셈이라
+    허용하기로 했다. 잠금은 **실수로 바뀌는 것**을 막으려는 것이고, 여기는
+    before→after를 보여주고 사장님이 눌러야 바뀐다 — 실수가 아니다.
+
+    그래도 가게 정보는 **덮어쓰기**라 생산 기록보다 한 겹 더 조인다. 카드에
+    `basis`로 **사장님이 한 말 그대로**를 같이 보여준다(story_llm.extract_store_edit).
+    """
+    store = db.get(models.Store, 1)
+    if not store:
+        return False
+
+    def show(value) -> str:
+        if isinstance(value, list):
+            return ", ".join(value) if value else "쉬는 날 없음"
+        return str(value or "").strip() or "비어 있음"
+
+    diffs = [
+        {"label": story_llm.STORE_FIELDS[f], "from": show(getattr(store, f, "")), "to": show(v)}
+        for f, v in edit["fields"].items()
+    ]
+    pending = dict(sb.pending or {})
+    pid = new_pid()
+    pending[pid] = {
+        "which": "sb", "kind": "store_edit", "diffs": diffs, "basis": edit["basis"],
+        "payload": {"fields": edit["fields"]}, "status": "open",
+    }
+    sb.pending = pending
+    messages.append({"role": "ai", "kind": "confirm", "pid": pid})
+    return True
+
+
+# 제안 하나당 LLM 호출이 하나다. 늘리면 사장님이 기다리는 시간과 비용이 같이 는다.
+MAX_OPTIONS = 3
+
+_NOTHING_TO_USE = (
+    "아직 광고에 쓸 게 없어요. 가게 정보나 생산 기록을 먼저 채워주시면 스토리를 만들어 드릴게요."
+)
+
+
+def _topic_seeds(sb: models.Storyboard, db: Session) -> list[tuple[str, str]]:
+    """제안할 스토리의 씨앗 — (딱지, 사장님 말처럼 쓴 한 문장).
+
+    🔴 **전부 DB에 실제로 있는 것에서만 뽑는다.** 비어 있는 칸은 씨앗이 안 된다 —
+    여기서 없는 소재를 지어내면 사장님이 정한 적 없는 광고가 된다. 씨앗이 하나도
+    없으면 제안하지 않고 정보를 채우러 보낸다(`_NOTHING_TO_USE`).
+
+    🔴 **씨앗은 "~을 알리고 싶어" 꼴로 쓴다.** story_llm은 두 가지를 되묻는데,
+    씨앗 문구가 둘 중 어느 쪽에도 안 걸리게 해야 한다:
+
+    · 명사구 하나("오픈시간") — 말하다 만 말로 본다. 그래서 서술어를 붙인다.
+    · **요청형("우리 가게를 소개하고 싶어")** — 자기한테 해 달라는 말로 읽고 거절한다.
+      실측으로 3/3 거절이었다. 같은 뜻인 "우리 가게 소개를 알리고 싶어"는 3/3 통과다.
+      **"무엇을" 알릴지가 목적어로 드러나야 한다.**
+    """
+    seeds: list[tuple[str, str]] = []
+
+    # 사장님이 이미 쓴 말이 있으면 그게 1순위 씨앗이다.
+    note = _chat_note(list(sb.messages or []))
+    if note:
+        seeds.append(("사장님이 쓴 내용", note))
+
+    prod = (
+        db.query(models.ProductionRecord)
+        .order_by(models.ProductionRecord.id.desc()).first()
+    )
+    if prod and (prod.name or "").strip():
+        qty = f" {prod.qty}개" if (prod.qty or "").strip() else ""
+        seeds.append((prod.name.strip(), f"{prod.name.strip()}{qty} 만들었어요"))
+
+    store = db.get(models.Store, 1)
+    if store and (store.hours or "").strip():
+        seeds.append(("영업시간", "우리 가게 영업시간을 알리고 싶어"))
+    if store and (store.desc or "").strip():
+        seeds.append(("가게 소개", "우리 가게 소개를 알리고 싶어"))
+
+    meme = _meme_context(sb, db)
+    if meme and (meme.get("name") or "").strip():
+        name = meme["name"].strip()
+        # "밈으로 광고를 만들고 싶어"는 0/3 거절이었다(요청형). 목적어 "우리 가게를"이
+        # 들어간 이 문구가 3/3 통과다. 위 규칙 그대로다.
+        seeds.append((f"{name} 밈", f"'{name}' 밈으로 우리 가게를 알리고 싶어"))
+
+    return seeds[:MAX_OPTIONS]
+
+
+def _propose_options(
+    sb: models.Storyboard, db: Session, messages: list[dict], intro: str,
+) -> int:
+    """씨앗마다 스토리를 하나씩 만들어 **고를 수 있는 제안 카드**로 올린다. 만든 개수를 돌려준다.
+
+    되묻기를 없애는 게 아니라 막다른 길만 없앤다 — 고르는 건 여전히 사장님이고,
+    누르기 전까지 plan은 안 바뀐다.
+
+    🔴 **반드시 병렬로 부른다.** 씨앗이 셋이면 순차는 15초고 병렬은 5초다.
+    하나가 실패해도 나머지로 보여준다.
+    """
+    seeds = _topic_seeds(sb, db)
+    if not seeds:
+        return 0
+    ctx = _plan_context(sb, db)  # DB 읽기는 스레드 밖에서 끝낸다 (_plan_context 참고)
+
+    def one(seed: tuple[str, str]):
+        try:
+            return _plan_with(ctx, seed[1])
+        except Exception:
+            logger.exception("제안 하나를 만들지 못했습니다: %s", seed[0])
+            return None
+
+    with ThreadPoolExecutor(max_workers=len(seeds)) as pool:
+        results = list(pool.map(one, seeds))
+
+    pending = dict(sb.pending or {})
+    group = new_pid()
+    items = []
+    for (label, _seed), result in zip(seeds, results):
+        if not result or not result[0]:
+            continue
+        cuts = result[0]
+        pid = new_pid()
+        pending[pid] = {
+            # group — 하나를 고르면 같은 묶음의 나머지를 닫는 데 쓴다(confirm_pending).
+            "which": "sb", "kind": "plan", "group": group,
+            "diffs": _plan_diffs(sb, cuts),
+            "payload": {"plan": cuts}, "status": "open",
+        }
+        items.append({
+            "pid": pid, "topic": label,
+            "cuts": [{"n": c["n"], "line": c["line"]} for c in cuts],
+        })
+
+    if not items:
+        return 0
+    sb.pending = pending
+    messages.append({"role": "ai", "kind": "text", "text": intro})
+    messages.append({"role": "ai", "kind": "options", "group": group, "items": items})
+    return len(items)
 
 
 @router.get("", response_model=schemas.StoryboardOut)
@@ -232,9 +443,22 @@ def get_storyboard(db: Session = Depends(get_db)):
 def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     """스토리보드 채팅 — 사장님이 쓴 내용으로 컷 구성을 만든다.
 
-    생산 기록은 여기서 안 받는다("내 정보 > 생산 기록" 탭에서만 남긴다) — 대화는
-    스토리를 만드는 자리다. 만든 구성은 바로 반영하지 않고 confirm 카드로 보여준다 —
-    사장님이 '이렇게 바뀝니다'를 보고 승인해야 실제로 반영된다.
+    한 번의 대화가 세 가지를 할 수 있다. 무엇이든 **바로 반영하지 않고 카드로 물어본다.**
+
+    1. **스토리** — 늘 하던 일. 컷 구성을 만들어 confirm 카드로 올린다.
+    2. **생산 기록**(곁들임) — "소금빵 50개 구웠어요"처럼 만든 사실이 섞여 있으면
+       기록으로 남길지 같이 물어본다. **스토리와 갈라지지 않는다**(`_offer_record`).
+    3. **가게 정보 수정** — "오픈시간 9시로 바꿔줘"처럼 고치라는 말이면 before→after
+       카드를 띄운다. 이건 광고 소재가 아니라서 **갈라진다**(`_offer_store_edit`).
+
+    🔴 셋을 **병렬로** 부른다. 순차로 이으면 사장님이 기다리는 시간이 그대로 세 배다.
+    호출 수는 늘지만(메시지당 3회) 기다리는 시간은 그대로다 — 실측 1.9초.
+
+    🔴 **가게 정보 수정이 스토리보다 먼저다.** 처음엔 "고쳐 달라는 말은 광고 소재가
+    아니니 스토리 쪽에서 거절될 것"이라 보고 거절 뒤에만 확인했는데, 재보니 틀렸다.
+    "오픈시간 9시로 바꿔줘"에 스토리 쪽은 3/3으로 컷을 만들었고, 그 내용이
+    **"오픈시간이 9시로 바뀌었어요!"** 였다 — 아직 바꾸지도 않은 것을 광고로 내보낼
+    뻔했다. 그래서 수정으로 읽히면 스토리를 만들지 않는다.
     """
     sb = _get(db)
     text = (body.text or "").strip()
@@ -245,14 +469,35 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     messages.append({"role": "me", "kind": "text", "text": text})
 
     _require_character(db)
-    result = _plan_cuts(text, sb, db)
-    if result is None:
-        # GPT가 "광고로 만들 내용이 아니다"라고 본 경우다. 여기서 아무 장면이나
-        # 만들면 사장님이 말한 적 없는 광고가 된다 — 지어내지 말고 되묻는다.
-        messages.append({
-            "role": "ai", "kind": "text",
-            "text": "그 말씀만으로는 광고 장면을 잡기 어려워요. 오늘 알리고 싶은 걸 한 줄로 적어주세요.",
-        })
+    # DB 읽기를 먼저 끝내고 스레드에는 dict만 넘긴다(_plan_context 참고).
+    ctx = _plan_context(sb, db)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        planned = pool.submit(_plan_with, ctx, text)
+        extracted = pool.submit(story_llm.extract_record, text)
+        store_edit = pool.submit(story_llm.extract_store_edit, text)
+        result = planned.result()
+        record = extracted.result()
+        edit = store_edit.result()
+
+    if edit:
+        # 가게 정보를 고치라는 말이다. 스토리는 만들지 않는다 — 위 docstring 참고.
+        _offer_store_edit(sb, db, edit, messages)
+    elif result is None:
+        # GPT가 "알릴 거리가 없다"고 본 경우다("뭐 만들까?"·인사·"몰라").
+        # 여기서 아무 장면이나 만들면 사장님이 말한 적 없는 광고가 된다 — 지어내지 않는다.
+        #
+        # 대신 **막다른 길로 두지도 않는다.** 전에는 "한 줄로 적어주세요"만 돌려줘서,
+        # 무엇을 적을 수 있는지 모르는 사장님이 같은 말을 고쳐 쓰다 또 거절당했다.
+        # 이제 실제 데이터에서 뽑은 씨앗으로 스토리를 몇 개 만들어 보여준다 —
+        # 고르는 건 여전히 사장님이고, 누르기 전까지 plan은 안 바뀐다.
+        #
+        # _topic_seeds가 읽는 sb.messages에는 방금 그 말이 아직 안 들어 있다(맨 끝에서
+        # 한 번에 저장한다). 그래서 방금 거절당한 문장이 씨앗으로 다시 들어가지 않는다.
+        if not _propose_options(
+            sb, db, messages,
+            "무엇을 알릴지 아직 못 잡았어요. 이런 스토리는 어떠세요? 마음에 드는 걸 골라주세요.",
+        ):
+            messages.append({"role": "ai", "kind": "text", "text": _NOTHING_TO_USE})
     else:
         cuts, meme_used = result
         if not cuts:
@@ -263,6 +508,9 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
         else:
             messages.append({"role": "ai", "kind": "text", "text": _propose_intro(meme_used)})
             _propose_plan(sb, cuts, messages)
+            # 스토리를 만든 **뒤에** 곁들인다. 순서가 중요하다 — 기록 카드가 먼저 뜨면
+            # 사장님이 스토리보다 기록을 먼저 보게 되고, 대화의 주인공이 바뀐다.
+            _offer_record(sb, record, messages)
 
     sb.messages = messages
     db.commit()
@@ -273,25 +521,22 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
 @router.post("/suggest", response_model=schemas.StoryboardOut)
 def suggest(db: Session = Depends(get_db)):
     """대화창의 "스토리 제안받기" 버튼 — 자동으로는 절대 안 뜬다(사장님이 버튼을
-    눌러야만 부른다). 지금까지 대화에서 사장님이 쓴 문장이 있으면 그걸 재료로 쓰고,
-    없으면(정말 아무것도 안 쓰고 눌렀으면) 가게·캐릭터·최근 생산 기록·(있으면)
-    밈만으로 스토리를 만든다.
+    눌러야만 부른다).
+
+    **한 개가 아니라 여러 개를 제안한다.** 전에는 하나만 만들어 "이대로 바꿀까요?"를
+    물었는데, 사장님이 할 수 있는 건 예/아니오뿐이라 마음에 안 들면 다시 막다른
+    길이었다. 지금은 서로 다른 씨앗(`_topic_seeds`)으로 2~3개를 만들어 고르게 한다.
+
+    대화에서 "뭐 만들까?"라고 말하는 것도 이 버튼을 말로 누른 것이라, `chat()`의
+    거절 분기가 같은 함수를 부른다 — 버튼이든 말이든 같은 동작이어야 한다.
     """
     sb = _get(db)
     _require_character(db)
     messages = list(sb.messages or [])
-    note = _chat_note(messages)
-    text = note or "(사장님이 따로 말하지 않음 — 가게·캐릭터·최근 생산 기록을 재료로 이야기를 만든다)"
-    result = _plan_cuts(text, sb, db)
-    if result is None or not result[0]:
-        messages.append({
-            "role": "ai", "kind": "text",
-            "text": "지금 있는 정보만으로는 스토리를 만들기 어려워요. 오늘 알리고 싶은 걸 한 줄로 적어주세요.",
-        })
-    else:
-        cuts, meme_used = result
-        messages.append({"role": "ai", "kind": "text", "text": _propose_intro(meme_used)})
-        _propose_plan(sb, cuts, messages)
+    if not _propose_options(
+        sb, db, messages, "이런 스토리는 어떠세요? 마음에 드는 걸 골라주세요.",
+    ):
+        messages.append({"role": "ai", "kind": "text", "text": _NOTHING_TO_USE})
     sb.messages = messages
     db.commit()
     db.refresh(sb)
@@ -480,6 +725,13 @@ def confirm_pending(pid: str, db: Session = Depends(get_db)):
         raise HTTPException(400, "이미 처리된 제안이에요")
 
     pending[pid] = {**p, "status": "applied"}
+    # 🔴 같은 제안 묶음의 다른 카드는 닫는다. 안 닫으면 사장님이 스크롤을 올려
+    # 다른 카드를 또 누를 수 있고, 그러면 방금 정한 구성이 조용히 덮어써진다.
+    group = p.get("group")
+    if group:
+        for other_pid, other in list(pending.items()):
+            if other_pid != pid and other.get("group") == group and other.get("status") == "open":
+                pending[other_pid] = {**other, "status": "closed"}
     messages = list(sb.messages or [])
     if p["kind"] == "plan":
         sb.plan = p["payload"]["plan"]
@@ -488,6 +740,30 @@ def confirm_pending(pid: str, db: Session = Depends(get_db)):
         # 새로 쓴다. 실패해도(키 없음 등) 조용히 빈 문자열로 남고, 화면이 옛 방식
         # (컷 이어붙이기)으로 대신 보여준다.
         sb.caption = _generate_caption(sb, db) or ""
+    elif p["kind"] == "store_edit":
+        store = db.get(models.Store, 1)
+        changed = []
+        for field, value in p["payload"]["fields"].items():
+            if field in story_llm.STORE_FIELDS:
+                setattr(store, field, value)
+                changed.append(story_llm.STORE_FIELDS[field])
+        # 표시용 영업시간 문자열은 화면·프롬프트가 같이 읽는다. 여기서 다시 계산하지
+        # 않으면 open_time만 바뀌고 "18:04 – 16:06"은 옛날 값으로 남는다.
+        from app.api.routes.store import _format_hours
+        store.hours = _format_hours(store)
+        messages.append({
+            "role": "ai", "kind": "text",
+            "text": f"{' · '.join(changed)}을(를) 바꿨어요. 다음 스토리부터 이 값으로 만들어요.",
+        })
+    elif p["kind"] == "prod_add":
+        # production.add_record와 같은 규칙 — 처음 보는 품목이면 품목 목록에도 넣는다.
+        rec = models.ProductionRecord(**p["payload"])
+        db.add(rec)
+        if not db.query(models.ProductionItem).filter_by(name=rec.name).first():
+            db.add(models.ProductionItem(name=rec.name))
+        db.flush()  # 아래 메시지에 넣을 id가 필요하다
+        # ProdBubble이 그린다 — 남긴 기록을 대화창에서 바로 고칠 수 있다(매진 시각 등).
+        messages.append({"role": "ai", "kind": "prod", "prodId": rec.id})
     elif p["kind"] == "meme":
         sb.trend_meme_id = p["payload"]["meme_id"]
         sb.trend_meme_name = p["payload"]["meme_name"]

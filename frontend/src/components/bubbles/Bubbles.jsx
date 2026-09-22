@@ -176,6 +176,11 @@ const CONFIRM_COPY = {
   field: { title: '캐릭터 시트 수정', yes: '이대로 바꾸기', no: '그대로 두기' },
   plan: { title: '스토리 변경 제안', yes: '이대로 바꾸기', no: '그대로 두기' },
   meme: { title: '밈 추천', yes: '이 밈으로 바꾸기', no: '괜찮아요' },
+  // 대화에서 "소금빵 50개 구웠어요" 같은 말이 나왔을 때. 스토리와 별개로 곁들여 뜬다.
+  prod_add: { title: '생산 기록으로 남길까요?', yes: '남길게요', no: '안 남길래요' },
+  // 가게 정보는 덮어쓰기라 '남길까요'가 아니라 '바꿀까요'다. diffs 가 before→after 를
+  // 보여주고, basis 가 그렇게 읽은 근거(사장님 말 그대로)를 같이 보여준다.
+  store_edit: { title: '가게 정보를 바꿀까요?', yes: '이렇게 바꾸기', no: '그대로 두기' },
 };
 
 /** 우리가 대신 정해준 값일 때, **무엇을 보고 정했는지**를 보여준다.
@@ -243,6 +248,57 @@ export function ConfirmBubble({ pending, onConfirm, onDecline }) {
             : '바꾸지 않았어요'}
         </span>
       )}
+    </div>
+  );
+}
+
+/** 고를 수 있는 스토리 제안 카드 묶음.
+ *
+ *  ConfirmBubble 은 "이대로 할까요?"라 예/아니오뿐이다. 여기는 서로 다른 스토리
+ *  2~3개를 나란히 놓고 **고르게** 한다 — 사장님이 "뭐 만들까?"라고 했을 때
+ *  막다른 길로 되돌려보내지 않으려고 만든 것이다.
+ *
+ *  하나를 고르면 백엔드가 같은 묶음의 나머지를 status:"closed"로 닫는다. 화면에서도
+ *  버튼을 내려 다시 못 누르게 한다 — 스크롤을 올려 다른 걸 또 누르면 방금 정한
+ *  구성이 조용히 덮어써지기 때문이다. */
+export function OptionsBubble({ items, pending, onConfirm }) {
+  const statusOf = (pid) => ((pending || {})[pid] || {}).status;
+  const decided = (items || []).some((it) => statusOf(it.pid) !== 'open');
+
+  return (
+    <div style={{ maxWidth: '96%', display: 'flex', flexDirection: 'column', gap: 10, animation: 'pop .22s ease' }}>
+      {(items || []).map((it) => {
+        const status = statusOf(it.pid);
+        const chosen = status === 'applied';
+        return (
+          <div key={it.pid} style={{
+            background: '#fff',
+            border: `1.5px solid ${chosen ? colors.primary : colors.onboardBorder}`,
+            borderRadius: 14, padding: 13, display: 'flex', flexDirection: 'column', gap: 9,
+            opacity: decided && !chosen ? 0.55 : 1,
+          }}>
+            <span style={bubbleTitleStyle}>{it.topic}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, background: colors.bg, borderRadius: 10, padding: '9px 11px' }}>
+              {(it.cuts || []).map((c) => (
+                <div key={c.n} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                  <span style={{ flex: 'none', fontSize: 11.5, fontWeight: 800, color: colors.textFaint, minWidth: 14 }}>{c.n}</span>
+                  <span style={{ fontSize: 14, lineHeight: '20px', color: colors.text }}>{c.line}</span>
+                </div>
+              ))}
+            </div>
+            {status === 'open' && !decided ? (
+              <button onClick={() => onConfirm(it.pid)} style={{
+                height: 46, borderRadius: 11, border: 0, background: colors.primary, color: '#fff',
+                fontSize: 15, fontWeight: 700, cursor: 'pointer', boxShadow: '0 5px 10px rgba(22,160,107,.28)',
+              }}>이걸로 할게요</button>
+            ) : (
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: chosen ? colors.primary : colors.textFaint }}>
+                {chosen ? '이걸로 정했어요' : '이건 안 골랐어요'}
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

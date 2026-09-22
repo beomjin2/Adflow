@@ -516,7 +516,22 @@ export function useAdMakerState() {
   }, [update, fail]);
 
   const confirmPending = useCallback(async (pid) => {
-    try { update(await StoryboardAPI.confirm(pid)); toast('반영했어요'); } catch (e) { fail(e); }
+    try {
+      // 무엇을 승인하는지는 보내기 전에 봐 둔다 — 응답을 반영하고 나면 status 가 바뀐다.
+      const kind = ((stateRef.current.pending || {})[pid] || {}).kind;
+      const sb = await StoryboardAPI.confirm(pid);
+      update(sb);
+      // 대화에서 생산 기록을 남기면 백엔드가 kind:"prod" 메시지를 붙여 보낸다. 그런데
+      // 스토리보드 응답에는 기록 목록이 없어서, 그대로 두면 ProdBubble이 그릴 기록을
+      // 못 찾아 빈 칸이 된다. 새 기록이 보일 때만 목록을 다시 받는다.
+      const known = new Set((stateRef.current.prods || []).map((p) => p.id));
+      const hasNew = (sb.sbMsgs || []).some((m) => m.kind === 'prod' && !known.has(m.prodId));
+      if (hasNew) update({ prods: await ProductionAPI.listRecords() });
+      // 가게 정보를 대화로 고쳤으면 가게 상태도 다시 받는다. 안 받으면 스토리보드 왼쪽
+      // "가게 정보" 칸이 옛 값을 그대로 보여준다 — 방금 바꿨는데 안 바뀐 것처럼 보인다.
+      if (kind === 'store_edit') update(await StoreAPI.get());
+      toast('반영했어요');
+    } catch (e) { fail(e); }
   }, [update, toast, fail]);
 
   const declinePending = useCallback(async (pid) => {

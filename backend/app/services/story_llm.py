@@ -57,6 +57,8 @@ _PLAN_SYSTEM = """\
 1. **사장님이 말한 내용이 광고의 중심이다.** 말한 적 없는 사실은 지어내지 않는다.
    가격·할인율·수량·시간은 사장님 말이나 아래 가게 정보에 적혀 있을 때만 쓴다.
 2. 가게 정보에 있는 값(업종·주소·영업시간·소개)은 그대로 써도 된다. 비어 있는 칸은 쓰지 않는다.
+2-1. [생산 기록]에 "30분 만에 매진"처럼 **걸린 시간이 적혀 있으면 그건 좋은 광고 재료다** —
+   그대로 써라. 적혀 있지 않은 기록에 대해 시간을 스스로 계산하거나 지어내지는 않는다.
 3. 마지막 컷은 실제로 적혀 있는 가게 정보로 끝낸다 — 영업시간이나 가게 소개처럼.
    적혀 있는 게 없으면 사장님이 말한 내용으로 끝낸다.
 4. 주인공은 가게 마스코트 하나다. 사람 손님은 그리지 않는다 — 손님이 필요하면 동물 손님으로 적는다.
@@ -149,16 +151,53 @@ def cut_count(ad_type: str) -> int:
     return 4 if (ad_type or "").strip() == "4컷만화" else 1
 
 
+def _sold_out_in(made: str, sold: str) -> str:
+    """만든 시각 → 매진 시각이 얼마나 걸렸는지. 못 재면 빈 문자열.
+
+    이게 없으면 모델은 "19:03 생산, 09:12 매진"만 보고 **스스로 뺄셈을 해야 한다.**
+    그러다 "30분 만에 매진"처럼 맞는 것 같지만 틀린 숫자가 나온다. 여기서 계산해
+    넘기면 모델은 받아쓰기만 하면 된다 — 지어낼 자리가 없어진다.
+
+    매진이 생산보다 이르면 다음 날로 본다(새벽에 구워 오전에 파는 가게가 많다).
+    """
+    try:
+        h1, m1 = (int(x) for x in made.split(":")[:2])
+        h2, m2 = (int(x) for x in sold.split(":")[:2])
+    except (ValueError, AttributeError):
+        return ""
+    minutes = (h2 * 60 + m2) - (h1 * 60 + m1)
+    if minutes < 0:
+        minutes += 24 * 60
+    if minutes < 60:
+        return f"{minutes}분 만에 매진"
+    hours, rest = divmod(minutes, 60)
+    return f"{hours}시간 {rest}분 만에 매진" if rest else f"{hours}시간 만에 매진"
+
+
+def _prod_line(p: dict) -> str:
+    """생산 기록 한 줄. **매진까지 걸린 시간을 여기서 계산해 붙인다.**
+
+    "30분 만에 매진됐다"는 광고에 그대로 쓸 수 있는 가장 센 재료인데, 시각 두 개만
+    던져 주면 모델이 뺄셈을 틀린다. 계산된 문장을 넣어 두면 규칙 1("적혀 있는 것만
+    쓴다")을 지키면서도 쓸 수 있다.
+    """
+    name = p.get("name") or ""
+    qty = f" {p['qty']}개" if str(p.get("qty") or "").strip() else ""
+    when = f"{p.get('date') or ''} {p.get('time') or ''}".strip()
+    if p.get("sold_out"):
+        took = _sold_out_in(str(p.get("time") or ""), str(p["sold_out"]))
+        tail = f"매진 {p['sold_out']}" + (f" — {took}" if took else "")
+    else:
+        tail = "매진 시각 미입력"
+    return f"- {name}{qty} ({when}, {tail})"
+
+
 def _context(store: dict, char: dict, ad: dict, prods: list[dict], current_plan: list[dict]) -> str:
     def line(label: str, value) -> str:
         value = (str(value) if value is not None else "").strip()
         return f"{label}: {value}" if value else f"{label}: (비어 있음 — 쓰지 말 것)"
 
-    prod_lines = [
-        f"- {p.get('name')} {p.get('qty') or ''} ({p.get('date') or ''} {p.get('time') or ''}"
-        + (f", 매진 {p['sold_out']}" if p.get("sold_out") else ", 매진 시각 미입력") + ")"
-        for p in prods
-    ] or ["- (기록 없음)"]
+    prod_lines = [_prod_line(p) for p in prods] or ["- (기록 없음)"]
 
     parts = [
         "[가게]",

@@ -44,7 +44,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.core.config import settings
 from app.core.database import get_db
-from app.services import jobs, story_llm
+from app.services import comic_compose, jobs, story_llm
 from app.services.chat_ai import COMIC_IDENTITY_FIELDS, character_part, comic_prompt, new_pid
 from app.services.image_gen import generate_images
 from app.services.meme_recommend import recommend as recommend_meme
@@ -552,6 +552,42 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(sb)
     return schemas.storyboard_out(sb, jobs.queue_depth())
+
+
+@router.post("/poster")
+def make_poster(db: Session = Depends(get_db)):
+    """네컷 + 대사를 **한 장으로 구워** 내려받을 URL을 돌려준다.
+
+    화면의 말풍선은 프론트가 그림 위에 얹은 CSS 레이어라, "이미지 저장"으로 받으면
+    ComfyUI 원본만 받아져 **대사가 통째로 사라진다.** 여기서 굽는다.
+
+    굽는 쪽은 `comic_compose` 다 — 왜 ComfyUI 워크플로가 아닌지는 그 파일 머리에 적었다.
+    """
+    sb = _get(db)
+    cuts = [c for c in (sb.comic_cuts or []) if c.get("status") == "done" and c.get("image")]
+    if not cuts:
+        raise HTTPException(400, "먼저 네컷을 그려주세요")
+
+    by_n = {c.get("n"): c for c in (sb.plan or [])}
+    paths, lines = [], []
+    for c in sorted(cuts, key=lambda x: x.get("n") or 0):
+        name = str(c["image"]).rsplit("/", 1)[-1]
+        path = settings.media_path / name
+        if not path.exists():
+            logger.warning("네컷 파일이 사라졌습니다: %s", name)
+            continue
+        paths.append(path)
+        lines.append((by_n.get(c.get("n")) or {}).get("line", ""))
+
+    if not paths:
+        raise HTTPException(400, "그림 파일을 찾지 못했어요. 네컷을 다시 그려주세요")
+
+    try:
+        url = comic_compose.compose_poster(paths, lines)
+    except Exception:
+        logger.exception("완성본 합성 실패")
+        raise HTTPException(500, "완성본을 만들지 못했어요")
+    return {"image": url}
 
 
 @router.post("/reset", response_model=schemas.StoryboardOut)

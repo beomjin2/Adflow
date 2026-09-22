@@ -171,6 +171,9 @@ export const StoryboardAPI = {
   makeComic: () => post('/api/storyboard/comic').then(mapStoryboard),
   // 대화가 꼬였을 때 빠져나갈 길. 트렌드에서 골라 온 밈은 남는다(백엔드 reset_chat 참고).
   reset: () => post('/api/storyboard/reset').then(mapStoryboard),
+  // 네컷 + 대사를 한 장으로 구워 준다. 화면 말풍선은 CSS 레이어라 원본만 받으면
+  // 대사가 사라진다(backend/app/services/comic_compose.py).
+  poster: () => post('/api/storyboard/poster'),
 };
 
 // ---------- production ----------

@@ -31,3 +31,18 @@ export async function downloadImages(cuts, baseName) {
   }
   return true;
 }
+
+/** 완성본 한 장 받기. 말풍선이 구워져 있어 SNS에 그대로 올릴 수 있다. */
+export async function downloadPoster(url, baseName) {
+  const name = (baseName || '광고').replace(/[\\/:*?"<>|]/g, '').trim() || '광고';
+  const res = await fetch(url);
+  const blob = await res.blob();
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = href;
+  a.download = `${name}_네컷.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(href);
+}

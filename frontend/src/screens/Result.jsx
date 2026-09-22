@@ -1,7 +1,8 @@
 import { colors } from '../theme.js';
 import { PrimaryButton, SecondaryButton, SoftButton } from '../components/ui/Button.jsx';
 import { buildAdText, adTextForClipboard, copyToClipboard, characterImage } from '../lib/adText.js';
-import { downloadImages } from '../lib/download.js';
+import { downloadImages, downloadPoster } from '../lib/download.js';
+import { StoryboardAPI } from '../api/client.js';
 import ComicPanels from '../components/ComicPanels.jsx';
 
 export default function Result({ state, actions }) {
@@ -17,6 +18,17 @@ export default function Result({ state, actions }) {
   };
 
   const saveImages = async () => {
+    // 말풍선까지 구운 완성본 한 장을 먼저 받는다 — 화면의 말풍선은 CSS 레이어라
+    // 원본 넉 장을 그대로 받으면 대사가 통째로 사라진다.
+    try {
+      const { image } = await StoryboardAPI.poster();
+      await downloadPoster(image, state.charName);
+      actions.toast('말풍선까지 들어간 완성본을 받았어요');
+      return;
+    } catch (e) {
+      // 합성이 안 되면(폰트 없음·파일 유실 등) 적어도 그림은 건지게 원본으로 되돌아간다.
+      actions.toast('완성본을 못 만들어서 그림만 받을게요');
+    }
     const ok = await downloadImages(state.comicCuts, state.charName);
     if (!ok) actions.toast('받을 그림이 없어요');
   };

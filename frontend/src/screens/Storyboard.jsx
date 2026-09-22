@@ -23,6 +23,33 @@ function Accordion({ open, onToggle, label, pill, pillTone = '', children }) {
   );
 }
 
+/** 그림 모델이 알아듣는 구도 태그를 사장님이 읽을 말로 바꾼다.
+ *  태그 자체(`from_below` 등)는 story_llm.CAMERA_TAGS 가 정하고 그림 프롬프트로 그대로
+ *  나간다 — 여기서는 화면에 보여줄 때만 옮긴다. */
+const CAMERA_KO = {
+  'straight-on': '정면', 'close-up': '가까이', from_side: '옆에서',
+  from_below: '아래에서', from_above: '위에서', wide_shot: '멀리서',
+};
+
+/** 컷 안의 한 줄. 라벨을 왼쪽에 붙여 대사와 그림 설명이 섞여 보이지 않게 한다. */
+function CutRow({ label, value, strong = false }) {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', minWidth: 0 }}>
+      <span style={{
+        flex: 'none', fontSize: 11, fontWeight: 800, color: 'var(--sub)',
+        background: 'var(--soft)', borderRadius: 999, padding: '2px 7px', minWidth: 30,
+        textAlign: 'center',
+      }}>{label}</span>
+      <span style={{
+        minWidth: 0, fontSize: strong ? 15 : 13.5, lineHeight: strong ? '22px' : '20px',
+        color: strong ? 'var(--ink)' : 'var(--sub)', fontWeight: strong ? 600 : 400,
+      }}>{text}</span>
+    </div>
+  );
+}
+
 /** 가게 정보 한 줄. 값이 없으면 "비어 있음"을 눈에 띄게 보여준다 — 빈 칸은 광고에
  *  안 쓰이기 때문이다(backend/app/services/story_llm.py `_context`가 빈 칸을
  *  "(비어 있음 — 쓰지 말 것)"으로 넘긴다). 어디가 비었는지 보이는 게 이 줄의 목적이다. */
@@ -157,10 +184,24 @@ export default function Storyboard({ state, actions }) {
             </span>
           ) : (
             <div>
+              {/* 컷 하나를 세 가지로 보여준다 — 대사 · 그림 · 구도.
+                  전에는 대사만 있어서, 그림에 무엇이 그려질지(곰이가 무엇을 하는지)를
+                  이 화면에서는 알 수가 없었다. 그건 plan 에 action 으로 이미 있는데
+                  화면이 안 쓰고 있었을 뿐이다. */}
               {state.plan.map((c) => (
                 <div className="ad-cut" key={c.n}>
                   <span className="n">{c.n}</span>
-                  <span>{c.line}</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+                    <CutRow label="대사" value={c.line} strong />
+                    <CutRow label="그림" value={c.action} />
+                    {(c.camera || (c.props || []).length > 0) && (
+                      <CutRow
+                        label="구도"
+                        value={[CAMERA_KO[c.camera] || c.camera, (c.props || []).join(' · ')]
+                          .filter(Boolean).join(' · ')}
+                      />
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

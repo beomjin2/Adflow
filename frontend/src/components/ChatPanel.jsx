@@ -55,17 +55,28 @@ export default function ChatPanel({
                 스토리 제안받기
               </button>
             )}
-            {/* 되돌릴 수 없으니 한 번 더 묻는다 — 캐릭터 화면의 초기화와 같은 모양이다. */}
+            {/* 되돌릴 수 없으니 한 번 더 묻는다. 모양·문구·동작 전부 캐릭터 화면의
+                "처음부터 다시"(Character.jsx)와 같게 맞춰 뒀다 — 같은 일을 하는 버튼이
+                화면마다 다르게 생기면 사장님은 그게 같은 일인지 알 수가 없다. */}
             {onReset && (resetting ? (
-              <>
-                <button className="ad-btn sm" onClick={() => { setResetting(false); onReset(); }}
-                  style={{ background: colors.warnAccent, color: '#fff', border: 0 }}>전부 지울까요?</button>
-                <button className="ad-btn sec sm" onClick={() => setResetting(false)}>아니오</button>
-              </>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: 'none' }}>
+                <span style={{ fontSize: 12, color: colors.textSub }}>전부 지울까요?</span>
+                <button onClick={() => { setResetting(false); onReset(); }} style={{
+                  height: 36, padding: '0 11px', borderRadius: 8, border: 0,
+                  background: colors.warnAccent, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                }}>네</button>
+                <button onClick={() => setResetting(false)} style={{
+                  height: 36, padding: '0 11px', borderRadius: 8, border: 0,
+                  background: colors.softBg, color: colors.textSub, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                }}>아니오</button>
+              </div>
             ) : (
-              <button className="ad-btn sec sm" onClick={() => setResetting(true)} disabled={thinking}>
-                처음부터
-              </button>
+              <button onClick={() => setResetting(true)} disabled={thinking} style={{
+                flex: 'none', border: 0, background: 'transparent',
+                color: thinking ? colors.cardBorder : colors.textFaint,
+                fontSize: 12.5, fontWeight: 700, cursor: thinking ? 'not-allowed' : 'pointer',
+                textDecoration: 'underline', padding: '6px 2px',
+              }}>처음부터 다시</button>
             ))}
           </div>
         </div>

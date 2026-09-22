@@ -9,7 +9,8 @@ Danbooru 자체 API는 대량 조회를 막아놔서 이 미러를 쓴다(resear
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
+import threading
+import time
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -27,9 +28,44 @@ MIN_POST_COUNT = 2000
 # 그게 사장님 마스코트 프롬프트에 섞이면 그건 더 이상 사장님 캐릭터가 아니다.
 ALLOWED_CATEGORIES = (0, 5)
 
+# 사전은 159만 행·79MB라 처음 읽는 데 약 17초가 걸린다. 그래서 두 가지를 같이 둔다.
+#
+# 1) **잠금** — 예전에는 functools.lru_cache를 썼는데, 그건 "이미 만든 값"만 재사용할 뿐
+#    **동시에 들어온 첫 호출을 막지 않는다**(3개 스레드가 동시에 처음 부르면 3번 다 실행된다.
+#    직접 재현해 확인했다). 그래서 사장님이 생성 버튼을 세 번 연타하면 17초짜리 읽기가
+#    세 번 겹쳐 **응답이 66.6초**가 됐다 — 배포 환경의 응답 한도 60초를 넘겨 502가 난다.
+#    아래처럼 잠금 + 이중 확인을 두면 여럿이 동시에 와도 **한 번만** 읽는다.
+#
+# 2) **미리 읽기** — warm_cache()를 앱이 뜰 때 백그라운드로 부른다(main.py). 그러면 첫
+#    사장님이 17초를 기다리는 일 자체가 없어진다. 서버 기동은 그대로 빠르다.
+_cache: dict[str, int] | None = None
+_cache_lock = threading.Lock()
 
-@lru_cache(maxsize=1)
+
 def _valid_tags() -> dict[str, int]:
+    """쓸 수 있는 태그 사전. 처음 한 번만 읽고 그 뒤로는 바로 돌려준다."""
+    global _cache
+    if _cache is not None:          # 흔한 경우 — 잠금 없이 바로
+        return _cache
+    with _cache_lock:
+        if _cache is None:          # 잠금을 기다리는 사이 남이 채웠을 수 있다
+            started = time.monotonic()
+            _cache = _load_tags()
+            logger.info("Danbooru 태그 사전 %d개를 %.1f초에 읽었습니다",
+                        len(_cache), time.monotonic() - started)
+        return _cache
+
+
+def warm_cache() -> None:
+    """사전을 미리 읽어둔다. 앱 시작 때 백그라운드에서 부른다 — 실패해도 서비스는 떠야 하므로
+    예외를 밖으로 내보내지 않는다(사전이 없으면 화이트리스트로 폴백한다)."""
+    try:
+        _valid_tags()
+    except Exception:
+        logger.exception("태그 사전 미리 읽기 실패 — 첫 요청 때 다시 시도합니다")
+
+
+def _load_tags() -> dict[str, int]:
     path = Path(settings.danbooru_tags_path)
     if not path.is_absolute():
         path = BACKEND_ROOT / path

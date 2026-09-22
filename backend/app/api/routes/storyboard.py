@@ -518,6 +518,26 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     return schemas.storyboard_out(sb, jobs.queue_depth())
 
 
+@router.post("/reset", response_model=schemas.StoryboardOut)
+def reset_chat(db: Session = Depends(get_db)):
+    """광고 대화를 처음 상태로 되돌린다. 대화가 꼬였을 때 빠져나갈 길이 필요하다
+    (캐릭터 쪽 `POST /api/character/reset`과 같은 이유·같은 모양이다).
+
+    **트렌드 화면에서 골라 온 밈은 남긴다.** 그건 이 대화에서 정한 게 아니라 앞 화면에서
+    고르고 들어온 것이라, 대화를 지운다고 사라지면 사장님이 밈을 다시 고르러 가야 한다.
+
+    그려둔 그림 파일(media/)은 안 지운다 — 참조만 끊는다. 지우는 건 나중에도 할 수
+    있지만 되돌리는 건 못 한다(캐릭터 reset과 같은 판단).
+
+    생산 기록과 가게 정보는 **안 건드린다.** 대화로 남겼더라도 그건 이 대화의 산출물이
+    아니라 가게의 기록이다.
+    """
+    sb = _get(db)
+    return schemas.storyboard_out(
+        reset_storyboard(db, sb.trend_meme_id or None), jobs.queue_depth(),
+    )
+
+
 @router.post("/suggest", response_model=schemas.StoryboardOut)
 def suggest(db: Session = Depends(get_db)):
     """대화창의 "스토리 제안받기" 버튼 — 자동으로는 절대 안 뜬다(사장님이 버튼을

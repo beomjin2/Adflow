@@ -247,6 +247,57 @@ export function ConfirmBubble({ pending, onConfirm, onDecline }) {
   );
 }
 
+/** 고를 수 있는 스토리 제안 카드 묶음.
+ *
+ *  ConfirmBubble 은 "이대로 할까요?"라 예/아니오뿐이다. 여기는 서로 다른 스토리
+ *  2~3개를 나란히 놓고 **고르게** 한다 — 사장님이 "뭐 만들까?"라고 했을 때
+ *  막다른 길로 되돌려보내지 않으려고 만든 것이다.
+ *
+ *  하나를 고르면 백엔드가 같은 묶음의 나머지를 status:"closed"로 닫는다. 화면에서도
+ *  버튼을 내려 다시 못 누르게 한다 — 스크롤을 올려 다른 걸 또 누르면 방금 정한
+ *  구성이 조용히 덮어써지기 때문이다. */
+export function OptionsBubble({ items, pending, onConfirm }) {
+  const statusOf = (pid) => ((pending || {})[pid] || {}).status;
+  const decided = (items || []).some((it) => statusOf(it.pid) !== 'open');
+
+  return (
+    <div style={{ maxWidth: '96%', display: 'flex', flexDirection: 'column', gap: 10, animation: 'pop .22s ease' }}>
+      {(items || []).map((it) => {
+        const status = statusOf(it.pid);
+        const chosen = status === 'applied';
+        return (
+          <div key={it.pid} style={{
+            background: '#fff',
+            border: `1.5px solid ${chosen ? colors.primary : colors.onboardBorder}`,
+            borderRadius: 14, padding: 13, display: 'flex', flexDirection: 'column', gap: 9,
+            opacity: decided && !chosen ? 0.55 : 1,
+          }}>
+            <span style={bubbleTitleStyle}>{it.topic}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5, background: colors.bg, borderRadius: 10, padding: '9px 11px' }}>
+              {(it.cuts || []).map((c) => (
+                <div key={c.n} style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                  <span style={{ flex: 'none', fontSize: 11.5, fontWeight: 800, color: colors.textFaint, minWidth: 14 }}>{c.n}</span>
+                  <span style={{ fontSize: 14, lineHeight: '20px', color: colors.text }}>{c.line}</span>
+                </div>
+              ))}
+            </div>
+            {status === 'open' && !decided ? (
+              <button onClick={() => onConfirm(it.pid)} style={{
+                height: 46, borderRadius: 11, border: 0, background: colors.primary, color: '#fff',
+                fontSize: 15, fontWeight: 700, cursor: 'pointer', boxShadow: '0 5px 10px rgba(22,160,107,.28)',
+              }}>이걸로 할게요</button>
+            ) : (
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: chosen ? colors.primary : colors.textFaint }}>
+                {chosen ? '이걸로 정했어요' : '이건 안 골랐어요'}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Field({ label, children }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>

@@ -31,6 +31,7 @@ GPT 추천(meme_recommend.recommend)을 한 번 더 돌린다. 결과도 confirm
 
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -128,15 +129,13 @@ def _meme_context(sb: models.Storyboard, db: Session) -> dict | None:
     return None
 
 
-def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> tuple[list[dict], dict | None] | None:
-    """사장님 문장 → (컷 구성, 반영한 밈).
+def _plan_context(sb: models.Storyboard, db: Session) -> dict:
+    """LLM에 넘길 재료를 DB에서 한 번에 읽어 둔다.
 
-    GPT가 있으면 GPT가 가게·캐릭터·광고 느낌·(있으면) 밈을 함께 보고 컷으로 나눈다. 못 쓰면
-    (키 없음·호출 실패·형식 이상) 문장부호에서 자르는 옛 규칙으로 조용히 되돌아간다(이땐
-    밈은 반영 안 됨).
-
-    **None은 "규칙으로도 되돌아가지 않는다"는 뜻이다.** GPT가 사장님 말을 인사·잡담으로
-    본 경우에만 나온다 — 그때 규칙으로 쪼개면 "안녕하세요"가 1컷이 되어 버린다.
+    🔴 **읽기를 여기서 끝내는 이유가 있다.** 제안 여러 개를 동시에 만들 때
+    (`_propose_options`) 스레드마다 DB를 건드리면 안 된다 — SQLAlchemy 세션은
+    스레드 안전하지 않다. 그래서 스레드에는 이 dict만 넘긴다. `story_llm`은 HTTP
+    호출뿐이라 스레드에서 돌아도 된다.
     """
     store = db.get(models.Store, 1)
     char = db.get(models.Character, 1)
@@ -145,24 +144,39 @@ def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> tuple[list[dict
         db.query(models.ProductionRecord)
         .order_by(models.ProductionRecord.id.desc()).limit(10).all()
     )
-    trend_meme = _meme_context(sb, db)
-    proposed = story_llm.plan_from_text(
-        text,
-        store={"category": store.category, "address": store.address,
-               "hours": store.hours, "desc": store.desc} if store else {},
-        char={"name": char.name, "look": char.look, "outfit": char.outfit,
-              "desc": char.desc} if char else {},
-        ad={"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {},
-        prods=[{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time,
-                "sold_out": p.sold_out} for p in prods],
-        current_plan=list(sb.plan or []),
-        trend_meme=trend_meme,
-    )
+    return {
+        "store": {"category": store.category, "address": store.address,
+                  "hours": store.hours, "desc": store.desc} if store else {},
+        "char": {"name": char.name, "look": char.look, "outfit": char.outfit,
+                 "desc": char.desc} if char else {},
+        "ad": {"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {},
+        "prods": [{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time,
+                   "sold_out": p.sold_out} for p in prods],
+        "current_plan": list(sb.plan or []),
+        "trend_meme": _meme_context(sb, db),
+    }
+
+
+def _plan_with(ctx: dict, text: str) -> tuple[list[dict], dict | None] | None:
+    """재료 + 사장님 문장 → (컷 구성, 반영한 밈). **DB를 안 건드린다** — 스레드에서 불러도 된다.
+
+    GPT를 못 쓰면(키 없음·호출 실패·형식 이상) 문장부호에서 자르는 옛 규칙으로 조용히
+    되돌아간다(이땐 밈은 반영 안 됨).
+
+    **None은 "규칙으로도 되돌아가지 않는다"는 뜻이다.** GPT가 "알릴 거리가 없다"고
+    본 경우에만 나온다 — 그때 규칙으로 쪼개면 "안녕하세요"가 1컷이 되어 버린다.
+    """
+    proposed = story_llm.plan_from_text(text, **ctx)
     if proposed is None:
         return _cuts_from_text(text), None
     if not proposed["cuts"]:
         return None
     return proposed["cuts"], proposed["meme_used"]
+
+
+def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> tuple[list[dict], dict | None] | None:
+    """재료를 읽고 컷 구성을 한 번 만든다. 한 건만 만들 때 쓰는 기존 입구다."""
+    return _plan_with(_plan_context(sb, db), text)
 
 
 def _generate_caption(sb: models.Storyboard, db: Session) -> str | None:
@@ -198,8 +212,8 @@ def _propose_intro(meme_used: dict | None) -> str:
     return "스토리를 만들었어요. 마음에 들면 아래에서 이대로 바꾸기를 눌러주세요."
 
 
-def _propose_plan(sb: models.Storyboard, cuts: list[dict], messages: list[dict]) -> None:
-    """만든 컷 구성을 확인 카드로 올린다. 승인하기 전까지 plan은 바뀌지 않는다."""
+def _plan_diffs(sb: models.Storyboard, cuts: list[dict]) -> list[dict]:
+    """"이렇게 바뀝니다"에 쓸 before→after. 확인 카드와 제안 카드가 같이 쓴다."""
     current = list(sb.plan or [])
     diffs = []
     for cut in cuts:
@@ -212,15 +226,126 @@ def _propose_plan(sb: models.Storyboard, cuts: list[dict], messages: list[dict])
         })
     for old in current[len(cuts):]:
         diffs.append({"label": f"{old['n']}컷", "from": old["line"], "to": "삭제"})
+    return diffs
 
+
+def _propose_plan(sb: models.Storyboard, cuts: list[dict], messages: list[dict]) -> None:
+    """만든 컷 구성을 확인 카드로 올린다. 승인하기 전까지 plan은 바뀌지 않는다."""
     pending = dict(sb.pending or {})
     pid = new_pid()
     pending[pid] = {
-        "which": "sb", "kind": "plan", "diffs": diffs,
+        "which": "sb", "kind": "plan", "diffs": _plan_diffs(sb, cuts),
         "payload": {"plan": cuts}, "status": "open",
     }
     sb.pending = pending
     messages.append({"role": "ai", "kind": "confirm", "pid": pid})
+
+
+# 제안 하나당 LLM 호출이 하나다. 늘리면 사장님이 기다리는 시간과 비용이 같이 는다.
+MAX_OPTIONS = 3
+
+_NOTHING_TO_USE = (
+    "아직 광고에 쓸 게 없어요. 가게 정보나 생산 기록을 먼저 채워주시면 스토리를 만들어 드릴게요."
+)
+
+
+def _topic_seeds(sb: models.Storyboard, db: Session) -> list[tuple[str, str]]:
+    """제안할 스토리의 씨앗 — (딱지, 사장님 말처럼 쓴 한 문장).
+
+    🔴 **전부 DB에 실제로 있는 것에서만 뽑는다.** 비어 있는 칸은 씨앗이 안 된다 —
+    여기서 없는 소재를 지어내면 사장님이 정한 적 없는 광고가 된다. 씨앗이 하나도
+    없으면 제안하지 않고 정보를 채우러 보낸다(`_NOTHING_TO_USE`).
+
+    🔴 **씨앗은 "~을 알리고 싶어" 꼴로 쓴다.** story_llm은 두 가지를 되묻는데,
+    씨앗 문구가 둘 중 어느 쪽에도 안 걸리게 해야 한다:
+
+    · 명사구 하나("오픈시간") — 말하다 만 말로 본다. 그래서 서술어를 붙인다.
+    · **요청형("우리 가게를 소개하고 싶어")** — 자기한테 해 달라는 말로 읽고 거절한다.
+      실측으로 3/3 거절이었다. 같은 뜻인 "우리 가게 소개를 알리고 싶어"는 3/3 통과다.
+      **"무엇을" 알릴지가 목적어로 드러나야 한다.**
+    """
+    seeds: list[tuple[str, str]] = []
+
+    # 사장님이 이미 쓴 말이 있으면 그게 1순위 씨앗이다.
+    note = _chat_note(list(sb.messages or []))
+    if note:
+        seeds.append(("사장님이 쓴 내용", note))
+
+    prod = (
+        db.query(models.ProductionRecord)
+        .order_by(models.ProductionRecord.id.desc()).first()
+    )
+    if prod and (prod.name or "").strip():
+        qty = f" {prod.qty}개" if (prod.qty or "").strip() else ""
+        seeds.append((prod.name.strip(), f"{prod.name.strip()}{qty} 만들었어요"))
+
+    store = db.get(models.Store, 1)
+    if store and (store.hours or "").strip():
+        seeds.append(("영업시간", "우리 가게 영업시간을 알리고 싶어"))
+    if store and (store.desc or "").strip():
+        seeds.append(("가게 소개", "우리 가게 소개를 알리고 싶어"))
+
+    meme = _meme_context(sb, db)
+    if meme and (meme.get("name") or "").strip():
+        name = meme["name"].strip()
+        # "밈으로 광고를 만들고 싶어"는 0/3 거절이었다(요청형). 목적어 "우리 가게를"이
+        # 들어간 이 문구가 3/3 통과다. 위 규칙 그대로다.
+        seeds.append((f"{name} 밈", f"'{name}' 밈으로 우리 가게를 알리고 싶어"))
+
+    return seeds[:MAX_OPTIONS]
+
+
+def _propose_options(
+    sb: models.Storyboard, db: Session, messages: list[dict], intro: str,
+) -> int:
+    """씨앗마다 스토리를 하나씩 만들어 **고를 수 있는 제안 카드**로 올린다. 만든 개수를 돌려준다.
+
+    되묻기를 없애는 게 아니라 막다른 길만 없앤다 — 고르는 건 여전히 사장님이고,
+    누르기 전까지 plan은 안 바뀐다.
+
+    🔴 **반드시 병렬로 부른다.** 씨앗이 셋이면 순차는 15초고 병렬은 5초다.
+    하나가 실패해도 나머지로 보여준다.
+    """
+    seeds = _topic_seeds(sb, db)
+    if not seeds:
+        return 0
+    ctx = _plan_context(sb, db)  # DB 읽기는 스레드 밖에서 끝낸다 (_plan_context 참고)
+
+    def one(seed: tuple[str, str]):
+        try:
+            return _plan_with(ctx, seed[1])
+        except Exception:
+            logger.exception("제안 하나를 만들지 못했습니다: %s", seed[0])
+            return None
+
+    with ThreadPoolExecutor(max_workers=len(seeds)) as pool:
+        results = list(pool.map(one, seeds))
+
+    pending = dict(sb.pending or {})
+    group = new_pid()
+    items = []
+    for (label, _seed), result in zip(seeds, results):
+        if not result or not result[0]:
+            continue
+        cuts = result[0]
+        pid = new_pid()
+        pending[pid] = {
+            # group — 하나를 고르면 같은 묶음의 나머지를 닫는 데 쓴다(confirm_pending).
+            "which": "sb", "kind": "plan", "group": group,
+            "diffs": _plan_diffs(sb, cuts),
+            "payload": {"plan": cuts}, "status": "open",
+        }
+        items.append({
+            "pid": pid, "topic": label,
+            "cuts": [{"n": c["n"], "line": c["line"]} for c in cuts],
+        })
+
+    if not items:
+        return 0
+    sb.pending = pending
+    messages.append({"role": "ai", "kind": "text", "text": intro})
+    messages.append({"role": "ai", "kind": "options", "group": group, "items": items})
+    return len(items)
 
 
 @router.get("", response_model=schemas.StoryboardOut)
@@ -247,12 +372,21 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     _require_character(db)
     result = _plan_cuts(text, sb, db)
     if result is None:
-        # GPT가 "광고로 만들 내용이 아니다"라고 본 경우다. 여기서 아무 장면이나
-        # 만들면 사장님이 말한 적 없는 광고가 된다 — 지어내지 말고 되묻는다.
-        messages.append({
-            "role": "ai", "kind": "text",
-            "text": "그 말씀만으로는 광고 장면을 잡기 어려워요. 오늘 알리고 싶은 걸 한 줄로 적어주세요.",
-        })
+        # GPT가 "알릴 거리가 없다"고 본 경우다("뭐 만들까?"·인사·"몰라").
+        # 여기서 아무 장면이나 만들면 사장님이 말한 적 없는 광고가 된다 — 지어내지 않는다.
+        #
+        # 대신 **막다른 길로 두지도 않는다.** 전에는 "한 줄로 적어주세요"만 돌려줘서,
+        # 무엇을 적을 수 있는지 모르는 사장님이 같은 말을 고쳐 쓰다 또 거절당했다.
+        # 이제 실제 데이터에서 뽑은 씨앗으로 스토리를 몇 개 만들어 보여준다 —
+        # 고르는 건 여전히 사장님이고, 누르기 전까지 plan은 안 바뀐다.
+        #
+        # _topic_seeds가 읽는 sb.messages에는 방금 그 말이 아직 안 들어 있다(맨 끝에서
+        # 한 번에 저장한다). 그래서 방금 거절당한 문장이 씨앗으로 다시 들어가지 않는다.
+        if not _propose_options(
+            sb, db, messages,
+            "무엇을 알릴지 아직 못 잡았어요. 이런 스토리는 어떠세요? 마음에 드는 걸 골라주세요.",
+        ):
+            messages.append({"role": "ai", "kind": "text", "text": _NOTHING_TO_USE})
     else:
         cuts, meme_used = result
         if not cuts:
@@ -273,25 +407,22 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
 @router.post("/suggest", response_model=schemas.StoryboardOut)
 def suggest(db: Session = Depends(get_db)):
     """대화창의 "스토리 제안받기" 버튼 — 자동으로는 절대 안 뜬다(사장님이 버튼을
-    눌러야만 부른다). 지금까지 대화에서 사장님이 쓴 문장이 있으면 그걸 재료로 쓰고,
-    없으면(정말 아무것도 안 쓰고 눌렀으면) 가게·캐릭터·최근 생산 기록·(있으면)
-    밈만으로 스토리를 만든다.
+    눌러야만 부른다).
+
+    **한 개가 아니라 여러 개를 제안한다.** 전에는 하나만 만들어 "이대로 바꿀까요?"를
+    물었는데, 사장님이 할 수 있는 건 예/아니오뿐이라 마음에 안 들면 다시 막다른
+    길이었다. 지금은 서로 다른 씨앗(`_topic_seeds`)으로 2~3개를 만들어 고르게 한다.
+
+    대화에서 "뭐 만들까?"라고 말하는 것도 이 버튼을 말로 누른 것이라, `chat()`의
+    거절 분기가 같은 함수를 부른다 — 버튼이든 말이든 같은 동작이어야 한다.
     """
     sb = _get(db)
     _require_character(db)
     messages = list(sb.messages or [])
-    note = _chat_note(messages)
-    text = note or "(사장님이 따로 말하지 않음 — 가게·캐릭터·최근 생산 기록을 재료로 이야기를 만든다)"
-    result = _plan_cuts(text, sb, db)
-    if result is None or not result[0]:
-        messages.append({
-            "role": "ai", "kind": "text",
-            "text": "지금 있는 정보만으로는 스토리를 만들기 어려워요. 오늘 알리고 싶은 걸 한 줄로 적어주세요.",
-        })
-    else:
-        cuts, meme_used = result
-        messages.append({"role": "ai", "kind": "text", "text": _propose_intro(meme_used)})
-        _propose_plan(sb, cuts, messages)
+    if not _propose_options(
+        sb, db, messages, "이런 스토리는 어떠세요? 마음에 드는 걸 골라주세요.",
+    ):
+        messages.append({"role": "ai", "kind": "text", "text": _NOTHING_TO_USE})
     sb.messages = messages
     db.commit()
     db.refresh(sb)
@@ -478,6 +609,13 @@ def confirm_pending(pid: str, db: Session = Depends(get_db)):
         raise HTTPException(400, "이미 처리된 제안이에요")
 
     pending[pid] = {**p, "status": "applied"}
+    # 🔴 같은 제안 묶음의 다른 카드는 닫는다. 안 닫으면 사장님이 스크롤을 올려
+    # 다른 카드를 또 누를 수 있고, 그러면 방금 정한 구성이 조용히 덮어써진다.
+    group = p.get("group")
+    if group:
+        for other_pid, other in list(pending.items()):
+            if other_pid != pid and other.get("group") == group and other.get("status") == "open":
+                pending[other_pid] = {**other, "status": "closed"}
     messages = list(sb.messages or [])
     if p["kind"] == "plan":
         sb.plan = p["payload"]["plan"]

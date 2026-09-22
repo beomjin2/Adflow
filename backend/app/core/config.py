@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # 저장소에 없다(gitignore). 없으면 태그 검증을 건너뛰고 화이트리스트로 폴백한다.
     danbooru_tags_path: str = "data/danbooru_tags/danbooru.donmai.us/tags.parquet"
 
+    # 네컷 굽기(말풍선·입간판) 한글 폰트. 비우면 Windows 맑은 고딕 → 리눅스 나눔/Noto 순으로 찾는다.
+    comic_font_bold: str = ""
+    comic_font_regular: str = ""
+    # 마지막 컷 간판 검사용 WD14 태거(model.onnx + selected_tags.csv). 없으면 검사를 건너뛴다(선택 기능).
+    wd14_dir: str = "data/wd14"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

@@ -5,7 +5,9 @@ import { formatEta } from './ImageSlot.jsx';
 /** 컷 한 장 + 말풍선. 말풍선은 배경 담당 기록의 네컷처럼 위쪽 귀퉁이에 내용만큼만 작게 —
  *  홀수 컷 왼쪽 위, 짝수 컷 오른쪽 위. 그림을 가리지 않는 게 우선이라 폭은 최대 72%. */
 function Bubble({ cut, big = false }) {
-  const left = cut.n % 2 === 1;
+  // 캐릭터가 왼쪽이면 말풍선은 오른쪽, 오른쪽이면 왼쪽 — 연출 슬롯(shot.position)이 있을 때. 없으면 홀수 왼쪽.
+  const pos = cut.slots?.shot?.position;
+  const left = pos === '오른쪽' ? true : pos === '왼쪽' ? false : cut.n % 2 === 1;
   const border = big ? '2px solid #222' : '1.5px solid #222';
   return (
     <div style={{ position: 'absolute', top: '3%', [left ? 'left' : 'right']: '4%', maxWidth: '72%', pointerEvents: 'none' }}>

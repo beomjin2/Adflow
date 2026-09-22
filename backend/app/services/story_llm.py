@@ -53,8 +53,9 @@ _PLAN_SYSTEM = """\
 1. **사장님이 말한 내용이 광고의 중심이다.** 말한 적 없는 사실은 지어내지 않는다.
    가격·할인율·수량·시간은 사장님 말이나 아래 가게 정보에 적혀 있을 때만 쓴다.
 2. 가게 정보에 있는 값(업종·주소·영업시간·소개)은 그대로 써도 된다. 비어 있는 칸은 쓰지 않는다.
-3. 마지막 컷은 실제로 적혀 있는 가게 정보로 끝낸다 — 영업시간이나 가게 소개처럼.
-   적혀 있는 게 없으면 사장님이 말한 내용으로 끝낸다.
+3. 마지막 컷은 **마무리 한마디**로 끝낸다 — 사장님이 손님에게 건네는 짧은 인사나 초대.
+   주소·영업시간·가게 소개는 대사에 넣지 않는다 — 마지막 컷 그림의 입간판이 그걸 보여준다.
+   마지막 컷 action 은 "가게 앞에서 …" 로 시작한다(그림이 가게 앞 전경으로 고정된다).
 4. 주인공은 가게 마스코트 하나다. 사람 손님은 그리지 않는다 — 손님이 필요하면 동물 손님으로 적는다.
 5. 광고 느낌(컨셉)을 대사 **말투**에 반영한다. 느낌을 설명하는 문장을 쓰지 않는다.
 6. 컷은 정확히 {n}개.
@@ -119,6 +120,9 @@ def _ask(system: str, user: str) -> dict | None:
         )
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
+        # 뜯어보기: 지시문 전체·보낸 내용·GPT 원문 답변 (기록 중일 때만 남는다)
+        from app.services import trace
+        trace.step("대사 쓰기 (story_llm)", who=settings.openai_model, temperature=0.4, system=system, sent=user, output_raw=content)
         parsed = json.loads(content)
         return parsed if isinstance(parsed, dict) else None
     except Exception as exc:  # 네트워크·인증·응답 형식 무엇이든

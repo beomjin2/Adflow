@@ -108,6 +108,14 @@ def _cuts_from_text(text: str) -> list[dict]:
     ]
 
 
+def _chat_note(messages: list[dict]) -> str:
+    """대화창에서 사장님이 직접 쓴 문장만 모아 이어 붙인다. "스토리 제안받기"·"밈
+    추천받기" 둘 다 버튼을 눌렀을 때 지금까지 나눈 얘기를 재료로 쓰려고 같이 쓴다."""
+    return " ".join(
+        (m.get("text") or "") for m in messages if m.get("role") == "me" and m.get("kind") == "text"
+    ).strip()
+
+
 def _meme_context(sb: models.Storyboard, db: Session) -> dict | None:
     """트렌드 화면에서 미리 골라 온 밈이 있을 때만 그걸 돌려준다. 안 골랐으면 None —
     GPT가 스스로 후보를 뒤져 끼워 넣게 하면 사장님이 고른 적 없는 밈이 광고에 섞일 수 있다."""
@@ -239,14 +247,16 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
 
 @router.post("/suggest", response_model=schemas.StoryboardOut)
 def suggest(db: Session = Depends(get_db)):
-    """사장님이 아무것도 안 적고 대화창의 "스토리 제안받기"를 눌렀을 때 — 자동으로는
-    절대 안 뜬다(사장님이 버튼을 눌러야만 부른다). 가게·캐릭터·최근 생산 기록·(있으면)
+    """대화창의 "스토리 제안받기" 버튼 — 자동으로는 절대 안 뜬다(사장님이 버튼을
+    눌러야만 부른다). 지금까지 대화에서 사장님이 쓴 문장이 있으면 그걸 재료로 쓰고,
+    없으면(정말 아무것도 안 쓰고 눌렀으면) 가게·캐릭터·최근 생산 기록·(있으면)
     밈만으로 스토리를 만든다.
     """
     sb = _get(db)
     _require_character(db)
-    text = "(사장님이 따로 말하지 않음 — 가게·캐릭터·최근 생산 기록을 재료로 이야기를 만든다)"
     messages = list(sb.messages or [])
+    note = _chat_note(messages)
+    text = note or "(사장님이 따로 말하지 않음 — 가게·캐릭터·최근 생산 기록을 재료로 이야기를 만든다)"
     result = _plan_cuts(text, sb, db)
     if result is None or not result[0]:
         messages.append({
@@ -272,9 +282,7 @@ async def recommend_meme_from_chat(db: Session = Depends(get_db)):
     """
     sb = _get(db)
     messages = list(sb.messages or [])
-    note = " ".join(
-        (m.get("text") or "") for m in messages if m.get("role") == "me" and m.get("kind") == "text"
-    ).strip()
+    note = _chat_note(messages)
     if not note:
         messages.append({
             "role": "ai", "kind": "text",

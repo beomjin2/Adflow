@@ -161,6 +161,9 @@ export const StoryboardAPI = {
   chat: (text) => post('/api/storyboard/chat', { text }).then(mapStoryboard),
   // 사장님이 아무것도 안 적고 "스토리 제안받기" 버튼을 눌렀을 때만 부른다 — 자동으로는 안 부른다.
   suggest: () => post('/api/storyboard/suggest').then(mapStoryboard),
+  // "밈 추천받기" 버튼 — 지금까지 대화에서 쓴 문장을 근거로 밈을 추천받는다. 결과는
+  // confirm 카드로 오고, 승인해야 trend_meme_id가 바뀐다.
+  recommendMeme: () => post('/api/storyboard/recommend-meme').then(mapStoryboard),
   confirm: (pid) => post(`/api/storyboard/confirm/${pid}`).then(mapStoryboard),
   decline: (pid) => post(`/api/storyboard/decline/${pid}`).then(mapStoryboard),
   makeComic: () => post('/api/storyboard/comic').then(mapStoryboard),

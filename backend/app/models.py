@@ -88,8 +88,8 @@ class Storyboard(Base):
     prod_logged = Column(Boolean, default=False)
     pending = Column(JSON, default=dict)   # {pid: {which, kind, diffs, payload, status}}
     # 트렌드 확인 화면에서 미리 골라 온 밈(Meme.id). 광고 설정을 확정할 때(POST /api/ad/apply)
-    # 같이 저장되고, 대화(story_llm.plan_from_text)가 스토리를 만들 때 자동으로 참고한다.
-    # 안 골랐으면 빈 문자열 — 그때는 GPT가 크롤링된 밈 중 스스로 어울리는 걸 찾아본다.
+    # 같이 저장되고, 대화(story_llm.plan_from_text)가 스토리를 만들 때 참고한다.
+    # 안 골랐으면 빈 문자열 — 그때는 밈 얘기 자체를 안 한다(GPT가 스스로 고르지 않는다).
     trend_meme_id = Column(String, default="")
     # 위 밈의 이름 — 화면에 바로 보여주려고 같이 저장해 둔다(그때마다 memes 테이블을
     # 다시 조회하지 않는다). trend_meme_id를 정할 때 한 번만 같이 채운다.

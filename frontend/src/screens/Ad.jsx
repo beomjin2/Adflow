@@ -59,7 +59,7 @@ export default function Ad({ state, actions }) {
             <span className="ad-lbl">이렇게 만들어져요 — {CUT_COUNTS[state.adType]}컷</span>
             <div
               className="ad-mockgrid"
-              style={{ gridTemplateColumns: `repeat(${CUT_COUNTS[state.adType] === 4 ? 2 : 3}, 52px)` }}
+              style={{ gridTemplateColumns: `repeat(${CUT_COUNTS[state.adType]}, 52px)` }}
             >
               {Array.from({ length: CUT_COUNTS[state.adType] }, (_, i) => (
                 <span className="ad-mockcut" key={i}>{i + 1}</span>

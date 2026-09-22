@@ -1,17 +1,24 @@
 import { colors } from '../theme.js';
 import { PrimaryButton, SecondaryButton, SoftButton } from '../components/ui/Button.jsx';
 import { buildAdText, adTextForClipboard, copyToClipboard, characterImage } from '../lib/adText.js';
+import { downloadImages } from '../lib/download.js';
 import ComicPanels from '../components/ComicPanels.jsx';
 
 export default function Result({ state, actions }) {
   const { headline, lines, info, tags, empty } = buildAdText(state);
   const charImg = characterImage(state);
+  const hasImages = (state.comicCuts || []).some((c) => c.status === 'done');
 
   const copy = async () => {
     const text = adTextForClipboard(state);
     if (!text) { actions.toast('복사할 문구가 없어요'); return; }
     const ok = await copyToClipboard(text);
-    actions.toast(ok ? '문구를 복사했어요 — 인스타에 붙여 넣으세요' : '복사가 안 돼요 — 아래 문구를 길게 눌러 직접 복사해주세요');
+    actions.toast(ok ? '문구를 복사했어요' : '복사가 안 돼요 — 아래 문구를 길게 눌러 직접 복사해주세요');
+  };
+
+  const saveImages = async () => {
+    const ok = await downloadImages(state.comicCuts, state.charName);
+    if (!ok) actions.toast('받을 그림이 없어요');
   };
 
   if (empty) {
@@ -27,8 +34,10 @@ export default function Result({ state, actions }) {
 
   return (
     <div style={{ padding: 22, display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-      {/* 컷 구성 — 사장님이 정한 문장 그대로. 네컷 그림은 스토리보드에서 "네컷 그리기"를 눌렀을 때만 생긴다. */}
-      <div style={{ flex: '1 1 340px', minWidth: 0, border: `1px solid ${colors.cardBorder}`, borderRadius: 18, background: '#fff', overflow: 'hidden' }}>
+      {/* 컷 구성 — 사장님이 정한 문장 그대로. 네컷 그림은 스토리보드에서 "네컷 그리기"를 눌렀을 때만 생긴다.
+          카드 전체(그림+문장)에 최대 폭을 걸어 — 그림만 좁히면 카드는 넓고 그림만 좁은 비대칭이
+          된다. 카드째로 좁혀야 안의 그림도 그 폭에 맞춰 같이 줄어든다. */}
+      <div style={{ flex: '1 1 340px', maxWidth: 420, minWidth: 0, border: `1px solid ${colors.cardBorder}`, borderRadius: 18, background: '#fff', overflow: 'hidden' }}>
         <div style={{ padding: '14px 16px', borderBottom: `1px solid ${colors.cardBorder}`, display: 'flex', alignItems: 'center', gap: 10 }}>
           {charImg && (
             <img src={charImg} alt={state.charName || '가게 캐릭터'} style={{
@@ -46,12 +55,8 @@ export default function Result({ state, actions }) {
         {(state.comicCuts || []).some((c) => c.status !== 'empty') && (
           <div style={{ padding: '12px 12px 0' }}>
             {/* 완성된 광고를 보는 화면이다 — 컷을 다시 그리려면 "대화로 돌아가 고치기"로
-                가야 한다. 여기서 1컷씩 바꾸면 그 자리에서 문구와 그림이 어긋난다.
-                카드 너비를 그대로 두면 화면이 넓을수록 그림도 같이 커져서, 여기서만
-                최대 너비를 걸어 실제 인스타 미리보기에 가까운 크기로 줄인다. */}
-            <div style={{ maxWidth: 340, margin: '0 auto' }}>
-              <ComicPanels cuts={state.comicCuts || []} eta={state.sbEta} />
-            </div>
+                가야 한다. 여기서 1컷씩 바꾸면 그 자리에서 문구와 그림이 어긋난다. */}
+            <ComicPanels cuts={state.comicCuts || []} eta={state.sbEta} />
           </div>
         )}
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -84,12 +89,20 @@ export default function Result({ state, actions }) {
           )}
         </div>
 
-        <SoftButton onClick={copy} style={{ height: 48, fontSize: 15 }}>문구 복사하기</SoftButton>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <SoftButton onClick={copy} style={{ height: 48, fontSize: 15, flex: 1 }}>문구 복사하기</SoftButton>
+          {hasImages && (
+            <SoftButton onClick={saveImages} style={{ height: 48, fontSize: 15, flex: 1 }}>이미지 저장</SoftButton>
+          )}
+        </div>
         <SecondaryButton onClick={actions.backToSb} style={{ height: 52, fontSize: 16 }}>대화로 돌아가 고치기</SecondaryButton>
         {/* 보관함에서 옛 항목을 보는 중이면 이미 저장된 것이라 또 저장할 필요가 없다 — 중복 저장 방지. */}
         {!state.viewingHistory && (
-          <PrimaryButton onClick={actions.confirmResult}>이대로 저장</PrimaryButton>
+          <PrimaryButton onClick={actions.download} disabled={state.savedThisAd}>
+            {state.savedThisAd ? '보관함에 저장했어요' : '보관함에 저장'}
+          </PrimaryButton>
         )}
+        <SecondaryButton onClick={actions.goHome}>홈으로</SecondaryButton>
       </div>
     </div>
   );

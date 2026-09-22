@@ -502,6 +502,16 @@ export function useAdMakerState() {
     } catch (e) { update({ sbThinking: false }); fail(e); }
   }, [update, fail]);
 
+  /** "밈 추천받기" 버튼 — 지금까지 대화에서 쓴 문장을 근거로 밈을 추천받는다. 자동으로는
+   *  안 뜨고 이 버튼을 눌러야만 부른다. 결과는 confirm 카드로 오고 승인해야 반영된다. */
+  const recommendMeme = useCallback(async () => {
+    update({ sbThinking: true });
+    try {
+      const updated = await StoryboardAPI.recommendMeme();
+      update({ ...updated, sbThinking: false });
+    } catch (e) { update({ sbThinking: false }); fail(e); }
+  }, [update, fail]);
+
   const confirmPending = useCallback(async (pid) => {
     try { update(await StoryboardAPI.confirm(pid)); toast('반영했어요'); } catch (e) { fail(e); }
   }, [update, toast, fail]);
@@ -532,12 +542,11 @@ export function useAdMakerState() {
       if (!ready) { toast('먼저 네컷 그리기를 끝내주세요'); return; }
     }
     // 히스토리에서 옛 항목을 봤을 때(viewingHistory) 켜둔 값이 남아있을 수 있으니,
-    // 새로 만드는 흐름으로 들어올 땐 항상 꺼둔다 — "이대로 저장" 버튼이 이 값으로 갈린다.
+    // 새로 만드는 흐름으로 들어올 땐 항상 꺼둔다 — "보관함에 저장" 버튼이 이 값으로 갈린다.
     update({ viewingHistory: false });
     go('result');
   }, [go, toast, update]);
   const backToSb = useCallback(() => update((s) => ({ screen: 'sb', stack: s.stack.filter((x) => x !== 'result') })), [update]);
-  const confirmResult = useCallback(() => go('save'), [go]);
 
   const download = useCallback(async () => {
     const s = stateRef.current;
@@ -699,8 +708,8 @@ export function useAdMakerState() {
       saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion, autofillChar,
       confirmPending, declinePending,
       applyAd,
-      toggleSbSet, toggleSbProd, sendSb, suggestStory, makeComic,
-      openResult, backToSb, confirmResult, download,
+      toggleSbSet, toggleSbProd, sendSb, suggestStory, recommendMeme, makeComic,
+      openResult, backToSb, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,
       exportData, importFile,

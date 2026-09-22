@@ -318,7 +318,9 @@ async def recommend_meme_from_chat(db: Session = Depends(get_db)):
         db.refresh(sb)
         return schemas.storyboard_out(sb, jobs.queue_depth())
 
-    all_memes = [m for m in db.query(models.Meme).all() if m.situation and m.situation != "미분류"]
+    # 밈 분류명을 다시 정리하면서 "미분류"도 정상적인 활용 상황 후보 중 하나로 포함한다
+    # (trend.py의 /recommend와 같은 이유).
+    all_memes = [m for m in db.query(models.Meme).all() if m.situation]
     if not all_memes:
         messages.append({"role": "ai", "kind": "text", "text": "지금 추천할 수 있는 밈이 없어요."})
         sb.messages = messages

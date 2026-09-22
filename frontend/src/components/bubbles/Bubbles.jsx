@@ -63,7 +63,7 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 
  *  그건 대화가 아니라 화면이 하나 더 열린 것이고, 스크롤도 그만큼 길어진다.
  *
  *  대사가 얹힌 큰 네컷은 결과 화면의 몫이다. */
-export function ComicBubble({ cuts, eta = 0, onReroll }) {
+export function ComicBubble({ cuts, eta = 0 }) {
   const [preview, setPreview] = useState(-1);
   const items = cuts || [];
   if (!items.length) return null;
@@ -88,13 +88,13 @@ export function ComicBubble({ cuts, eta = 0, onReroll }) {
         {items.map((c, i) => (
           <ImageSlot
             key={c.n ?? i} slot={c} size={92} eta={eta}
-            selectable onClick={() => setPreview(i)} onReroll={() => onReroll?.(c.n)}
+            selectable onClick={() => setPreview(i)}
           />
         ))}
       </div>
       {failed > 0 && (
         <span style={{ ...hintStyle, color: colors.warnText }}>
-          {failed}컷은 그리지 못했어요. ↻ 를 누르면 그 자리만 다시 그려요.
+          {failed}컷은 그리지 못했어요. "네컷 다시 그리기"를 눌러 다시 시도해주세요.
         </span>
       )}
       {/* 네컷은 고르는 게 아니라 보는 것이라 onSelect를 주지 않는다. */}

@@ -86,10 +86,10 @@ async def recommend(body: schemas.TrendRecommendIn, db: Session = Depends(get_db
     가게 정보·캐릭터 둘 다 아직 확정 안 됐어도 부른다 — 트렌드 확인 화면은 그 전에도
     들어올 수 있는 화면이라, 있으면 참고하고 없으면 그냥 빼고 추천한다.
     """
-    # "미분류"는 크롤링 파이프라인이 분류 못 했다는 표시일 뿐 진짜 활용 상황이 아니다.
-    # 후보로 주면 맥락이 약할 때(오늘 알릴 내용을 안 적었을 때 등) GPT가 "애매하면 여기"
-    # 식으로 자꾸 이쪽을 고르는 경향이 있었다 — 아예 후보에서 뺀다.
-    all_memes = [m for m in db.query(models.Meme).all() if m.situation and m.situation != "미분류"]
+    # 밈 분류명을 다시 정리하면서 "미분류"도 정상적인 활용 상황 후보 중 하나로 포함한다
+    # (예전엔 GPT가 애매할 때 자꾸 이쪽으로 도망가는 경향이 있어 뺐었다 — 분류명 자체가
+    # 바뀌면서 그 문제가 해소됐다고 보고 다시 넣는다).
+    all_memes = [m for m in db.query(models.Meme).all() if m.situation]
     if not all_memes:
         raise HTTPException(404, "추천할 밈이 없어요")
 

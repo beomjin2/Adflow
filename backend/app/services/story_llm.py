@@ -94,10 +94,11 @@ def _meme_prompt_parts(trend_meme: dict | None) -> tuple[str, str]:
     trend_meme이 없으면 둘 다 빈 문자열이다 — 프롬프트에 밈 얘기 자체가 안 들어간다."""
     if not trend_meme:
         return "", ""
+    # meme_recommend.py와 같은 기준 — 이미 하나로 정해진 밈이라 자르지 않고 그대로 넘긴다.
     block = (
         f"[참고 밈: {trend_meme.get('name', '')}]\n"
-        f"유래: {(trend_meme.get('origin') or '')[:200]}\n"
-        f"활용예시: {(trend_meme.get('usage_example') or '')[:200]}\n\n"
+        f"유래: {trend_meme.get('origin') or ''}\n"
+        f"활용예시: {trend_meme.get('usage_example') or ''}\n\n"
     )
     return _MEME_RULE_SELECTED, block
 
@@ -312,9 +313,12 @@ def generate_caption(
     meme_block = ""
     if trend_meme:
         meme_rule = "6. [참고 밈]을 캡션 말투나 분위기에 살짝 녹여도 된다 — 억지로 우겨넣지 않는다."
+        # meme_recommend.py·_meme_prompt_parts와 같은 기준 — 활용예시도 빠져 있었는데
+        # 컷 구성에는 넣으면서 캡션에는 안 넣을 이유가 없어 같이 넣는다. 자르지 않는다.
         meme_block = (
             f"\n[참고 밈: {trend_meme.get('name', '')}]\n"
-            f"유래: {(trend_meme.get('origin') or '')[:150]}\n"
+            f"유래: {trend_meme.get('origin') or ''}\n"
+            f"활용예시: {trend_meme.get('usage_example') or ''}\n"
         )
 
     system = _CAPTION_SYSTEM.format(meme_rule=meme_rule)

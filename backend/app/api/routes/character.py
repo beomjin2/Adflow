@@ -509,6 +509,20 @@ def _open_suggestion(char, messages: list, changes: dict, phase: str = "editing"
     editable = set(sheet.ORDER) | {sheet.KEYWORDS_FIELD}
     real = {f: v for f, v in changes.items() if f in editable and sheet.value_of(char, f) != v}
     if not real:
+        # 🔴 "그대로 둘게요"로 끝내면 막다른 길이다. 사장님이 "설명 안 들어갔는데?"
+        # 라고 한 건 **그 칸이 비었다고 믿고 있다**는 뜻인데, 같은 말을 반복하면
+        # 믿음이 안 바뀐다(09-22 실측: 같은 답이 세 번 나오고 대화가 멈췄다).
+        # 무엇이 적혀 있는지 보여준다 — 그래야 "아 들어가 있었네" 아니면
+        # "그게 아니라 이렇게" 로 넘어간다.
+        same = [f for f in changes if f in editable]
+        if same:
+            field = same[0]
+            value = (sheet.value_of(char, field) or "").strip()
+            label = sheet.LABELS.get(field, field)
+            if value:
+                _say(messages, f"'{label}'에는 이미 이렇게 적혀 있어요 — \"{value}\". "
+                               "다르게 바꾸시려면 어떻게 할지 말씀해 주세요.")
+                return
         _say(messages, "지금 시트와 같은 내용이에요. 그대로 둘게요.")
         return
 

@@ -532,12 +532,11 @@ export function useAdMakerState() {
       if (!ready) { toast('먼저 네컷 그리기를 끝내주세요'); return; }
     }
     // 히스토리에서 옛 항목을 봤을 때(viewingHistory) 켜둔 값이 남아있을 수 있으니,
-    // 새로 만드는 흐름으로 들어올 땐 항상 꺼둔다 — "이대로 저장" 버튼이 이 값으로 갈린다.
+    // 새로 만드는 흐름으로 들어올 땐 항상 꺼둔다 — "보관함에 저장" 버튼이 이 값으로 갈린다.
     update({ viewingHistory: false });
     go('result');
   }, [go, toast, update]);
   const backToSb = useCallback(() => update((s) => ({ screen: 'sb', stack: s.stack.filter((x) => x !== 'result') })), [update]);
-  const confirmResult = useCallback(() => go('save'), [go]);
 
   const download = useCallback(async () => {
     const s = stateRef.current;
@@ -700,7 +699,7 @@ export function useAdMakerState() {
       confirmPending, declinePending,
       applyAd,
       toggleSbSet, toggleSbProd, sendSb, suggestStory, makeComic,
-      openResult, backToSb, confirmResult, download,
+      openResult, backToSb, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,
       exportData, importFile,

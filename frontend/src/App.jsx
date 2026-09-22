@@ -8,7 +8,6 @@ import Ad from './screens/Ad.jsx';
 import Trend from './screens/Trend.jsx';
 import Storyboard from './screens/Storyboard.jsx';
 import Result from './screens/Result.jsx';
-import Save from './screens/Save.jsx';
 import MyShell from './screens/My/MyShell.jsx';
 import MyStore from './screens/MyStore.jsx';
 
@@ -21,7 +20,6 @@ const SCREENS = {
   trend: Trend,
   sb: Storyboard,
   result: Result,
-  save: Save,
   my: MyShell,
   myStore: MyStore
 };

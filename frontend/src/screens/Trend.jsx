@@ -2,21 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { colors } from '../theme.js';
 import { TextInput, Select } from '../components/ui/Field.jsx';
 import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
-
-/** 상황 분류(situation) 값 → 화면에 보여줄 이름.
- *  DB·분류 스크립트·추천 프롬프트는 내부 값("재미_밈놀이" 등)을 그대로 쓰고, 사용자에게
- *  보일 때만 바꿔 끼운다. 밑줄 붙은 내부 이름이 칩·목록·추천 문구에 그대로 나와 어색했다.
- *  표에 없는 값(새 카테고리가 생긴 경우)은 내부 값을 그대로 보여준다 — 지어내지 않는다. */
-const SITUATION_LABEL = {
-  재미_밈놀이: '재미·유행어',
-  전후_비교: '비포 & 애프터',
-  반응_기다림: '기다림·궁금증',
-  감탄_긍정반응: '감탄·칭찬',
-  신규_시작: '새 소식·오픈',
-  불만_토로: '하소연',
-  미분류: '기타',
-};
-const situationLabel = (s) => SITUATION_LABEL[s || '미분류'] || s;
+import { situationLabel } from '../lib/situationLabel.js';
 
 /** 화면에 보여줄 날짜 — periodStart(스파이크 구간 시작일) > peakDate(스파이크 정점일)
  *  > published(등록일) 순으로 있는 값을 쓴다. 스파이크를 못 찾은 밈은 peakDate까지

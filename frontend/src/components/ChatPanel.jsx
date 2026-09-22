@@ -10,7 +10,7 @@ export default function ChatPanel({
   cands, charSelected, onSelectCand, onRerollCand,
   eta = 0,
   plan,
-  comic, comicEta = 0,
+  comic, comicEta = 0, onRerollCut,
   prods, onPatchProd,
   pending, onConfirm, onDecline,
   onSuggest, onRecommendMeme, onReset,
@@ -108,7 +108,7 @@ export default function ChatPanel({
               onSelect={onSelectCand} onReroll={onRerollCand} />
           );
           if (m.kind === 'comic') return (
-            <ComicBubble key={i} cuts={comic || []} eta={comicEta} />
+            <ComicBubble key={i} cuts={comic || []} eta={comicEta} onReroll={onRerollCut} />
           );
           if (m.kind === 'plan') return <PlanBubble key={i} items={(plan || []).map(c => ({ n: c.n, line: c.line }))} />;
           if (m.kind === 'prod') return (

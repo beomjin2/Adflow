@@ -49,6 +49,26 @@ function trendStatus(m, base) {
   return { estimated: false, ongoing };
 }
 
+/** 팝업 공통 — **가시성**이 목적이다.
+ *
+ *  전에는 배경이 rgba(...,.42) 뿐이고 블러도 없어서, 뒤의 밈 목록(칩·카드가 빽빽한
+ *  화면)이 그대로 비쳐 팝업이 떠 있는지가 잘 안 보였다. 같은 화면의 이미지 확대
+ *  팝업은 이미 .72 를 쓰고 있었다 — 그쪽에 맞춘다.
+ *
+ *  내용이 길 때 아래가 잘리던 것도 같이 고친다(maxHeight + 스크롤). */
+const POPUP_OVERLAY = {
+  position: 'fixed', inset: 0, background: 'rgba(15,17,19,.66)', zIndex: 100,
+  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+  backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)',
+};
+
+const POPUP_CARD = {
+  width: '100%', background: '#fff', borderRadius: 18, padding: 22,
+  display: 'flex', flexDirection: 'column', gap: 14, animation: 'pop .18s ease',
+  boxShadow: '0 24px 60px rgba(0,0,0,.34)', border: '1px solid rgba(0,0,0,.06)',
+  maxHeight: '86vh', overflowY: 'auto',
+};
+
 export default function Trend({ state, actions }) {
   // 밈 대표 이미지 확대 보기. 썸네일이 150px 정사각으로 잘려 있어 원본 구도가 안 보인다 —
   // 눌러서 원본 비율 그대로 크게 볼 수 있게 한다. 열려 있는 이미지 URL만 담는다(null이면 닫힘).
@@ -396,14 +416,11 @@ export default function Trend({ state, actions }) {
         <div
           onClick={(e) => { if (e.target === e.currentTarget) actions.set('trendRecommendPopupOpen', false); }}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(15,17,19,.42)', zIndex: 100,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            ...POPUP_OVERLAY,
           }}
         >
           <div style={{
-            width: '100%', maxWidth: 380, background: '#fff', borderRadius: 18, padding: 22,
-            display: 'flex', flexDirection: 'column', gap: 14, animation: 'pop .18s ease',
-            boxShadow: '0 20px 50px rgba(0,0,0,.22)',
+            ...POPUP_CARD, maxWidth: 380,
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: -.3 }}>✨ 밈 추천받기</span>
@@ -445,14 +462,11 @@ export default function Trend({ state, actions }) {
         <div
           onClick={(e) => { if (e.target === e.currentTarget) actions.closeTrendRecommend(); }}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(15,17,19,.42)', zIndex: 100,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            ...POPUP_OVERLAY,
           }}
         >
           <div style={{
-            width: '100%', maxWidth: 400, background: '#fff', borderRadius: 18, padding: 22,
-            display: 'flex', flexDirection: 'column', gap: 14, animation: 'pop .18s ease',
-            boxShadow: '0 20px 50px rgba(0,0,0,.22)',
+            ...POPUP_CARD, maxWidth: 400,
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{ fontSize: 11.5, fontWeight: 800, color: colors.primaryHover, letterSpacing: .02 }}>GPT 추천</span>

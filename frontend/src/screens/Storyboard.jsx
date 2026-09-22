@@ -31,6 +31,32 @@ const CAMERA_KO = {
   from_below: '아래에서', from_above: '위에서', wide_shot: '멀리서',
 };
 
+/** 고를 수 있는 구도. story_llm.CAMERA_TAGS 와 **같은 여섯 개**여야 한다 —
+ *  그림 모델이 알아듣는 태그가 그것뿐이다. 빈 값은 "지정 안 함". */
+const CAMERA_CHOICES = ['', ...Object.keys(CAMERA_KO)];
+
+/** 구도 고르기 — 자유 입력이 아니라 뱃지다. 손으로 쓰면 그림 모델이 못 알아듣는
+ *  말이 들어가고, 그건 화면에선 멀쩡해 보이는데 그림만 조용히 엉뚱해진다. */
+function CameraPicker({ value, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+      <span style={cutTagStyle}>구도</span>
+      {CAMERA_CHOICES.map((tag) => {
+        const on = (value || '') === tag;
+        return (
+          <button key={tag || 'none'} type="button" onClick={() => onChange(tag)} style={{
+            border: `1.5px solid ${on ? 'var(--green-deep)' : 'var(--input-line)'}`,
+            background: on ? 'var(--green-soft)' : '#fff',
+            color: on ? 'var(--green-deep)' : 'var(--sub)',
+            borderRadius: 999, padding: '4px 11px', fontSize: 12.5,
+            fontWeight: on ? 800 : 600, cursor: 'pointer',
+          }}>{tag ? CAMERA_KO[tag] : '지정 안 함'}</button>
+        );
+      })}
+    </div>
+  );
+}
+
 const cutTagStyle = {
   flex: 'none', fontSize: 11, fontWeight: 800, color: 'var(--sub)',
   background: 'var(--soft)', borderRadius: 999, padding: '2px 7px', minWidth: 30,
@@ -222,6 +248,9 @@ export default function Storyboard({ state, actions }) {
                       onChange={editing ? (v) => actions.setPlanCut(c.n, 'line', v) : undefined} />
                     <CutRow label="그림" value={c.action}
                       onChange={editing ? (v) => actions.setPlanCut(c.n, 'action', v) : undefined} />
+                    {editing && (
+                      <CameraPicker value={c.camera} onChange={(v) => actions.setPlanCut(c.n, 'camera', v)} />
+                    )}
                     {!editing && (c.camera || (c.props || []).length > 0) && (
                       <CutRow
                         label="구도"
@@ -269,6 +298,7 @@ export default function Storyboard({ state, actions }) {
         plan={state.plan}
         comic={state.comicCuts}
         comicEta={state.sbEta}
+        onRerollCut={actions.rerollCut}
         prods={state.prods}
         onPatchProd={actions.patchProd}
         pending={state.pending}

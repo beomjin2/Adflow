@@ -32,6 +32,7 @@ GPT 추천(meme_recommend.recommend)을 한 번 더 돌린다. 결과도 confirm
 "내 정보 > 생산 기록" 탭은 그대로 있다 — 자리가 하나 늘었을 뿐이다.
 """
 
+import asyncio
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -346,6 +347,41 @@ def _offer_store_edit(sb: models.Storyboard, db: Session, edit: dict, messages: 
 MEME_OPTIONS = 3
 
 
+# "밈"만으로는 안 가른다 — "이 밈으로 광고 만들어줘"는 지금 쓰는 밈을 쓰라는 말이지
+# 새로 추천해 달라는 말이 아니다. **고르는 동작**을 뜻하는 말이 같이 있어야 한다.
+_ASKS_MEME = re.compile(r"밈.{0,12}(추천|골라|골러|바꿔|바꾸|다른|새로|말고)|(추천|골라|바꿔|다른|새로).{0,12}밈")
+
+
+def _asks_for_meme(text: str) -> bool:
+    """사장님이 말로 밈을 추천해 달라고 했는가.
+
+    LLM 호출을 하나 더 늘리지 않으려고 글자로 가른다. 여기서 못 잡아도 "밈 추천받기"
+    버튼이 그대로 있으니 손해가 없고, 잘못 잡으면 밈 카드가 뜰 뿐 무엇도 안 바뀐다
+    (고르는 건 여전히 사장님이다). 그래서 이 자리에는 글자 판단이 맞다.
+    """
+    return bool(_ASKS_MEME.search(text or ""))
+
+
+def _shown_meme_ids(sb: models.Storyboard) -> set[str]:
+    """이 대화에서 이미 보여준 밈 id.
+
+    "밈 추천받기"를 다시 누르면 **다른 밈이 나와야 한다.** 그런데 같은 가게 정보로
+    같은 후보를 넘기면 GPT는 거의 같은 답을 낸다(temperature 0.4 로는 안 흔들린다).
+    그래서 이미 보여준 것을 후보에서 빼고 부른다.
+
+    지금 참고 중인 밈(trend_meme_id)도 뺀다 — 쓰고 있는 걸 또 권하면 추천이 아니다.
+    """
+    ids = {sb.trend_meme_id} if sb.trend_meme_id else set()
+    for m in list(sb.messages or []):
+        if m.get("kind") != "meme_options":
+            continue
+        for it in m.get("items") or []:
+            mid = ((it or {}).get("meme") or {}).get("id")
+            if mid:
+                ids.add(mid)
+    return ids
+
+
 def _meme_card(meme: models.Meme) -> dict:
     """대화창에서 밈을 설명할 때 쓰는 한 장. 트렌드 화면이 보여주는 것과 **같은 원본**이다
     (요약해 둔 카드가 따로 없다 — models.Meme 참고).
@@ -529,7 +565,13 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
         #
         # _topic_seeds가 읽는 sb.messages에는 방금 그 말이 아직 안 들어 있다(맨 끝에서
         # 한 번에 저장한다). 그래서 방금 거절당한 문장이 씨앗으로 다시 들어가지 않는다.
-        if not _propose_options(
+        # "다른 밈 추천해줘" 같은 말은 스토리 소재가 아니라 여기(거절)로 떨어진다.
+        # 버튼을 말로 누른 것이므로 같은 함수를 부른다. _recommend_memes 는 async 라
+        # 여기서 새 루프로 돌린다 — chat 은 sync 라 FastAPI 가 스레드풀에서 부르고,
+        # 그 스레드에는 도는 루프가 없어서 asyncio.run 이 안전하다.
+        if _asks_for_meme(text):
+            asyncio.run(_recommend_memes(sb, db, messages))
+        elif not _propose_options(
             sb, db, messages,
             "무엇을 알릴지 아직 못 잡았어요. 이런 스토리는 어떠세요? 마음에 드는 걸 골라주세요.",
         ):
@@ -575,6 +617,11 @@ def update_plan(body: schemas.PlanUpdate, db: Session = Depends(get_db)):
             cut["short"] = cut["line"][:14]
         if patch.action is not None:
             cut["action"] = patch.action.strip()
+        if patch.camera is not None:
+            # 여섯 개 태그 아니면 통째로 버리고 "지정 안 함"으로 둔다. 화면이 뱃지로만
+            # 고르게 해도, 라우터는 화면을 안 믿는다(_invents_numbers 와 같은 태도).
+            camera = patch.camera.strip()
+            cut["camera"] = camera if camera in story_llm.CAMERA_TAGS else ""
         current[patch.n] = cut
     sb.plan = [current[n] for n in sorted(current)]
 
@@ -667,35 +714,26 @@ def suggest(db: Session = Depends(get_db)):
     return schemas.storyboard_out(sb, jobs.queue_depth())
 
 
-@router.post("/recommend-meme", response_model=schemas.StoryboardOut)
-async def recommend_meme_from_chat(db: Session = Depends(get_db)):
-    """대화창의 "밈 추천받기" 버튼 — 자동으로는 안 뜬다. 지금까지 사장님이 대화에서 쓴
-    문장을 모아 trend/recommend.py와 같은 GPT 추천(meme_recommend.recommend)을 돌리고,
-    결과를 confirm 카드로 올린다. 승인해야만 trend_meme_id가 바뀐다 — 대화 흐름만 보고
-    GPT가 알아서 밈을 끼워 넣지 않는다.
+async def _recommend_memes(sb: models.Storyboard, db: Session, messages: list[dict]) -> None:
+    """밈을 추천해 `messages` 에 고를 수 있는 카드를 붙인다. 못 하면 이유를 글로 붙인다.
+
+    버튼("밈 추천받기")과 말("다른 밈 추천해줘") 둘 다 여기로 온다 — 같은 요청이
+    입구만 다른 것이라 같은 함수를 쓴다. 승인해야만 trend_meme_id 가 바뀐다.
     """
-    sb = _get(db)
-    messages = list(sb.messages or [])
     note = _chat_note(messages)
     if not note:
         messages.append({
             "role": "ai", "kind": "text",
             "text": "대화에서 알릴 내용을 먼저 말씀해주시면 그걸 보고 밈을 추천해드릴게요.",
         })
-        sb.messages = messages
-        db.commit()
-        db.refresh(sb)
-        return schemas.storyboard_out(sb, jobs.queue_depth())
+        return
 
     # 밈 분류명을 다시 정리하면서 "미분류"도 정상적인 활용 상황 후보 중 하나로 포함한다
     # (trend.py의 /recommend와 같은 이유).
     all_memes = [m for m in db.query(models.Meme).all() if m.situation]
     if not all_memes:
         messages.append({"role": "ai", "kind": "text", "text": "지금 추천할 수 있는 밈이 없어요."})
-        sb.messages = messages
-        db.commit()
-        db.refresh(sb)
-        return schemas.storyboard_out(sb, jobs.queue_depth())
+        return
 
     store = db.get(models.Store, 1)
     store_desc = ""
@@ -718,6 +756,7 @@ async def recommend_meme_from_chat(db: Session = Depends(get_db)):
                 for m in all_memes
             ],
             n=MEME_OPTIONS,
+            exclude=_shown_meme_ids(sb),
         )
     except RuntimeError as e:
         raise HTTPException(400, str(e))
@@ -755,6 +794,14 @@ async def recommend_meme_from_chat(db: Session = Depends(get_db)):
                     "눌러서 어떤 밈인지 보고 하나만 골라주세요.",
         })
         messages.append({"role": "ai", "kind": "meme_options", "group": group, "items": items})
+
+
+@router.post("/recommend-meme", response_model=schemas.StoryboardOut)
+async def recommend_meme_from_chat(db: Session = Depends(get_db)):
+    """대화창의 "밈 추천받기" 버튼. 자동으로는 안 뜬다 — 사장님이 눌러야 부른다."""
+    sb = _get(db)
+    messages = list(sb.messages or [])
+    await _recommend_memes(sb, db, messages)
     sb.messages = messages
     db.commit()
     db.refresh(sb)
@@ -846,6 +893,30 @@ def make_comic(db: Session = Depends(get_db)):
     messages.append({"role": "ai", "kind": "comic"})
     sb.messages = messages
     _start_cuts(sb, char, list(range(len(plan))), db)
+    db.refresh(sb)
+    return schemas.storyboard_out(sb, jobs.queue_depth())
+
+
+@router.post("/comic/{n}/reroll", response_model=schemas.StoryboardOut)
+def reroll_cut(n: int, db: Session = Depends(get_db)):
+    """컷 하나만 다시 뽑는다.
+
+    되살린 것이다 — 2787723("컷별 리롤과 결과 화면 이미지 크기를 정리한다")이 이 라우트를
+    지웠고, 00095fe 가 남아 있던 프론트 배선(ComicBubble 의 onReroll)까지 걷어냈다.
+    제목만 보면 정리한 것처럼 읽히지만 실제로는 기능이 사라졌다.
+
+    한 컷만 마음에 안 들 때 넷을 다 다시 그리면 1분을 더 기다리고, 마음에 들던
+    나머지 셋도 다른 그림이 된다.
+    """
+    sb = _get(db)
+    cuts = list(sb.comic_cuts or [])
+    index = next((i for i, c in enumerate(cuts) if c.get("n") == n), None)
+    if index is None:
+        raise HTTPException(404, "그 컷이 없어요")
+    char = db.get(models.Character, 1)
+    if not char or not char.confirmed:
+        raise HTTPException(400, "캐릭터를 먼저 확정해주세요")
+    _start_cuts(sb, char, [index], db)
     db.refresh(sb)
     return schemas.storyboard_out(sb, jobs.queue_depth())
 

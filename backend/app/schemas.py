@@ -142,6 +142,16 @@ class ApplyAdOut(BaseModel):
 
 
 # ---------- storyboard ----------
+class MascotOut(BaseModel):
+    """보관소 카드 한 장. 시트 전체를 같이 내려 화면이 미리보기를 보여줄 수 있게 한다."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    name: str = ""
+    sheet: dict[str, Any] = {}
+    image: str = ""
+    created_at: str = ""
+
+
 class PlanCutPatch(BaseModel):
     """컷 하나에서 사장님이 직접 고칠 수 있는 칸. 비워 보낸 칸은 안 바꾼다.
 

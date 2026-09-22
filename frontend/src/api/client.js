@@ -102,13 +102,15 @@ const mapStoryboard = (sb) => ({
   sbEta: sb.eta_seconds || 0,
   // 트렌드 화면에서 미리 골라 온 밈(있으면) — 대화가 자동으로 참고 중인 것.
   sbTrendMemeId: sb.trend_meme_id || '', sbTrendMemeName: sb.trend_meme_name || '',
+  // GPT가 확정된 plan으로 새로 쓴 SNS 캡션(있으면). 없으면 화면이 컷 이어붙이기로 대신 만든다.
+  sbCaption: sb.caption || '',
 });
 
 const mapRecord = (r) => ({
   id: r.id, name: r.name, qty: r.qty, date: r.date, time: r.time, soldOut: r.sold_out,
 });
 
-const mapHistory = (h) => ({ id: h.id, title: h.title, meta: h.meta, cuts: h.cuts || [] });
+const mapHistory = (h) => ({ id: h.id, title: h.title, meta: h.meta, cuts: h.cuts || [], caption: h.caption || '' });
 
 // ---------- store ----------
 export const StoreAPI = {

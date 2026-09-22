@@ -93,6 +93,7 @@ def reset_storyboard(db: Session, trend_meme_id: str | None = None) -> models.St
     sb.trend_meme_id = trend_meme_id or ""
     meme = db.get(models.Meme, trend_meme_id) if trend_meme_id else None
     sb.trend_meme_name = meme.meme_name if meme else ""
+    sb.caption = ""
     db.commit()
     db.refresh(sb)
     return sb
@@ -162,6 +163,30 @@ def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> tuple[list[dict
     if not proposed["cuts"]:
         return None
     return proposed["cuts"], proposed["meme_used"]
+
+
+def _generate_caption(sb: models.Storyboard, db: Session) -> str | None:
+    """확정된 plan으로 SNS 캡션을 새로 쓴다. POST /confirm에서 kind="plan"을 승인할
+    때마다 부른다 — 컷이 바뀔 때마다 캡션도 그 내용에 맞게 다시 써야 한다."""
+    store = db.get(models.Store, 1)
+    char = db.get(models.Character, 1)
+    ad = db.get(models.AdSettings, 1)
+    prods = (
+        db.query(models.ProductionRecord)
+        .order_by(models.ProductionRecord.id.desc()).limit(10).all()
+    )
+    trend_meme = _meme_context(sb, db)
+    return story_llm.generate_caption(
+        store={"category": store.category, "address": store.address,
+               "hours": store.hours, "desc": store.desc} if store else {},
+        char={"name": char.name, "look": char.look, "outfit": char.outfit,
+              "desc": char.desc} if char else {},
+        ad={"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {},
+        prods=[{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time,
+                "sold_out": p.sold_out} for p in prods],
+        plan=list(sb.plan or []),
+        trend_meme=trend_meme,
+    )
 
 
 def _propose_intro(meme_used: dict | None) -> str:
@@ -457,6 +482,10 @@ def confirm_pending(pid: str, db: Session = Depends(get_db)):
     if p["kind"] == "plan":
         sb.plan = p["payload"]["plan"]
         messages.append({"role": "ai", "kind": "plan", "ref": "plan"})
+        # 컷 대사를 그대로 이어붙이면 SNS 톤이 안 산다 — 확정된 컷으로 캡션을 따로
+        # 새로 쓴다. 실패해도(키 없음 등) 조용히 빈 문자열로 남고, 화면이 옛 방식
+        # (컷 이어붙이기)으로 대신 보여준다.
+        sb.caption = _generate_caption(sb, db) or ""
     elif p["kind"] == "meme":
         sb.trend_meme_id = p["payload"]["meme_id"]
         sb.trend_meme_name = p["payload"]["meme_name"]

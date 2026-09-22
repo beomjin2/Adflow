@@ -206,6 +206,24 @@ export default function Character({ state, actions }) {
             ))}
           </div>
 
+          {/* 대화로 한 칸씩 가는 게 번거로운 분을 위한 지름길. 빈 칸만 채우므로
+              반쯤 적다가 눌러도 앞서 정한 건 그대로 남는다. 바로 반영하지 않고
+              승인 카드로 올라가니 보고 정하면 된다. */}
+          {!done && (
+            <SoftButton
+              onClick={actions.autofillChar}
+              disabled={busy || state.charThinking}
+              style={{ height: 44, fontSize: 14.5 }}
+            >
+              {state.charThinking ? '만드는 중…' : '알아서 전부 만들기'}
+            </SoftButton>
+          )}
+          {!done && (
+            <span style={{ fontSize: 12, lineHeight: '18px', color: colors.textFaint, marginTop: -6 }}>
+              빈 칸을 한 번에 채워드려요 — 적어두신 칸은 그대로 둡니다.
+            </span>
+          )}
+
           <div style={{ flex: 1, minHeight: 4 }} />
 
           {/* 시트가 다 차기 전에는 생성이 잠겨 있다. 무엇이 남았는지 버튼 밑에 적는다 —

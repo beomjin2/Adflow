@@ -1,26 +1,16 @@
-"""대화 입력에서 값을 뽑아내는 규칙(생산 품목·수량·날짜·시각)과 캐릭터 프롬프트 조립.
+"""캐릭터 프롬프트 조립과 생성 대기 칸 만들기.
 
-채팅 응답은 아직 규칙 기반이다 — LLM을 붙이는 자리는 storyboard 쪽이고, 여기는
-사장님이 한국어로 쓴 문장에서 숫자·품목·시각을 읽어내는 파서다.
+예전엔 대화 입력에서 생산 품목·수량·날짜·시각을 읽어내는 정규식 파서도 여기 있었다
+(대화 첫 마디를 생산 기록으로 파싱하던 기능) — 생산 기록은 "내 정보 > 생산 기록"
+탭에서만 남기기로 하면서 그 파서는 더는 안 쓴다.
 """
 
 import logging
-import re
-from datetime import datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 from app.services.danbooru_lookup import verify_tags
 from app.services.danbooru_tags import tags_for_look
 
 logger = logging.getLogger(__name__)
-
-# 서버는 UTC로 돈다. 그대로 쓰면 새벽 5시에 구운 빵이 '어제' 생산으로 기록된다 —
-# 새벽에 굽는 가게가 많으니 여기서 한국 시간으로 고정한다.
-KST = ZoneInfo("Asia/Seoul")
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc).astimezone(KST)
 
 # 4방향 뽑기는 지금 UI에서 빠져 있다(화이트보드: "당장 캐릭터 4방향 뽑기는 x").
 # 태그는 실측해서 넣어둔 것이라 지우지 않는다 — 다시 붙일 때 그대로 쓴다.
@@ -46,10 +36,9 @@ def character_prompt(char, hint: str = "") -> str:
     (CLAUDE.md 5-1, v4 12컷 실험). 설명을 실존 Danbooru 태그로 바꿔 넣고, 태그를
     하나도 못 뽑았을 때만 원문으로 폴백한다. STYLE_TAGS 접두어는 그대로 둔다.
 
-    시트에서 무엇을 읽을지는 character_sheet.IMAGE_FIELDS 한 곳에서만 정한다 —
-    외형·아웃핏·설명·나이·이름 다섯 칸. 능력·성별·퍼스널 키워드는 시트에만 남고
-    그림 쪽으로 넘어가지 않는다. 라우터가 시트가 다 찬 뒤에만 여기까지 오게 막으므로
-    described가 비는 경우는 없다(비면 태그도 프롬프트도 STYLE_TAGS뿐이다).
+    시트에서 무엇을 읽을지는 character_sheet.IMAGE_FIELDS 한 곳에서만 정한다.
+    라우터가 시트가 다 찬 뒤에만 여기까지 오게 막으므로 described가 비는 경우는 없다
+    (비면 태그도 프롬프트도 STYLE_TAGS뿐이다).
     """
     pieces = [STYLE_TAGS]
     part = character_part(char)
@@ -60,24 +49,95 @@ def character_prompt(char, hint: str = "") -> str:
     return ", ".join(pieces)
 
 
-def character_part(char) -> str:
-    """시트의 IMAGE_FIELDS 다섯 칸 → 실존 Danbooru 태그 문자열.
+# 시트 칸 → 태그 변환기에 줄 영문 라벨. 칸을 쉼표로 이어 붙여 한 덩어리로 넘기면
+# GPT가 어느 말이 생김새이고 어느 말이 성격인지 가르지 못한다 — 실제로 이름("구웅이")과
+# 설명 문장이 외형 묘사에 섞여 들어가 프롬프트를 흐렸다. 라벨을 붙여 칸마다 무엇으로
+# 바꿀지 알려주면 시트에 적힌 게 빠짐없이 태그가 된다.
+_IMAGE_LABEL = {
+    "look": "APPEARANCE",
+    "outfit": "CLOTHING",
+    "age": "AGE",
+    "desc": "PERSONALITY",
+    "abilities": "SKILL",
+    "keywords": "MOOD",
+}
+
+
+# 혼자 입을 수 없는 겉옷. 이것만 있고 속에 입을 옷이 없으면 그림 모델이 밑에 입을 옷을
+# 알아서 채워 넣는데, 실측(2026-09-18, 시드 3개)으로는 그 색이 검정이다.
+_LAYER_GARMENTS = ("apron", "vest", "overalls", "jacket", "coat", "cardigan", "cape", "suspenders")
+# 속에 입는 옷. 이 계열이 하나라도 있으면 **사장님이 이미 정한 것**이라 건드리지 않는다.
+_INNER_GARMENTS = ("shirt", "pants", "shorts", "skirt", "dress", "sweater", "blouse",
+                   "trousers", "jeans", "robe", "kimono", "uniform")
+
+# 사장님이 "그냥 털 위에 앞치마만"을 고른 셈일 때, 모델이 지어내려는 옷을 막는 말.
+_INVENTED_INNER = "shirt, pants, shorts, skirt, dress, black_shirt, black_pants"
+
+
+def clothing_negative(tag_text: str) -> str:
+    """겉옷만 정해졌을 때 그림 모델이 **속에 입을 옷을 지어내지 못하게** 막는 네거티브.
+
+    사장님이 "앞치마"만 말했으면 앞치마만 그려야 한다. 그런데 앞치마·조끼처럼 혼자 입을
+    수 없는 옷만 주면 모델이 밑에 입을 옷을 채워 넣고 그 색이 검정이다.
+
+    예전에는 이걸 **positive에 흰 셔츠와 갈색 바지를 박아 넣어** 막았다. 그러면 사장님이
+    말한 적 없는 옷이 캐릭터에 그대로 붙는다 — 정하는 건 사장님 몫인데 우리가 정해 버린
+    것이다. 여기서는 옷을 더하지 않고 **막기만** 한다. 결과는 털 위에 앞치마만 두른
+    모습이고, 그게 사장님이 적은 그대로다.
+
+    속에 입을 옷을 이미 말했으면 아무것도 하지 않는다 — 그건 사장님이 정한 것이다.
+    (무엇을 입을지 물어보는 건 대화 쪽 몫이다: character_sheet.QUESTIONS['outfit'])
+
+    네컷에는 쓰지 않는다. 그쪽 워크플로우는 cfg 1.0이라 네거티브가 사실상 안 듣고,
+    옷은 확정한 캐릭터 그림을 참조(IP-Adapter)해서 따라온다.
+    """
+    tags = tag_text or ""
+    if not any(word in tags for word in _LAYER_GARMENTS):
+        return ""
+    if any(word in tags for word in _INNER_GARMENTS):
+        return ""
+    return _INVENTED_INNER
+
+
+# 네컷에서 캐릭터를 고정할 때 쓰는 칸. 성격·능력·키워드는 뺀다 — 컷마다 표정과 행동이
+# 따로 정해지는데(comic_prompt의 scene 태그) 캐릭터 태그에 고정 표정이 섞이면 두 지시가
+# 부딪쳐 슬픈 컷에서도 웃는다. 네컷에서 정체성은 생김새·옷·나이로 잡고, 나머지는
+# 참조 이미지(IP-Adapter)가 잡는다.
+COMIC_IDENTITY_FIELDS = ["look", "outfit", "age"]
+
+
+def character_sheet_text(char, fields: list[str] | None = None) -> str:
+    """시트 칸을 라벨 붙은 여러 줄로. 빈 칸은 줄 자체를 내지 않는다."""
+    from app.services.character_sheet import IMAGE_FIELDS, value_of
+
+    lines = []
+    for field in (fields or IMAGE_FIELDS):
+        label = _IMAGE_LABEL.get(field)
+        value = value_of(char, field)
+        if label and value:
+            lines.append(f"{label}: {value}")
+    return "\n".join(lines)
+
+
+def character_part(char, fields: list[str] | None = None) -> str:
+    """시트 칸 → 실존 Danbooru 태그 문자열.
 
     태그를 하나도 못 뽑으면 **빈 문자열**이다. 예전에는 한국어 원문을 그대로 넣었는데,
     Anima는 Danbooru 태그로 학습돼 한국어를 못 읽는다 — 설명이 아니라 잡음이 하나 더
-    붙을 뿐이었다. 캐릭터 후보 프롬프트와 네컷 프롬프트(comic_prompt)가 같은 캐릭터
-    태그를 쓰도록 여기 한 곳에서만 계산한다.
-    """
-    from app.services.character_sheet import IMAGE_FIELDS
+    붙을 뿐이었다.
 
-    described = ", ".join(
-        value for value in ((getattr(char, f, "") or "").strip() for f in IMAGE_FIELDS) if value
-    )
+    fields를 안 주면 시트의 IMAGE_FIELDS 전부(캐릭터 후보용)다. 네컷은
+    COMIC_IDENTITY_FIELDS를 넘겨 표정·소품을 빼고 부른다.
+    """
+    described = character_sheet_text(char, fields)
     tags = tags_for_look(described) if described else []
     if tags:
         return ", ".join(tags)
     if described:
-        logger.warning("캐릭터 태그를 하나도 못 뽑았습니다 — 설명 없이 갑니다: %s", described[:60])
+        logger.warning(
+            "캐릭터 태그를 하나도 못 뽑았습니다 — 설명 없이 갑니다: %s",
+            described.replace("\n", " / ")[:80],
+        )
     return ""
 
 
@@ -112,143 +172,6 @@ def pending_candidates(count: int = 3) -> list[dict]:
         {"label": f"후보{i + 1}", "image": None, "status": "generating"}
         for i in range(count)
     ]
-
-
-def iso_day(day_offset: int = 0) -> str:
-    return (_now() + timedelta(days=day_offset)).strftime("%Y-%m-%d")
-
-
-def fmt_day(iso: str) -> str:
-    parts = (iso or "").split("-")
-    if len(parts) == 3:
-        return f"{int(parts[1])}/{int(parts[2])}"
-    return iso or ""
-
-
-def now_hm() -> str:
-    return _now().strftime("%H:%M")
-
-
-# 품목은 업종마다 다르다 — 빵집이든 반찬가게든 꽃집이든 같은 규칙으로 읽어야 한다.
-# 그래서 품목 사전을 두지 않고, 문장에서 수량·날짜·시각·동사를 걷어낸 나머지를 품목으로 본다.
-_UNIT = (
-    r"개|봉지|봉|판|장|잔|병|팩|박스|상자|세트|인분|마리|송이|다발|묶음|단|줄|통|포기"
-    r"|근|컵|조각|그릇|접시|바구니|켤레|kg|g|ml|L|리터"
-)
-_QTY_RE = re.compile(rf"(\d+)\s*({_UNIT})?", re.IGNORECASE)
-_DAY_RE = re.compile(r"(\d{1,2})\s*[/\-월.]\s*(\d{1,2})")
-_TIME_RE = re.compile(r"(\d{1,2})\s*(?::|시)\s*(\d{1,2})?")
-_SKIP_RE = re.compile(r"안\s?했|없어|없습니다|안했|건너|아니")
-
-# 날짜·시각 표현. 품목을 찾기 전에 먼저 걷어낸다 — 안 그러면 '9/16에'의 9를 수량으로 읽는다.
-_WHEN_RE = re.compile(
-    r"\d{1,2}\s*[:시]\s*\d{0,2}\s*분?"
-    r"|\d{1,2}\s*[/\-월.]\s*\d{1,2}\s*일?"
-    r"|오늘|어제|그저께|그제|아침|점심|저녁|오전|오후|새벽",
-    re.IGNORECASE,
-)
-
-# '만들었어요' 같은 서술어. 품목 이름이 아니다.
-_VERB_RE = re.compile(
-    r"만들었\S*|만들어\S*|만듦|구웠\S*|구움|굽고\S*|생산\S*|준비\S*|나왔\S*|뽑았\S*"
-    r"|했어\S*|했습니다|했다|해서\S*|팔았\S*|판매\S*",
-    re.IGNORECASE,
-)
-
-_PARTICLE_RE = re.compile(r"(?:은|는|이|가|을|를|도|만|랑|하고|와|과|에서|에|부터|까지|으로|로)$")
-
-# '반찬가게인데', '날이 더워서' 처럼 배경을 설명하는 마디. 품목이 아니라 맥락이므로
-# 어미만 떼지 말고 단어를 통째로 버린다 — 안 그러면 품목이 '반찬가게 멸치볶음'이 된다.
-# '서'로 끝나는 말(더워서·바빠서·해서·가게에서)은 한국어에서 거의 다 이런 연결 어미다.
-_CLAUSE_RE = re.compile(r"(?:인데요?|는데요?|한데|이고|이며|서)$")
-
-# 뜻 없는 말버릇. 이게 남으면 '음 그냥 뭐'가 품목 이름으로 저장된다.
-_FILLER = {
-    "음", "어", "아", "응", "네", "예", "그냥", "뭐", "좀", "저기", "일단", "막",
-    "그", "이", "저", "것", "거", "등", "및", "제가", "저희", "우리",
-}
-
-
-def item_from(text: str) -> str:
-    """문장에서 품목 이름만 남긴다. 못 알아들으면 빈 문자열 — 지어내지 않는다.
-
-    '소금빵 20개 만들었어요' → '소금빵'. 라우터는 빈 값이면 기록을 만들지 않고
-    사장님에게 다시 물어본다. 못 알아들은 걸 '신메뉴' 같은 이름으로 저장하면
-    그건 사장님이 만든 적 없는 생산 기록이 된다.
-
-    품목은 업종마다 다르다(빵·반찬·꽃…). 그래서 품목 사전을 두지 않고 **수량을
-    기준점으로** 삼는다 — 한국어에서 품목은 수량 바로 앞에 온다("소금빵 20개",
-    "국화 30송이", "멸치볶음 15팩"). 수량이 아예 없으면 생산 기록으로 볼 수 없으니
-    빈 문자열을 돌려주고 라우터가 되묻게 한다.
-    """
-    without_when = _WHEN_RE.sub(" ", text or "")
-    qty = _QTY_RE.search(without_when)
-    if not qty:
-        # 수량이 없는 문장은 생산 기록이 아니다. '음 그냥 뭐 좀' 같은 말이
-        # 품목으로 저장되는 걸 여기서 막는다.
-        return ""
-
-    def runs(segment: str) -> list[list[str]]:
-        """살아남은 낱말을 '끊기지 않고 붙어 있는 덩어리' 단위로 묶어 돌려준다.
-
-        덩어리로 묶는 이유 — '초코 소금빵'은 두 낱말이 붙어 있으니 한 품목이지만,
-        '날이 더워서 팥빙수'는 사이에 버려진 말이 있으니 '날'과 '팥빙수'를 붙이면 안 된다.
-        """
-        segment = _VERB_RE.sub(" @ ", segment)
-        segment = re.sub(r"[^\w가-힣\s@]", " @ ", segment)
-        grouped: list[list[str]] = [[]]
-        for word in segment.split():
-            if word == "@" or _CLAUSE_RE.search(word):
-                grouped.append([])
-                continue
-            word = _PARTICLE_RE.sub("", word)
-            if not word or word in _FILLER or word.isdigit():
-                grouped.append([])
-                continue
-            grouped[-1].append(word)
-        return [g for g in grouped if g]
-
-    # 수량 앞쪽을 먼저 본다 — 한국어는 품목이 수량 바로 앞에 온다.
-    # 거기가 비면(수량을 먼저 말한 경우) 뒤쪽을 본다.
-    before = runs(without_when[:qty.start()])
-    if before:
-        return " ".join(before[-1][-2:])
-    after = runs(without_when[qty.end():])
-    return " ".join(after[0][:2]) if after else ""
-
-
-def qty_from(text: str) -> str:
-    """수량. 날짜·시각을 먼저 걷어낸다 — '9/16에 김치 5통'에서 9를 수량으로 읽으면 안 된다."""
-    m = _QTY_RE.search(_WHEN_RE.sub(" ", text or ""))
-    if not m:
-        return ""
-    return f"{m.group(1)}{m.group(2) or '개'}"
-
-
-def day_from(text: str) -> str:
-    t = text or ""
-    if "그저께" in t or "그제" in t:
-        return iso_day(-2)
-    if "어제" in t:
-        return iso_day(-1)
-    m = _DAY_RE.search(t)
-    if m:
-        now = _now()
-        return f"{now.year}-{int(m.group(1)):02d}-{int(m.group(2)):02d}"
-    return iso_day(0)
-
-
-def time_from(text: str) -> str:
-    m = _TIME_RE.search(text or "")
-    if not m:
-        return now_hm()
-    hour = int(m.group(1))
-    minute = int(m.group(2)) if m.group(2) else 0
-    return f"{hour:02d}:{minute:02d}"
-
-
-def is_skip(text: str) -> bool:
-    return bool(_SKIP_RE.search(text or ""))
 
 
 def new_pid() -> str:

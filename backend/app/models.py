@@ -82,24 +82,18 @@ class Storyboard(Base):
     messages = Column(JSON, default=list)  # [{role, kind, ...}]
     plan = Column(JSON, default=list)      # [{n, line, short}]
     comic_cuts = Column(JSON, default=list)  # [{n, short, line}]
+    # 쓰지 않는다. 예전엔 대화 첫 마디를 생산 기록으로 받았는지 표시했는데, 그 기능을
+    # 없애면서(생산 기록은 "내 정보 > 생산 기록" 탭에서만 남긴다) 더는 안 읽는다.
+    # 컬럼은 지우지 않는다 — 예전 DB에 남아 있고, 지우려면 별도 마이그레이션이 필요하다.
     prod_logged = Column(Boolean, default=False)
     pending = Column(JSON, default=dict)   # {pid: {which, kind, diffs, payload, status}}
-
-
-class MemeCard(Base):
-    """밈 카드 — 밈 원문을 GPT가 한 번 읽어 정리한 것(정의·유행 이유·말 틀·시각 요소·업종·피할 것).
-
-    사장님 데이터가 아니라 서비스가 갖고 있는 소재다. 그래서 히스토리·내보내기에는 섞이지
-    않고, 스토리 제안(POST /api/storyboard/propose)의 입력으로만 쓴다. 비싼 단계(카드
-    만들기)는 밈 하나당 한 번만 돌고 여기 저장된다.
-    """
-    __tablename__ = "meme_cards"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    title = Column(String, nullable=False)
-    source = Column(String, default="")      # 사이트/원문 링크
-    original = Column(String, default="")    # 카드를 만들 때 넣은 원문(요약이 아니라 본문)
-    card = Column(JSON, default=dict)        # {definition, why, template, visual, industries, avoid, understanding}
+    # 트렌드 확인 화면에서 미리 골라 온 밈(Meme.id). 광고 설정을 확정할 때(POST /api/ad/apply)
+    # 같이 저장되고, 대화(story_llm.plan_from_text)가 스토리를 만들 때 자동으로 참고한다.
+    # 안 골랐으면 빈 문자열 — 그때는 GPT가 크롤링된 밈 중 스스로 어울리는 걸 찾아본다.
+    trend_meme_id = Column(String, default="")
+    # 위 밈의 이름 — 화면에 바로 보여주려고 같이 저장해 둔다(그때마다 memes 테이블을
+    # 다시 조회하지 않는다). trend_meme_id를 정할 때 한 번만 같이 채운다.
+    trend_meme_name = Column(String, default="")
 
 
 class ProductionItem(Base):
@@ -128,8 +122,8 @@ class Meme(Base):
     걸러낸(중복 제거) 산출물이라, 여기 컬럼도 소스별로 갈라지지 않고 하나로 통일돼 있다.
     같은 밈이 사이트마다 다르게 표현돼도 merged_from에 나머지 출처가 그대로 남는다.
 
-    MemeCard(위)와는 다른 테이블이다 — MemeCard는 스토리 제안용으로 GPT가 요약한 카드,
-    Meme은 트렌드 확인 화면이 그대로 훑어보는 원본 크롤링 데이터다.
+    이 원본(유래 origin·활용예시 usage_example)을 트렌드 추천(meme_recommend.py)과
+    스토리 생성(story_llm.py)이 그대로 GPT에 넘긴다 — 따로 요약·정리해 둔 카드는 없다.
     """
     __tablename__ = "memes"
 

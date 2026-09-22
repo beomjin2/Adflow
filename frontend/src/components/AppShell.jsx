@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { colors } from '../theme.js';
 
 const TITLES = {
@@ -6,105 +7,102 @@ const TITLES = {
   char: ['마스코트 캐릭터 만들기', '대화로 캐릭터를 완성해요'],
   charInfo: ['캐릭터 정보', '확정한 마스코트'],
   ad: ['광고 만들기', '종류와 느낌을 골라주세요'],
-  trend: ['트렌드 확인', '요즘 뜨는 밈을 둘러봐요'],
+  trend: ['트렌드 보고서', '요즘 뜨는 밈을 둘러봐요'],
   sb: ['알릴 내용 정하기', '대화로 만들고 대화로 고쳐요'],
   result: (s) => ['완성된 광고', s.adType ? `${s.adType} 기준` : '내용을 확인해주세요'],
   save: ['저장하기', '복사해서 바로 올리세요'],
   my: ['내 정보', '보관함 · 생산 기록 · 가게 · 캐릭터 · 백업'],
-  myStore: ['내 가게 정보', '조회 전용']
+  myStore: ['내 가게 정보', '조회 전용'],
 };
+
+// 단계 화면에서 "지금 어디쯤인지"를 머리말 위에 적는다.
+const CRUMB = { store: '1단계', char: '2단계', ad: '3단계', sb: '3단계', result: '3단계', save: '3단계' };
+
+// 흰 카드(.ad-body) 안에 넣지 않는 화면. 개선안에서 이 두 화면은 카드 여러 장이
+// 배경 위에 나란히 놓인 모양이라, 큰 카드로 한 번 더 감싸면 테두리가 두 겹이 된다.
+const FULL_BLEED = new Set(['ad', 'sb']);
 
 export default function AppShell({ state, actions, missingProdsCount, children }) {
   const titleEntry = TITLES[state.screen] || TITLES.home;
   const [title, subtitle] = typeof titleEntry === 'function' ? titleEntry(state) : titleEntry;
+  const isHome = state.screen === 'home';
   const showChips = state.screen === 'sb' || state.screen === 'result';
   // 값이 있는 것만 보여준다. 고른 적 없는 '인스타 게시물'이 머리말에 떠 있으면 고른 줄 안다.
   const chips = [state.adType, state.adConcept, state.charName].filter(Boolean);
+  const bellRef = useRef(null);
+
+  // 바깥을 누르면 알림이 닫힌다 — 예전엔 한 번 열면 다른 걸 눌러도 떠 있었다.
+  useEffect(() => {
+    if (!state.notifOpen) return undefined;
+    const onDown = (e) => { if (bellRef.current && !bellRef.current.contains(e.target)) actions.set('notifOpen', false); };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [state.notifOpen, actions]);
+
+  const missing = state.prods.filter((p) => !p.soldOut);
 
   return (
-    <div style={{ minHeight: '100vh', padding: '18px 14px 56px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-      <div style={{ width: '100%', maxWidth: 1020, display: 'flex', alignItems: 'center', gap: 10 }}>
-        <span style={{ fontSize: 14, fontWeight: 800, color: colors.primary, letterSpacing: -.2 }}>AI 광고 만들기</span>
-        <div style={{ flex: 1 }} />
-        <div style={{ position: 'relative' }}>
-          <button onClick={() => actions.set('notifOpen', !state.notifOpen)} style={{
-            height: 40, borderRadius: 999, padding: '0 14px', fontSize: 13.5, fontWeight: 700,
-            border: `1px solid ${missingProdsCount ? colors.warnBorder : colors.cardBorder}`,
-            background: missingProdsCount ? colors.warnBg : '#fff',
-            color: missingProdsCount ? colors.warnText : colors.textSub,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 7
-          }}>
-            알림
-            {missingProdsCount > 0 && (
-              <span style={{ fontSize: 11.5, fontWeight: 800, background: colors.warnAccent, color: '#fff', borderRadius: 999, padding: '2px 7px' }}>
-                {missingProdsCount}
-              </span>
-            )}
-          </button>
-          {state.notifOpen && (
-            <div style={{
-              position: 'absolute', top: 46, right: 0, width: 322, maxWidth: 'calc(100vw - 28px)', background: '#fff',
-              border: `1px solid ${colors.cardBorder}`, borderRadius: 14, boxShadow: '0 14px 30px rgba(18,22,26,.16)',
-              padding: 12, display: 'flex', flexDirection: 'column', gap: 9, zIndex: 60, animation: 'pop .16s ease'
-            }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: colors.textFaint, letterSpacing: .3 }}>알림</span>
-              {missingProdsCount === 0 ? (
-                <span style={{ fontSize: 13.5, lineHeight: '20px', color: colors.textFaint, padding: '4px 2px 8px' }}>
-                  지금은 알려드릴 게 없어요. 매진 시각이 빈 기록이 생기면 여기로 알려드려요.
-                </span>
-              ) : state.prods.filter(p => !p.soldOut).map(p => (
-                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: colors.warnBg, border: `1px solid ${colors.warnBorder}`, borderRadius: 11, padding: '10px 11px' }}>
-                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontSize: 13.5, fontWeight: 700, color: colors.warnText }}>‘{p.name}’ 매진 시각을 적어주세요</span>
-                    <span style={{ fontSize: 12.5, color: colors.warnText2 }}>{p.date} {p.time} 생산{p.qty ? ' · ' + p.qty : ''}</span>
-                  </div>
-                  <button onClick={actions.openProdTab} style={{ height: 40, borderRadius: 9, border: 0, background: colors.warnText2, color: '#fff', fontSize: 13, fontWeight: 700, padding: '0 13px', cursor: 'pointer', flex: 'none' }}>입력</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div style={{ width: '100%', maxWidth: 1020, background: '#fff', borderRadius: 20, boxShadow: '0 2px 6px rgba(20,28,36,.05)', overflow: 'hidden', border: `1px solid ${colors.cardBorder}` }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: `1px solid ${colors.cardBorder}`, background: '#fff', flexWrap: 'wrap' }}>
-          {state.screen !== 'home' && (
-            <button onClick={actions.back} aria-label="뒤로" style={{ width: 44, height: 44, borderRadius: 12, border: 0, background: colors.softBg, color: colors.text, cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>←</button>
-          )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-            <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: -.3 }}>{title}</span>
-            <span style={{ fontSize: 12.5, fontWeight: 500, color: colors.textFaint }}>{subtitle}</span>
-          </div>
-          {showChips && chips.length > 0 && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', paddingLeft: 6 }}>
-              {chips.map((text, i) => (
-                <span key={i} style={{ fontSize: 12, fontWeight: 600, background: colors.bg, border: `1px solid ${colors.cardBorder}`, color: colors.textSub, borderRadius: 999, padding: '5px 11px' }}>
-                  {text}
-                </span>
-              ))}
-            </div>
-          )}
-          <div style={{ flex: 1 }} />
-          {(state.screen === 'store' && state.storeReadOnly) || state.screen === 'myStore' ? (
-            <span style={{ fontSize: 12, fontWeight: 700, background: colors.primarySoft, color: colors.primarySoftText, borderRadius: 999, padding: '6px 12px' }}>조회 모드</span>
-          ) : null}
-          {/* 트렌드 확인 화면의 주 동작. 본문에 두면 목록 위에 버튼만 있는 빈 줄이 하나 생겨서
-              헤더의 남는 오른쪽 공간으로 올렸다. */}
-          {state.screen === 'trend' && (
-            <button
-              onClick={() => actions.set('trendRecommendPopupOpen', true)}
-              style={{
-                height: 38, padding: '0 16px', borderRadius: 999, border: 0, flex: 'none',
-                background: colors.primary, color: '#fff', boxShadow: '0 4px 10px rgba(22,160,107,.3)',
-                fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
-              }}
-            >
-              ✨ 밈 추천받기
+    <div className="ad-page">
+      <div className="ad-wrap">
+        <header className="ad-top">
+          <button className="ad-brand" onClick={actions.goHome}><i>AD</i>AI 광고 만들기</button>
+          <span className="ad-grow" />
+          <div className="ad-bell" ref={bellRef}>
+            <button className="ad-notice" aria-haspopup="true" aria-expanded={state.notifOpen}
+              onClick={() => actions.set('notifOpen', !state.notifOpen)}>
+              알림<span className={`ad-badge${missingProdsCount ? '' : ' zero'}`}>{missingProdsCount}</span>
             </button>
-          )}
-        </div>
+            {state.notifOpen && (
+              <div className="ad-drop" role="menu">
+                <div className="ad-drop-h">{missingProdsCount ? `확인할 알림 ${missingProdsCount}건` : '알림'}</div>
+                {missingProdsCount === 0 ? (
+                  <div className="ad-drop-empty">지금은 알려드릴 게 없어요. 매진 시각이 빈 기록이 생기면 여기로 알려드려요.</div>
+                ) : missing.map((p) => (
+                  <div className="ad-drop-item" key={p.id}>
+                    <span className="dot" />
+                    <span className="t">
+                      <b>‘{p.name}’ 매진 시각을 적어주세요</b>
+                      <span>{p.date} {p.time} 생산{p.qty ? ` · ${p.qty}개` : ''}</span>
+                    </span>
+                    <button className="go" onClick={() => { actions.set('notifOpen', false); actions.openProdTab(); }}>입력</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </header>
 
-        {children}
+        {isHome ? children : (
+          <>
+            <div className="ad-ph">
+              <button className="ad-back" aria-label="뒤로" onClick={actions.back}>←</button>
+              <div className="t">
+                {CRUMB[state.screen] && (
+                  <span style={{ fontSize: 13, fontWeight: 700, color: colors.primary, letterSpacing: .2 }}>
+                    {CRUMB[state.screen]}
+                  </span>
+                )}
+                <h1>{title}</h1>
+                <p>{subtitle}</p>
+              </div>
+              {showChips && chips.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {chips.map((text, i) => <span className="ad-chip" key={i}>{text}</span>)}
+                </div>
+              )}
+              <span className="ad-grow" />
+              {((state.screen === 'store' && state.storeReadOnly) || state.screen === 'myStore') && (
+                <span className="ad-pill green">조회 모드</span>
+              )}
+              {state.screen === 'trend' && (
+                <button className="ad-hdr-btn" onClick={() => actions.set('trendRecommendPopupOpen', true)}>
+                  ✨ 밈 추천받기
+                </button>
+              )}
+            </div>
+            {FULL_BLEED.has(state.screen) ? children : <div className="ad-body">{children}</div>}
+          </>
+        )}
       </div>
 
       {state.toast && (
@@ -113,7 +111,7 @@ export default function AppShell({ state, actions, missingProdsCount, children }
           maxWidth: 'calc(100vw - 32px)', textAlign: 'center',
           background: colors.dark, color: '#fff', fontSize: 14.5, fontWeight: 600,
           padding: '13px 20px', borderRadius: 16, boxShadow: '0 10px 24px rgba(18,22,26,.25)',
-          animation: 'pop .18s ease', zIndex: 40, lineHeight: '21px'
+          animation: 'pop .18s ease', zIndex: 40, lineHeight: '21px',
         }}>{state.toast}</div>
       )}
     </div>

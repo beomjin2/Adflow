@@ -7,11 +7,22 @@
   캐릭터 그림을 참조로 넣어 컷마다 한 장씩 백그라운드에서 그린다. 대사·글자는 그림에
   넣지 않는다 — 그림 모델은 글자를 못 쓴다.
 
-남은 건 전부 사장님이 직접 입력한 값이다. 컷 구성도 템플릿이 아니라 사장님이 쓴
-문장을 컷 단위로 쪼갠 것이다 — 서비스가 대신 지어내는 문장은 없다.
+컷 구성은 **사장님이 쓴 말을 GPT가 컷으로 나눈 것**이다(`story_llm.plan_from_text`).
+템플릿은 없다. 키가 없거나 호출이 실패하면 예전 경로 — 문장부호에서 자르는
+`_cuts_from_text` — 로 조용히 되돌아간다. 어느 쪽이든 만든 구성을 바로 반영하지 않고
+confirm 카드로 올려 사장님이 승인해야 plan이 된다. 서비스가 문장을 만드는 자리라 그렇다.
+
+스토리 제안은 자동으로 뜨지 않는다 — 사장님이 직접 적거나(POST /chat), 대화창의
+"스토리 제안받기" 버튼을 눌러야(POST /suggest) 만든다. 밈은 트렌드 화면에서 미리
+골라 왔으면(`Storyboard.trend_meme_id`) 그걸 반영하고, 안 골랐으면 GPT가 크롤링된
+밈 중 스스로 어울리는 걸 찾아본다 — 카드를 만들거나 고르는 별도 화면은 없다.
+
+생산 기록은 여기서 안 받는다 — "내 정보 > 생산 기록" 탭에서만 남긴다. 예전엔 대화
+첫 마디를 생산 기록으로 파싱했는데, 대화 한 번으로 두 가지 일을 하는 게 헷갈린다는
+판단으로 뺐다. `_plan_cuts`가 매번 최근 생산 기록을 조회해서 스토리에 반영하는 건
+그대로다 — 그 기록을 만드는 자리만 옮긴 것이다.
 """
 
-import logging
 import re
 from pathlib import Path
 
@@ -21,13 +32,9 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.core.config import settings
 from app.core.database import get_db
-from app.services import jobs
-from app.services.chat_ai import (character_part, comic_prompt, day_from, fmt_day, is_skip,
-                                  item_from, iso_day, new_pid, qty_from, time_from)
+from app.services import jobs, story_llm
+from app.services.chat_ai import COMIC_IDENTITY_FIELDS, character_part, comic_prompt, new_pid
 from app.services.image_gen import generate_images
-from app.services.meme_ai import propose_story
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/storyboard", tags=["storyboard"])
 
@@ -45,14 +52,37 @@ def _get(db: Session) -> models.Storyboard:
     return sb
 
 
-def reset_storyboard(db: Session) -> models.Storyboard:
-    """광고 설정을 확정했을 때 스토리보드를 처음 상태로 되돌린다."""
+def _require_character(db: Session) -> models.Character:
+    """스토리를 만드는 자리(POST /chat의 스토리 단계, POST /suggest)는 전부 여기부터 거친다.
+
+    광고 설정을 확정할 때(POST /api/ad/apply)도 캐릭터 확정을 이미 확인하지만, 그건
+    스토리보드에 들어오는 시점의 검사다 — 들어온 뒤에 캐릭터를 다시 고치거나 초기화하면
+    이 화면은 그대로 열려 있을 수 있다. 스토리는 마스코트 정보(이름·외형 등)를 그대로
+    쓰므로, 만드는 순간에도 한 번 더 확인한다.
+    """
+    char = db.get(models.Character, 1)
+    if not char or not char.confirmed:
+        raise HTTPException(400, "캐릭터를 먼저 확정해주세요 — 스토리에 마스코트 정보가 들어가요")
+    return char
+
+
+def reset_storyboard(db: Session, trend_meme_id: str | None = None) -> models.Storyboard:
+    """광고 설정을 확정했을 때 스토리보드를 처음 상태로 되돌린다.
+
+    trend_meme_id — 트렌드 화면에서 미리 골라 온 밈(있으면). 이번 광고 내내 대화가
+    참고한다(_meme_context 참고).
+
+    스토리 제안은 자동으로 뜨지 않는다 — 사장님이 대화창에 직접 적거나, "스토리
+    제안받기" 버튼을 눌러야(POST /api/storyboard/suggest) 만든다.
+    """
     sb = _get(db)
     sb.messages = []
     sb.plan = []
     sb.comic_cuts = []
-    sb.prod_logged = False
     sb.pending = {}
+    sb.trend_meme_id = trend_meme_id or ""
+    meme = db.get(models.Meme, trend_meme_id) if trend_meme_id else None
+    sb.trend_meme_name = meme.meme_name if meme else ""
     db.commit()
     db.refresh(sb)
     return sb
@@ -68,6 +98,97 @@ def _cuts_from_text(text: str) -> list[dict]:
     ]
 
 
+def _meme_context(sb: models.Storyboard, db: Session) -> tuple[dict | None, list[dict]]:
+    """(trend_meme, meme_candidates) — 미리 골라 온 밈이 있으면 그것만, 없으면 GPT가
+    스스로 볼 후보 목록("미분류"는 진짜 활용 상황이 아니라 뺀다)."""
+    if sb.trend_meme_id:
+        m = db.get(models.Meme, sb.trend_meme_id)
+        if m:
+            return {"id": m.id, "name": m.meme_name, "origin": m.origin,
+                    "usage_example": m.usage_example}, []
+    candidates = (
+        db.query(models.Meme)
+        .filter(models.Meme.situation != "", models.Meme.situation != "미분류")
+        .all()
+    )
+    return None, [
+        {"id": m.id, "name": m.meme_name, "origin": m.origin, "usage_example": m.usage_example}
+        for m in candidates
+    ]
+
+
+def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> tuple[list[dict], dict | None] | None:
+    """사장님 문장 → (컷 구성, 반영한 밈).
+
+    GPT가 있으면 GPT가 가게·캐릭터·광고 느낌·(있으면) 밈을 함께 보고 컷으로 나눈다. 못 쓰면
+    (키 없음·호출 실패·형식 이상) 문장부호에서 자르는 옛 규칙으로 조용히 되돌아간다(이땐
+    밈은 반영 안 됨).
+
+    **None은 "규칙으로도 되돌아가지 않는다"는 뜻이다.** GPT가 사장님 말을 인사·잡담으로
+    본 경우에만 나온다 — 그때 규칙으로 쪼개면 "안녕하세요"가 1컷이 되어 버린다.
+    """
+    store = db.get(models.Store, 1)
+    char = db.get(models.Character, 1)
+    ad = db.get(models.AdSettings, 1)
+    prods = (
+        db.query(models.ProductionRecord)
+        .order_by(models.ProductionRecord.id.desc()).limit(10).all()
+    )
+    trend_meme, meme_candidates = _meme_context(sb, db)
+    proposed = story_llm.plan_from_text(
+        text,
+        store={"category": store.category, "address": store.address,
+               "hours": store.hours, "desc": store.desc} if store else {},
+        char={"name": char.name, "look": char.look, "outfit": char.outfit,
+              "desc": char.desc} if char else {},
+        ad={"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {},
+        prods=[{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time,
+                "sold_out": p.sold_out} for p in prods],
+        current_plan=list(sb.plan or []),
+        trend_meme=trend_meme,
+        meme_candidates=meme_candidates,
+    )
+    if proposed is None:
+        return _cuts_from_text(text), None
+    if not proposed["cuts"]:
+        return None
+    return proposed["cuts"], proposed["meme_used"]
+
+
+def _propose_intro(meme_used: dict | None) -> str:
+    if meme_used:
+        return (
+            f"'{meme_used['name']}' 밈도 참고해서 스토리를 만들었어요. "
+            "마음에 들면 아래에서 이대로 바꾸기를 눌러주세요."
+        )
+    return "스토리를 만들었어요. 마음에 들면 아래에서 이대로 바꾸기를 눌러주세요."
+
+
+def _propose_plan(sb: models.Storyboard, cuts: list[dict], messages: list[dict]) -> None:
+    """만든 컷 구성을 확인 카드로 올린다. 승인하기 전까지 plan은 바뀌지 않는다."""
+    current = list(sb.plan or [])
+    diffs = []
+    for cut in cuts:
+        before = next((c["line"] for c in current if c.get("n") == cut["n"]), "아직 없음")
+        action = cut.get("action") or ""
+        diffs.append({
+            "label": f"{cut['n']}컷",
+            "from": before,
+            "to": f"{cut['line']} — {action}" if action else cut["line"],
+        })
+    for old in current[len(cuts):]:
+        diffs.append({"label": f"{old['n']}컷", "from": old["line"], "to": "삭제"})
+
+    pending = dict(sb.pending or {})
+    pid = new_pid()
+    pending[pid] = {
+        "which": "sb", "kind": "plan", "diffs": diffs,
+        "payload": {"plan": cuts}, "status": "open",
+    }
+    sb.pending = pending
+    messages.append({"role": "ai", "kind": "confirm", "pid": pid})
+
+
 @router.get("", response_model=schemas.StoryboardOut)
 def get_storyboard(db: Session = Depends(get_db)):
     return schemas.storyboard_out(_get(db), jobs.queue_depth())
@@ -75,11 +196,11 @@ def get_storyboard(db: Session = Depends(get_db)):
 
 @router.post("/chat", response_model=schemas.StoryboardOut)
 def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
-    """스토리보드 채팅.
+    """스토리보드 채팅 — 사장님이 쓴 내용으로 컷 구성을 만든다.
 
-    1단계는 생산 기록 받기, 2단계부터는 사장님이 쓴 내용으로 컷 구성을 만든다.
-    만든 구성은 바로 반영하지 않고 confirm 카드로 보여준다 — 사장님이 '이렇게
-    바뀝니다'를 보고 승인해야 실제로 반영된다.
+    생산 기록은 여기서 안 받는다("내 정보 > 생산 기록" 탭에서만 남긴다) — 대화는
+    스토리를 만드는 자리다. 만든 구성은 바로 반영하지 않고 confirm 카드로 보여준다 —
+    사장님이 '이렇게 바뀝니다'를 보고 승인해야 실제로 반영된다.
     """
     sb = _get(db)
     text = (body.text or "").strip()
@@ -89,68 +210,52 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     messages = list(sb.messages or [])
     messages.append({"role": "me", "kind": "text", "text": text})
 
-    if not sb.prod_logged:
-        if is_skip(text):
-            messages.append({
-                "role": "ai", "kind": "text",
-                "text": "알겠어요, 생산 기록은 넘어갈게요. 그럼 광고에 어떤 장면이 들어가면 좋을지 편하게 적어주세요.",
-            })
-            sb.prod_logged = True
-        else:
-            name = item_from(text)
-            if not name:
-                # 못 알아들었으면 기록을 만들지 않는다. 빈 이름으로 저장하면
-                # 사장님이 만든 적 없는 생산 기록이 남는다.
-                messages.append({
-                    "role": "ai", "kind": "text",
-                    "text": "품목 이름을 못 알아들었어요. '소금빵 20개'처럼 품목과 수량을 같이 적어주세요. 오늘 만든 게 없으면 '없어요'라고 해주셔도 돼요.",
-                })
-            else:
-                day = day_from(text)
-                record = models.ProductionRecord(
-                    name=name, qty=qty_from(text), date=day,
-                    time=time_from(text), sold_out="",
-                )
-                db.add(record)
-                db.flush()
-                if not db.query(models.ProductionItem).filter_by(name=name).first():
-                    db.add(models.ProductionItem(name=name))
-                today = "(오늘)" if day == iso_day(0) else ""
-                messages.append({
-                    "role": "ai", "kind": "text",
-                    "text": f"'{name}' 생산 기록을 {fmt_day(day)}{today}로 남겼어요. 다르면 아래에서 바로 고쳐주세요.",
-                })
-                messages.append({"role": "ai", "kind": "prod", "prodId": record.id})
-                messages.append({
-                    "role": "ai", "kind": "text",
-                    "text": f"그럼 {name} 이야기로 광고를 만들어볼까요? 어떤 장면이 들어가면 좋을지 적어주세요 — 문장 하나가 한 컷이 돼요.",
-                })
-                sb.prod_logged = True
+    _require_character(db)
+    result = _plan_cuts(text, sb, db)
+    if result is None:
+        # GPT가 "광고로 만들 내용이 아니다"라고 본 경우다. 여기서 아무 장면이나
+        # 만들면 사장님이 말한 적 없는 광고가 된다 — 지어내지 말고 되묻는다.
+        messages.append({
+            "role": "ai", "kind": "text",
+            "text": "그 말씀만으로는 광고 장면을 잡기 어려워요. 오늘 알리고 싶은 걸 한 줄로 적어주세요.",
+        })
     else:
-        cuts = _cuts_from_text(text)
+        cuts, meme_used = result
         if not cuts:
             messages.append({
                 "role": "ai", "kind": "text",
                 "text": "어떤 장면인지 한 문장으로 적어주세요. 문장 하나가 한 컷이 돼요.",
             })
         else:
-            current = list(sb.plan or [])
-            diffs = []
-            for cut in cuts:
-                before = next((c["line"] for c in current if c.get("n") == cut["n"]), "아직 없음")
-                diffs.append({"label": f"{cut['n']}컷", "from": before, "to": cut["line"]})
-            for old in current[len(cuts):]:
-                diffs.append({"label": f"{old['n']}컷", "from": old["line"], "to": "삭제"})
+            messages.append({"role": "ai", "kind": "text", "text": _propose_intro(meme_used)})
+            _propose_plan(sb, cuts, messages)
 
-            pending = dict(sb.pending or {})
-            pid = new_pid()
-            pending[pid] = {
-                "which": "sb", "kind": "plan", "diffs": diffs,
-                "payload": {"plan": cuts}, "status": "open",
-            }
-            sb.pending = pending
-            messages.append({"role": "ai", "kind": "confirm", "pid": pid})
+    sb.messages = messages
+    db.commit()
+    db.refresh(sb)
+    return schemas.storyboard_out(sb, jobs.queue_depth())
 
+
+@router.post("/suggest", response_model=schemas.StoryboardOut)
+def suggest(db: Session = Depends(get_db)):
+    """사장님이 아무것도 안 적고 대화창의 "스토리 제안받기"를 눌렀을 때 — 자동으로는
+    절대 안 뜬다(사장님이 버튼을 눌러야만 부른다). 가게·캐릭터·최근 생산 기록·(있으면)
+    밈만으로 스토리를 만든다.
+    """
+    sb = _get(db)
+    _require_character(db)
+    text = "(사장님이 따로 말하지 않음 — 가게·캐릭터·최근 생산 기록을 재료로 이야기를 만든다)"
+    messages = list(sb.messages or [])
+    result = _plan_cuts(text, sb, db)
+    if result is None or not result[0]:
+        messages.append({
+            "role": "ai", "kind": "text",
+            "text": "지금 있는 정보만으로는 스토리를 만들기 어려워요. 오늘 알리고 싶은 걸 한 줄로 적어주세요.",
+        })
+    else:
+        cuts, meme_used = result
+        messages.append({"role": "ai", "kind": "text", "text": _propose_intro(meme_used)})
+        _propose_plan(sb, cuts, messages)
     sb.messages = messages
     db.commit()
     db.refresh(sb)
@@ -205,62 +310,9 @@ def _start_cuts(sb: models.Storyboard, char: models.Character, indexes: list[int
     sb.comic_cuts = cuts
     db.commit()
     # 캐릭터 태그는 여기서 한 번만 계산한다(GPT 1회). 컷 문장 변환은 백그라운드에서.
-    jobs.submit(_fill_cuts, indexes, scenes, character_part(char), reference)
-
-
-@router.post("/propose", response_model=schemas.StoryboardOut)
-def propose(body: schemas.ProposeIn, db: Session = Depends(get_db)):
-    """밈 카드 + 가게 정보로 GPT가 4컷 초안을 만든다.
-
-    바로 확정하지 않는다 — 기존 확인 카드(pending/plan)로 제안하고, 사장님이 "이대로
-    바꾸기"를 눌러야 컷 구성이 된다. 서비스가 문장을 지어내는 유일한 지점이라 확인을 거친다.
-    """
-    sb = _get(db)
-    meme = db.get(models.MemeCard, body.meme_id)
-    if not meme:
-        raise HTTPException(404, "밈 카드를 찾을 수 없어요")
-    store = db.get(models.Store, 1)
-    ad = db.get(models.AdSettings, 1)
-    char = db.get(models.Character, 1)
-    prods = db.query(models.ProductionRecord).order_by(models.ProductionRecord.id.desc()).limit(10).all()
-    try:
-        story = propose_story(
-            meme.card or {}, meme.title,
-            {"category": store.category, "address": store.address, "hours": store.hours, "desc": store.desc} if store else {},
-            [{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time, "sold_out": p.sold_out} for p in prods],
-            {"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {},
-            (char.name if char else "") or "",
-        )
-    except RuntimeError as e:
-        raise HTTPException(400, str(e))
-    except Exception:
-        logger.exception("스토리 제안 실패")
-        raise HTTPException(502, "스토리를 만들지 못했어요. 잠시 뒤 다시 시도해 주세요")
-
-    cuts = story["cuts"]
-    current = list(sb.plan or [])
-    diffs = []
-    for cut in cuts:
-        before = next((c["line"] for c in current if c.get("n") == cut["n"]), "아직 없음")
-        diffs.append({"label": f"{cut['n']}컷", "from": before, "to": f"{cut['line']} — {cut['action']}"})
-    for old in current[len(cuts):]:
-        diffs.append({"label": f"{old['n']}컷", "from": old["line"], "to": "삭제"})
-
-    pending = dict(sb.pending or {})
-    pid = new_pid()
-    pending[pid] = {"which": "sb", "kind": "plan", "diffs": diffs, "payload": {"plan": cuts}, "status": "open"}
-    messages = list(sb.messages or [])
-    messages.append({
-        "role": "ai", "kind": "text",
-        "text": f"'{meme.title}' 밈으로 '{story['title']}' 4컷을 제안해요. 마음에 들면 아래에서 이대로 바꾸기를 눌러주세요.",
-    })
-    messages.append({"role": "ai", "kind": "confirm", "pid": pid})
-    sb.pending = pending
-    sb.messages = messages
-    sb.prod_logged = True  # 제안을 받은 뒤의 채팅은 컷 수정으로 다룬다(생산 기록 질문 단계 건너뜀)
-    db.commit()
-    db.refresh(sb)
-    return schemas.storyboard_out(sb, jobs.queue_depth())
+    # 생김새·옷·나이만 넘긴다 — 성격·능력에서 나오는 표정·소품 태그는 컷마다 정해지는
+    # 표정과 부딪친다(chat_ai.COMIC_IDENTITY_FIELDS).
+    jobs.submit(_fill_cuts, indexes, scenes, character_part(char, COMIC_IDENTITY_FIELDS), reference)
 
 
 @router.post("/comic", response_model=schemas.StoryboardOut)
@@ -279,23 +331,22 @@ def make_comic(db: Session = Depends(get_db)):
          "label": f"{c['n']}컷", "image": None, "status": "generating"}
         for c in plan
     ]
+    # 네컷은 대화창 안에서 보여준다. 그림이 대화 흐름 밖에서 나오면 사장님은 무엇 때문에
+    # 그게 나왔는지 놓친다. 말풍선은 comic_cuts를 그대로 비추므로 **하나만** 둔다 —
+    # 다시 그려도 새 말풍선이 생기는 게 아니라 그 자리가 다시 채워진다. 안내 문구도 같이
+    # 걷어내야 한다(ref로 표시해 둔다). 말풍선만 지우면 "그릴게요"가 다시 그릴 때마다
+    # 한 줄씩 쌓여, 대화 기록만 보면 네 번 그린 것처럼 보인다.
+    messages = [
+        m for m in list(sb.messages or [])
+        if m.get("kind") != "comic" and m.get("ref") != "comic-start"
+    ]
+    messages.append({
+        "role": "ai", "kind": "text", "ref": "comic-start",
+        "text": f"정해진 {len(plan)}컷을 그릴게요. 이 화면을 닫아도 서버에서 계속 그립니다.",
+    })
+    messages.append({"role": "ai", "kind": "comic"})
+    sb.messages = messages
     _start_cuts(sb, char, list(range(len(plan))), db)
-    db.refresh(sb)
-    return schemas.storyboard_out(sb, jobs.queue_depth())
-
-
-@router.post("/comic/{n}/reroll", response_model=schemas.StoryboardOut)
-def reroll_cut(n: int, db: Session = Depends(get_db)):
-    """컷 하나만 다시 뽑는다."""
-    sb = _get(db)
-    cuts = list(sb.comic_cuts or [])
-    index = next((i for i, c in enumerate(cuts) if c.get("n") == n), None)
-    if index is None:
-        raise HTTPException(404, "cut not found")
-    char = db.get(models.Character, 1)
-    if not char or not char.confirmed:
-        raise HTTPException(400, "캐릭터를 먼저 확정해주세요")
-    _start_cuts(sb, char, [index], db)
     db.refresh(sb)
     return schemas.storyboard_out(sb, jobs.queue_depth())
 

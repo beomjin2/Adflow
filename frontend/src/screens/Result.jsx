@@ -45,7 +45,13 @@ export default function Result({ state, actions }) {
         </div>
         {(state.comicCuts || []).some((c) => c.status !== 'empty') && (
           <div style={{ padding: '12px 12px 0' }}>
-            <ComicPanels cuts={state.comicCuts || []} eta={state.sbEta} onReroll={actions.rerollCut} />
+            {/* 완성된 광고를 보는 화면이다 — 컷을 다시 그리려면 "대화로 돌아가 고치기"로
+                가야 한다. 여기서 1컷씩 바꾸면 그 자리에서 문구와 그림이 어긋난다.
+                카드 너비를 그대로 두면 화면이 넓을수록 그림도 같이 커져서, 여기서만
+                최대 너비를 걸어 실제 인스타 미리보기에 가까운 크기로 줄인다. */}
+            <div style={{ maxWidth: 340, margin: '0 auto' }}>
+              <ComicPanels cuts={state.comicCuts || []} eta={state.sbEta} />
+            </div>
           </div>
         )}
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>

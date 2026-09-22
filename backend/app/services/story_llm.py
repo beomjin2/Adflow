@@ -56,7 +56,7 @@ _PLAN_SYSTEM = """\
 2. 가게 정보에 있는 값(업종·소개)은 써도 된다. 비어 있는 칸은 쓰지 않는다.
 3. 마지막 컷은 마스코트가 손님에게 건네는 한마디로 끝낸다.
    주소·영업시간·가게 소개는 대사에 넣지 않는다 — 마지막 컷 그림의 입간판이 그걸 보여준다.
-   마지막 컷 action 은 "가게 앞에서 …" 로 시작한다(그림이 가게 앞 전경으로 고정된다).
+   마지막 컷의 **action(그림)** 만 "가게 앞에서 …" 로 시작한다 — line(대사)엔 이 말을 넣지 않는다.
 4. 주인공은 가게 마스코트 하나다. 사람 손님은 그리지 않는다 — 손님이 필요하면 동물 손님으로 적는다.
 5. 광고 느낌(컨셉)을 대사 **말투**에 반영한다. 느낌을 설명하는 문장을 쓰지 않는다.
 6. 컷은 정확히 {n}개.
@@ -232,6 +232,10 @@ def plan_from_text(
             return None
         if _invents_numbers(cut_line, haystack) or _invents_numbers(action, haystack):
             logger.info("가게에 없는 숫자를 지어내 컷 구성을 버렸습니다")
+            return None
+        if "[" in cut_line or "]" in cut_line:
+            # 말 틀의 자리표시("[수량]개")가 대사에 그대로 새어 나온 것(09-22 실측). 채워지지 않은 틀은 대사가 아니다.
+            logger.info("대사에 자리표시가 남아 컷 구성을 버렸습니다: %s", cut_line)
             return None
         camera = str(c.get("camera") or "").strip()
         cuts.append({

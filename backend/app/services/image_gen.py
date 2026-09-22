@@ -88,8 +88,14 @@ def _load_workflow(name: str | None = None) -> dict:
 
 def _build_prompt_graph(text: str, seed: int, batch_size: int = 1,
                         workflow_file: str | None = None, reference_name: str | None = None,
-                        negative_extra: str = "") -> dict:
+                        negative_extra: str = "", size: tuple[int, int] | None = None) -> dict:
     graph = _load_workflow(workflow_file)
+
+    # 캔버스 크기 덮어쓰기 — 캐릭터를 한쪽에 두려고 넓게 뽑아 자를 때(POSITION_CANVAS).
+    if size:
+        for node in graph.values():
+            if node.get("class_type") == "EmptyLatentImage":
+                node["inputs"]["width"], node["inputs"]["height"] = size
 
     # 캐릭터마다 덧붙는 네거티브가 있다 — 사장님이 겉옷만 말했을 때 모델이 속에 입을
     # 옷을 지어내지 못하게 막는 용도다(chat_ai.clothing_negative). 공용 목록 뒤에 붙인다.
@@ -163,9 +169,28 @@ def _upload_reference(path: Path) -> str | None:
         return None
 
 
+def _crop_png(content: bytes, crop: tuple[int, int, int, int]) -> bytes:
+    """(x0, y0, w, h) 로 자른 PNG 바이트. 넓게 뽑은 그림에서 캐릭터가 한쪽에 오도록 창을 옮겨 자른다."""
+    from io import BytesIO
+    from PIL import Image
+    x0, y0, w, h = crop
+    im = Image.open(BytesIO(content))
+    x0 = max(0, min(x0, im.width - w))
+    y0 = max(0, min(y0, im.height - h))
+    buf = BytesIO()
+    im.crop((x0, y0, x0 + w, y0 + h)).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+# 캐릭터 위치. 그림 모델엔 "왼쪽에 둬라"는 태그가 없어서 정사각(1216²)으로 뽑고 832×1216 창을 옮겨 자른다.
+# 캐릭터는 가운데(x=608)에 오므로, 창을 오른쪽으로 밀면 캐릭터가 왼쪽에 남고 오른쪽이 빈다(말풍선 자리).
+POSITION_CANVAS = (1216, 1216)
+POSITION_CROP = {"왼쪽": (384, 0, 832, 1216), "가운데": (192, 0, 832, 1216), "오른쪽": (0, 0, 832, 1216)}
+
+
 def generate_images(prompt: str, count: int = 1, seed: int | None = None,
                     workflow_file: str | None = None, reference_path: Path | None = None,
-                    negative_extra: str = "") -> list[str | None]:
+                    negative_extra: str = "", position: str | None = None) -> list[str | None]:
     """ComfyUI로 이미지 count장을 생성해 **URL 목록**을 반환한다 (`/api/media/<uuid>.png`).
 
     PNG는 디스크(settings.media_path)에 저장하고 응답엔 경로만 담는다 — 예전처럼
@@ -185,11 +210,15 @@ def generate_images(prompt: str, count: int = 1, seed: int | None = None,
         if not reference_name:
             return []
 
+    size = POSITION_CANVAS if position in POSITION_CROP else None
+    crop = POSITION_CROP.get(position or "")
+    from app.services import trace
+    _t0 = time.monotonic()
     try:
         submit = _comfy_request("POST", "/prompt", json={
             "client_id": client_id,
             "prompt": _build_prompt_graph(prompt, seed, count, workflow_file, reference_name,
-                                          negative_extra),
+                                          negative_extra, size=size),
         })
         submit.raise_for_status()
         prompt_id = submit.json()["prompt_id"]
@@ -228,7 +257,13 @@ def generate_images(prompt: str, count: int = 1, seed: int | None = None,
             view.raise_for_status()
             # 저장에 실패해도 자리를 비워 둔 채로 넣는다. 건너뛰면 뒤 그림이 앞 칸으로
             # 당겨져 '후보2' 자리에 후보3 그림이 걸린다.
-            out.append(_save_png(view.content))
+            out.append(_save_png(_crop_png(view.content, crop) if crop else view.content))
+        # 뜯어보기: 그림에 실제로 들어간 설정 전부 (기록 중일 때만)
+        trace.step("그림 (ComfyUI)", who="comfyui", sec=round(time.monotonic() - _t0, 1),
+                   workflow=workflow_file or settings.comfy_workflow_file, seed=seed, batch=count,
+                   canvas=list(size) if size else "워크플로우 기본", crop=list(crop) if crop else None, position=position,
+                   reference=reference_name, positive=prompt,
+                   negative=f"{NEGATIVE_PROMPT}, {negative_extra}" if negative_extra else NEGATIVE_PROMPT, images=out)
         return out
     except requests.RequestException:
         logger.exception("ComfyUI request failed")

@@ -447,6 +447,18 @@ def _fill_cuts(indexes: list[int], scenes: list[dict], char_part_text: str, refe
         _compose_if_done()
 
 
+def _is_store_info(line: str, store) -> bool:
+    """대사가 가게 정보(주소·영업시간·소개)를 그대로 옮긴 것인가 — 입간판과 겹치는 글."""
+    t = (line or "").replace(" ", "")
+    if not t or store is None:
+        return False
+    for v in (store.address, store.hours, store.desc):
+        v = (v or "").replace(" ", "")
+        if v and (v in t or t in v):
+            return True
+    return False
+
+
 def _compose_if_done() -> None:
     """모든 컷이 done 이면 말풍선을 굽고 2×2 로 합쳐 완성본 URL 을 각 컷의 final 에 적는다."""
     from PIL import Image
@@ -455,6 +467,7 @@ def _compose_if_done() -> None:
         sb = db.get(models.Storyboard, 1)
         if not sb:
             return
+        board_store = db.get(models.Store, 1)
         cuts = list(sb.comic_cuts or [])
         if not cuts or any(c.get("status") != "done" or not c.get("image") for c in cuts):
             return
@@ -462,7 +475,12 @@ def _compose_if_done() -> None:
         for c in cuts:
             im = Image.open(settings.media_path / c["image"].rsplit("/", 1)[-1])
             side = comic_bake.bubble_side(((c.get("slots") or {}).get("shot") or {}).get("position"), c.get("n", 1))
-            panels.append(comic_bake.bubble(im, c.get("line", ""), side))
+            line = c.get("line", "")
+            # main 의 대사 규칙 3 은 마지막 컷을 가게 정보(주소·영업시간·소개)로 끝낸다. 그 글은 입간판이 이미
+            # 보여주므로 말풍선에 한 번 더 쓰지 않는다 — 같은 글이 두 번 보이면 광고가 촌스럽다.
+            if c is cuts[-1] and _is_store_info(line, board_store):
+                line = ""
+            panels.append(comic_bake.bubble(im, line, side))
         from io import BytesIO
         buf = BytesIO(); comic_bake.compose(panels).save(buf, format="PNG")
         final = _save_png(buf.getvalue())

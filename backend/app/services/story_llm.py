@@ -40,47 +40,35 @@ logger = logging.getLogger(__name__)
 CAMERA_TAGS = ("straight-on", "close-up", "from_side", "from_below", "from_above", "wide_shot")
 
 _PLAN_SYSTEM = """\
-너는 한국 동네 가게의 SNS 네컷 만화 **대사 작가**다. 사장님이 방금 한 말과 가게 정보를 재료로
-마스코트가 말하는 **새 대사**를 쓴다. 사장님 문장을 그대로 옮겨 컷에 나눠 담는 것이 아니다 —
-거기서 사실(무엇을·몇 개·언제·무슨 일)만 가져오고, 말은 마스코트의 입으로 다시 쓴다.
+너는 한국 동네 가게 사장님의 SNS 광고를 같이 만든다.
+사장님이 방금 한 말을 광고 컷 구성으로 나눠 JSON으로 돌려준다.
 
 컷 하나는 이렇게 만든다:
-- line: 마스코트가 말풍선에서 하는 말. 한국어 한 문장, 40자 안. 마스코트 시트의 성격·역할이 말투에 드러나야 한다.
+- line: 말풍선이나 자막에 들어갈 한국어 한 문장. 짧게 — 40자를 넘기지 않는다.
 - action: 그 컷의 **그림**에 들어갈 동작. 마스코트가 하는 행동·표정·소품·장소를
   한국어 한 문장으로 적는다. 대사도 글자도 넣지 않는다 — 그림 모델은 글자를 못 쓴다.
 - camera: 다음 중 하나 — {cameras}. 고를 게 없으면 빈 문자열.
 
 규칙:
-1. **사실은 사장님 말과 가게 정보에서만 가져온다.** 가격·할인율·수량·시간은 거기 적혀 있을 때만 쓴다.
-   그 안에서 대사는 자유롭게 새로 쓴다 — 사장님 문장을 복사하지 않는다.
-2. 가게 정보에 있는 값(업종·소개)은 써도 된다. 비어 있는 칸은 쓰지 않는다.
-3. 마지막 컷은 마스코트가 손님에게 건네는 한마디로 끝낸다(참고 밈이 있으면 그 밈의 틀로).
-   주소·영업시간·가게 소개는 대사에 넣지 않는다 — 마지막 컷 그림의 입간판이 그걸 보여준다.
-   마지막 컷의 **action(그림)** 만 "가게 앞에서 …" 로 시작한다 — line(대사)엔 이 말을 넣지 않는다.
+1. **사장님이 말한 내용이 광고의 중심이다.** 말한 적 없는 사실은 지어내지 않는다.
+   가격·할인율·수량·시간은 사장님 말이나 아래 가게 정보에 적혀 있을 때만 쓴다.
+2. 가게 정보에 있는 값(업종·주소·영업시간·소개)은 그대로 써도 된다. 비어 있는 칸은 쓰지 않는다.
+3. 마지막 컷은 실제로 적혀 있는 가게 정보로 끝낸다 — 영업시간이나 가게 소개처럼.
+   적혀 있는 게 없으면 사장님이 말한 내용으로 끝낸다.
 4. 주인공은 가게 마스코트 하나다. 사람 손님은 그리지 않는다 — 손님이 필요하면 동물 손님으로 적는다.
 5. 광고 느낌(컨셉)을 대사 **말투**에 반영한다. 느낌을 설명하는 문장을 쓰지 않는다.
 6. 컷은 정확히 {n}개.
 {meme_rule}
 
 출력은 이 모양의 JSON만:
-{{"meme_template": "밈의 말 틀(자리표시는 [ ]로) — 밈이 없으면 빈 문자열",
-  "cuts": [{{"n": 1, "line": "...", "action": "...", "camera": "..."}}],
-  "meme_used": 말 틀을 실제로 대사에 쓴 밈의 id(문자열) 또는 null,
-  "meme_cuts": [틀을 쓴 컷 번호들]}}
+{{"cuts": [{{"n": 1, "line": "...", "action": "...", "camera": "..."}}], "meme_used": 실제로 반영한 밈의 id(문자열) 또는 null}}
 사장님 말이 광고로 만들 내용이 아니면(인사·잡담·되묻는 질문·"몰라" 같은 말)
 {{"cuts": [], "meme_used": null}} 로 돌려준다. 그럴 때 아무 장면이나 지어내면 사장님이 만든 적 없는 광고가 된다.
 """
 
-# 밈을 최대한 쓴다(09-22 사용자 결정 — 처음 방식으로 회귀): 말 틀을 세 컷 이상에, 마지막 컷도 밈으로.
-# "한 컷 이상"으로 두었더니 틀을 찾고도 안 썼다(5편 중 1편). 순서가 있는 밈(하겠습니다 → 안 하겠습니다)은 컷을 이어서 쓴다.
 _MEME_RULE_SELECTED = (
-    "7. **이 광고는 아래 [참고 밈]으로 만든다.** 먼저 유래·활용예시에서 말 틀(반복되는 문장 구조, 자리표시는 [ ])을 찾아 "
-    "meme_template 에 적는다. 그 틀의 자리에 이 가게의 것(빵·수량·시간·상황)을 넣은 대사를 **네 컷 중 세 컷 이상**에 쓴다. "
-    "말이 순서로 이어지는 밈(예: '하겠습니다' 다음에 '안 하겠습니다')은 그 순서대로 컷을 이어서 쓴다 — 1컷 앞말, 2컷 뒷말. "
-    "마지막 컷도 밈의 틀로 끝낸다(가게 정보는 입간판이 보여주니 대사엔 넣지 않는다). "
-    "밈 이름을 그대로 붙이는 것(예: '○○ 마늘바게트')은 쓴 게 아니다 — 틀의 문장 구조를 써야 한다. "
-    "틀을 못 찾겠으면 활용예시 문장의 어미·리듬을 그대로 따른다. 실제로 그렇게 썼을 때만 meme_used 에 id 를 적고, "
-    "meme_cuts 에 틀을 쓴 컷 번호를 적는다."
+    "7. 아래 [참고 밈]을 스토리에 자연스럽게 녹인다 — 말투나 분위기를 빌려 오되, "
+    "강제로 우겨넣어 어색해지면 안 된다. meme_used엔 그 밈의 id를 그대로 적는다."
 )
 
 
@@ -89,11 +77,10 @@ def _meme_prompt_parts(trend_meme: dict | None) -> tuple[str, str]:
     trend_meme이 없으면 둘 다 빈 문자열이다 — 프롬프트에 밈 얘기 자체가 안 들어간다."""
     if not trend_meme:
         return "", ""
-    # 자르지 않는다 — 200자로 자르면 말 틀이 뒤에 있는 밈(예: '연락없네잘살아')은 틀이 잘려 나갔다(09-22 실측).
     block = (
         f"[참고 밈: {trend_meme.get('name', '')}]\n"
-        f"유래: {(trend_meme.get('origin') or '').strip()}\n"
-        f"활용예시: {(trend_meme.get('usage_example') or '').strip() or '(없음 — 유래에서 찾는다)'}\n\n"
+        f"유래: {(trend_meme.get('origin') or '')[:200]}\n"
+        f"활용예시: {(trend_meme.get('usage_example') or '')[:200]}\n\n"
     )
     return _MEME_RULE_SELECTED, block
 
@@ -120,22 +107,21 @@ def _ask(system: str, user: str) -> dict | None:
                 "Content-Type": "application/json",
             },
             json={
-                "model": settings.story_model,
+                "model": settings.openai_model,
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
                 ],
                 "response_format": {"type": "json_object"},
-                # 0.4 에선 사장님 문장을 그대로 쪼개는 무난한 답만 나왔다(09-22 6편). 대사를 새로 쓰게 하려고 올렸다.
-                "temperature": settings.story_temperature,
+                "temperature": 0.4,
             },
             timeout=settings.openai_timeout_seconds,
         )
         response.raise_for_status()
         content = response.json()["choices"][0]["message"]["content"]
-        # 뜯어보기: 지시문 전체·보낸 내용·GPT 원문 답변 (기록 중일 때만 남는다)
+        # 뜯어보기: 지시문 전체·보낸 내용·GPT 원문 답변 (기록 중일 때만 남는다). 대사 규칙은 main 그대로.
         from app.services import trace
-        trace.step("대사 쓰기 (story_llm)", who=settings.story_model, temperature=settings.story_temperature, system=system, sent=user, output_raw=content)
+        trace.step("대사 쓰기 (story_llm)", who=settings.openai_model, temperature=0.4, system=system, sent=user, output_raw=content)
         parsed = json.loads(content)
         return parsed if isinstance(parsed, dict) else None
     except Exception as exc:  # 네트워크·인증·응답 형식 무엇이든
@@ -239,10 +225,6 @@ def plan_from_text(
         if _invents_numbers(cut_line, haystack) or _invents_numbers(action, haystack):
             logger.info("가게에 없는 숫자를 지어내 컷 구성을 버렸습니다")
             return None
-        if "[" in cut_line or "]" in cut_line:
-            # 말 틀의 자리표시("[수량]개")가 대사에 그대로 새어 나온 것(09-22 실측). 채워지지 않은 틀은 대사가 아니다.
-            logger.info("대사에 자리표시가 남아 컷 구성을 버렸습니다: %s", cut_line)
-            return None
         camera = str(c.get("camera") or "").strip()
         cuts.append({
             "n": i + 1,
@@ -257,14 +239,11 @@ def plan_from_text(
     if len(cuts) < 2:
         return None
 
-    # 예전엔 trend_meme 이 있으면 GPT 답과 무관하게 "반영했다"고 적었다 — 그래서 6편 중 대사에 밈이 없는 4편도
-    # 반영으로 기록됐다(09-22). 이제 GPT 가 "실제로 썼다"고 답했을 때만, 그리고 말 틀도 같이 남긴다.
-    template = str(parsed.get("meme_template") or "").strip()
-    said_used = bool(parsed.get("meme_used"))
-    meme_used = {"id": trend_meme["id"], "name": trend_meme.get("name", ""), "template": template} if (trend_meme and said_used) else None
+    # trend_meme이 있으면 이미 정해진 값을 그대로 쓴다(GPT의 echo를 믿을 필요가 없다).
+    # 없으면 애초에 프롬프트에 밈 얘기를 안 넣었으니 meme_used는 항상 None이다.
+    meme_used = {"id": trend_meme["id"], "name": trend_meme.get("name", "")} if trend_meme else None
 
-    meme_cuts = [int(x) for x in (parsed.get("meme_cuts") or []) if str(x).isdigit()]
-    return {"cuts": cuts, "meme_used": meme_used, "meme_template": template, "meme_cuts": meme_cuts}
+    return {"cuts": cuts, "meme_used": meme_used}
 
 
 def _invents_numbers(value: str, haystack: str) -> bool:

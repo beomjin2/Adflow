@@ -146,13 +146,14 @@ def _resolve_classification(item: dict, classified_by_id: dict, classified_suffi
     return {}
 
 
-def main() -> None:
-    init_db()
-    data = json.loads(ALL_PATH.read_text(encoding="utf-8"))
-    memes = data["memes"]
-    # "2026-09-17T17:54:15" -> "2026-09-17". 이 파일을 만든 시점이 곧 수집 기준일이다.
-    collected_at = ((data.get("_meta") or {}).get("generated_at") or "")[:10]
+def upsert_memes(memes: list[dict], collected_at: str) -> dict:
+    """밈 목록(memes_all.json의 memes 모양)을 DB에 누적 반영하고 건수를 돌려준다.
 
+    import_memes.py(파일에서 읽기)와 crawling/meme_pipeline.py(크롤링 직후) 둘 다 이걸 쓴다.
+    항목에 "_match_id"가 있으면 이름이 달라도 그 행과 같은 밈으로 본다 — 파이프라인의
+    유래 유사도(TF-IDF) 중복 판정 결과를 넘겨받는 자리다.
+    """
+    init_db()
     classified_by_id = _load_classification()
     classified_suffix_index = _gogumafarm_suffix_index(
         [uid for uid in classified_by_id if uid.startswith("gogumafarm_")]
@@ -221,7 +222,9 @@ def main() -> None:
                 )
             names = [item.get("name") or ""] + [m.get("name") or "" for m in (item.get("merged_from") or [])]
             keys = [k for k in (_meme_key(n) for n in names) if k]
-            row = next((existing_by_key[k] for k in keys if k in existing_by_key), None)
+            row = db.get(models.Meme, item["_match_id"]) if item.get("_match_id") else None
+            if row is None:
+                row = next((existing_by_key[k] for k in keys if k in existing_by_key), None)
             if row is None:
                 row = db.get(models.Meme, fields["id"])  # 이름은 달라도 id가 겹치는 경우 대비
             if row is None:
@@ -240,8 +243,18 @@ def main() -> None:
     finally:
         db.close()
 
+    return {"inserted": inserted, "updated": updated, "kept": kept, "missing_image": missing_image}
+
+
+def main() -> None:
+    data = json.loads(ALL_PATH.read_text(encoding="utf-8"))
+    memes = data["memes"]
+    # "2026-09-17T17:54:15" -> "2026-09-17". 이 파일을 만든 시점이 곧 수집 기준일이다.
+    collected_at = ((data.get("_meta") or {}).get("generated_at") or "")[:10]
+    r = upsert_memes(memes, collected_at)
     print(f"{ALL_PATH.name}: {len(memes)}건")
-    print(f"완료 — 새로 추가 {inserted}건, 갱신 {updated}건, 이번엔 없어서 그대로 둔 밈 {kept}건, 이미지 없음 {missing_image}건")
+    print(f"완료 — 새로 추가 {r['inserted']}건, 갱신 {r['updated']}건, "
+          f"이번엔 없어서 그대로 둔 밈 {r['kept']}건, 이미지 없음 {r['missing_image']}건")
 
 
 if __name__ == "__main__":

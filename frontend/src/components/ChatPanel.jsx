@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { colors, inputStyle, TAP } from '../theme.js';
 import { TextBubble, CandidatesBubble, ComicBubble, PlanBubble, ProdBubble, ConfirmBubble, OptionsBubble } from './bubbles/Bubbles.jsx';
 
@@ -13,12 +13,14 @@ export default function ChatPanel({
   comic, comicEta = 0,
   prods, onPatchProd,
   pending, onConfirm, onDecline,
-  onSuggest, onRecommendMeme,
+  onSuggest, onRecommendMeme, onReset,
   title = '',
   disclaimer = '',
   height = 430
 }) {
   const listRef = useRef(null);
+  // '처음부터'를 누르면 확인 단계로 바뀐다. 한 번에 지우지 않는다.
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     const el = listRef.current;
@@ -53,6 +55,18 @@ export default function ChatPanel({
                 스토리 제안받기
               </button>
             )}
+            {/* 되돌릴 수 없으니 한 번 더 묻는다 — 캐릭터 화면의 초기화와 같은 모양이다. */}
+            {onReset && (resetting ? (
+              <>
+                <button className="ad-btn sm" onClick={() => { setResetting(false); onReset(); }}
+                  style={{ background: colors.warnAccent, color: '#fff', border: 0 }}>전부 지울까요?</button>
+                <button className="ad-btn sec sm" onClick={() => setResetting(false)}>아니오</button>
+              </>
+            ) : (
+              <button className="ad-btn sec sm" onClick={() => setResetting(true)} disabled={thinking}>
+                처음부터
+              </button>
+            ))}
           </div>
         </div>
       )}

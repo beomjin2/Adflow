@@ -196,6 +196,7 @@ export default function Storyboard({ state, actions }) {
         onSend={actions.sendSb}
         onSuggest={actions.suggestStory}
         onRecommendMeme={actions.recommendMeme}
+        onReset={actions.resetSb}
         plan={state.plan}
         comic={state.comicCuts}
         comicEta={state.sbEta}

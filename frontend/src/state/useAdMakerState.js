@@ -485,6 +485,17 @@ export function useAdMakerState() {
   // LLM이 쓰지 않으므로(story_llm._context), 어디가 비었는지 보이는 게 중요하다.
   const toggleSbStore = useCallback(() => update((s) => ({ sbStoreOpen: !s.sbStoreOpen })), [update]);
 
+  /** 광고 대화를 처음 상태로. 대화·컷 구성·네컷이 전부 사라진다 — 꼬였을 때 빠져나갈 길이다.
+   *  트렌드에서 골라 온 밈은 백엔드가 남겨 준다(reset_chat). */
+  const resetSb = useCallback(async () => {
+    try {
+      stopPolling();
+      const cleared = await StoryboardAPI.reset();
+      update({ ...cleared, sbInput: '', sbThinking: false, savedThisAd: false });
+      toast('광고 대화를 처음 상태로 되돌렸어요');
+    } catch (e) { fail(e); }
+  }, [update, toast, fail, stopPolling]);
+
   const sendSb = useCallback(async () => {
     const text = stateRef.current.sbInput.trim();
     if (!text) return;
@@ -729,7 +740,7 @@ export function useAdMakerState() {
       saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion, autofillChar,
       confirmPending, declinePending,
       applyAd,
-      toggleSbSet, toggleSbProd, toggleSbStore, sendSb, suggestStory, recommendMeme, makeComic,
+      toggleSbSet, toggleSbProd, toggleSbStore, sendSb, resetSb, suggestStory, recommendMeme, makeComic,
       openResult, backToSb, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,

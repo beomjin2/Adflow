@@ -12,6 +12,9 @@
 #   backend/uploads/  사장님이 올린 사진
 #   backend/media/    생성된 캐릭터 그림
 #   backend/*.log
+#   crawling/naver_key.json  네이버 API 키 (저장소에 없다, 사람이 직접 둔다)
+#   crawling/logs/           크롤링 실행 기록
+#   crawling/images/ 의 기존 파일  크롤링이 받아 둔 밈 이미지 (새 파일만 더한다)
 set -euo pipefail
 
 VM=team3-vm
@@ -39,8 +42,34 @@ FRONT_TGZ="/tmp/adflow-dist-${STAMP}.tgz"
 tar -C "$REPO/frontend/dist" -czf "$FRONT_TGZ" .
 echo "   $(du -h "$FRONT_TGZ" | cut -f1)"
 
+say "2.5/5  밈 크롤링 코드 묶는 중 (crawling/*.py, memes_all.json, images/, backend/import_memes.py)"
+# 크롤링 파이프라인은 웹 서비스와 따로 도는 프로그램이라 backend/app 밖에 있다.
+CRAWL_TGZ="/tmp/adflow-crawl-${STAMP}.tgz"
+( cd "$REPO" && tar -czf "$CRAWL_TGZ" \
+    $(ls crawling/*.py) \
+    $( [ -f crawling/memes_all.json ] && echo crawling/memes_all.json ) \
+    $(git ls-files crawling/images) \
+    backend/import_memes.py )
+echo "   $(du -h "$CRAWL_TGZ" | cut -f1)"
+
 say "3/5  VM으로 전송"
-gcloud compute scp --zone="$ZONE" "$BACKEND_TGZ" "$FRONT_TGZ" "${VM}:/tmp/"
+gcloud compute scp --zone="$ZONE" "$BACKEND_TGZ" "$FRONT_TGZ" "$CRAWL_TGZ" "${VM}:/tmp/"
+
+say "3.5/5  크롤링 코드 배치 (키·실행 기록·기존 이미지는 안 건드림)"
+gcloud compute ssh "$VM" --zone="$ZONE" --command="
+set -euo pipefail
+cd ${REMOTE_BASE}
+mkdir -p crawling/images crawling/logs
+tmp=\$(mktemp -d)
+tar -xzf /tmp/$(basename "$CRAWL_TGZ") -C \$tmp
+cp \$tmp/crawling/*.py crawling/
+[ -f \$tmp/crawling/memes_all.json ] && cp \$tmp/crawling/memes_all.json crawling/
+cp -n \$tmp/crawling/images/* crawling/images/ 2>/dev/null || true
+cp \$tmp/backend/import_memes.py backend/import_memes.py
+rm -rf \$tmp
+echo '   크롤링 코드:' && ls crawling/*.py
+[ -f crawling/naver_key.json ] || echo '   [!] crawling/naver_key.json 없음 — 유행 날짜 단계만 건너뛴다'
+"
 
 say "4/5  백엔드 교체 (이전 app/ 은 app.bak-${STAMP} 로 남긴다)"
 gcloud compute ssh "$VM" --zone="$ZONE" --command="

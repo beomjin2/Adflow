@@ -24,22 +24,56 @@ function Bubble({ cut, big = false }) {
   );
 }
 
+const navBtnStyle = {
+  position: 'absolute', top: '50%', transform: 'translateY(-50%)',
+  width: 46, height: 46, borderRadius: 999, border: 0, cursor: 'pointer',
+  background: 'rgba(255,255,255,.92)', color: '#222', fontSize: 26, fontWeight: 700,
+  lineHeight: '46px', textAlign: 'center', padding: 0,
+  boxShadow: '0 2px 8px rgba(0,0,0,.35)',
+};
+
 /** 네컷 2×2. 그림은 832×1216 비율 그대로. 더블클릭(모바일은 길게 두 번 탭 대신 한 번 탭)하면
  *  컷 하나를 화면 가득 크게 본다 — 작은 미리보기에서도 대사와 그림을 확인할 수 있게. */
 export default function ComicPanels({ cuts, eta = 0, onReroll, bubbles = true, gap = 10 }) {
   const [zoom, setZoom] = useState(null); // 크게 보는 컷 번호
 
+  // 크게 보는 중엔 화살표로 컷을 넘긴다. 그릴 수 있는 컷만 돈다 — 아직 안 그려진
+  // 칸으로 넘어가면 빈 화면이 뜬다.
+  const shown = cuts.filter((c) => c.status === 'done' && c.image);
+  const at = zoom == null ? -1 : shown.findIndex((c) => c.n === zoom);
+
+  const move = (step) => {
+    if (!shown.length) return;
+    const next = (at + step + shown.length) % shown.length;
+    setZoom(shown[next].n);
+  };
+
   useEffect(() => {
     if (zoom == null) return undefined;
-    const onKey = (e) => { if (e.key === 'Escape') setZoom(null); };
+    const onKey = (e) => {
+      if (e.key === 'Escape') setZoom(null);
+      else if (e.key === 'ArrowRight') move(1);
+      else if (e.key === 'ArrowLeft') move(-1);
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [zoom]);
+  });
 
   const zoomed = zoom != null ? cuts.find((c) => c.n === zoom) : null;
 
   return (
     <>
+      {/* 만화는 순서대로 읽는 것이라, 2×2 를 눈으로 훑는 것과 한 컷씩 넘기는 건 다른 일이다.
+          더블클릭을 몰라도 눌러서 넘겨 볼 수 있게 버튼을 밖에 둔다. */}
+      {shown.length > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
+          <button onClick={() => setZoom(shown[0].n)} style={{
+            border: `1.5px solid ${colors.inputBorder}`, background: '#fff', color: colors.textSub,
+            borderRadius: 999, padding: '5px 12px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+          }}>순서대로 보기 ›</button>
+        </div>
+      )}
+
       {/* 인스타 게시물(1컷)은 한 칸짜리라 2열 그리드를 그대로 쓰면 오른쪽 절반이 빈 채로
           남는다 — 컷 수만큼만 열을 잡는다(최대 2열, 4컷만화는 기존처럼 2×2). */}
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(cuts.length, 2) || 1}, minmax(0, 1fr))`, gap }}>
@@ -100,6 +134,29 @@ export default function ComicPanels({ cuts, eta = 0, onReroll, bubbles = true, g
               position: 'absolute', left: 10, bottom: 10, background: 'rgba(0,0,0,.6)', color: '#fff',
               borderRadius: 8, padding: '3px 9px', fontSize: 12.5, fontWeight: 700,
             }}>{zoomed.n} / {cuts.length} · 닫기: 클릭 또는 Esc</span>
+
+            {/* 컷을 옆으로 넘겨 본다. 2×2 로는 한 컷을 크게 볼 때 나머지가 안 보여서,
+                만화를 순서대로 읽으려면 닫았다 다시 열어야 했다. */}
+            {shown.length > 1 && (
+              <>
+                <button onClick={(e) => { e.stopPropagation(); move(-1); }} aria-label="이전 컷"
+                  style={{ ...navBtnStyle, left: 10 }}>‹</button>
+                <button onClick={(e) => { e.stopPropagation(); move(1); }} aria-label="다음 컷"
+                  style={{ ...navBtnStyle, right: 10 }}>›</button>
+                <div onClick={(e) => e.stopPropagation()} style={{
+                  position: 'absolute', right: 10, bottom: 10, display: 'flex', gap: 6,
+                  background: 'rgba(0,0,0,.45)', borderRadius: 999, padding: '6px 9px',
+                }}>
+                  {shown.map((c) => (
+                    <button key={c.n} onClick={() => setZoom(c.n)} aria-label={`${c.n}컷`}
+                      style={{
+                        width: 9, height: 9, borderRadius: 999, border: 0, padding: 0, cursor: 'pointer',
+                        background: c.n === zoomed.n ? '#fff' : 'rgba(255,255,255,.42)',
+                      }} />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

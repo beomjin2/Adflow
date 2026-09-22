@@ -88,7 +88,7 @@ function initialState() {
     sbMsgs: [], sbInput: '', sbThinking: false,
     plan: [], sbSetOpen: false, sbProdOpen: false, sbStoreOpen: false, pending: {},
     // 컷을 손으로 고치는 중인가. 캐릭터 시트의 charInfoReadOnly 와 같은 규칙이다.
-    planReadOnly: true,
+    planReadOnly: true, planSaving: false,
     // 네컷 그림 칸과 진행 상태 — 캐릭터 후보와 같은 규칙(status: empty|generating|done|failed)
     comicCuts: [], sbGenerating: false, sbEta: 0,
     // "보관함에 저장"을 한 번 누르면 같은 구성으로 또 눌러도 중복 저장 안 되게 잠근다.
@@ -300,8 +300,13 @@ export function useAdMakerState() {
    *  캐릭터가 확정된 뒤에만 열리므로 다시 안 막아도 된다. */
   const openAdEntry = useCallback(() => {
     if (adLocked) { toast('캐릭터를 먼저 확정해주세요'); return; }
+    // 하던 광고가 있으면 묻지 않고 그 대화로 돌아간다. 트렌드를 참고할지는 **광고를
+    // 새로 시작할 때** 정하는 것이지, 하던 얘기를 이어갈 때 또 물을 일이 아니다.
+    // 다시 정하고 싶으면 대화창의 "처음부터"나 "설정 바꾸기"로 가면 된다.
+    const s = stateRef.current;
+    if ((s.sbMsgs || []).length || (s.plan || []).length) { go('sb'); return; }
     update({ adEntryOpen: true });
-  }, [adLocked, toast, update]);
+  }, [adLocked, toast, update, go]);
   const closeAdEntry = useCallback(() => update({ adEntryOpen: false }), [update]);
   const pickAdEntryTrend = useCallback(() => { update({ adEntryOpen: false }); goTrend(); }, [update, goTrend]);
   /** "트렌드 없이 바로 만들기" — 이전에 트렌드에서 밈을 고른 적이 있어도(trendSel) 이번엔
@@ -513,14 +518,21 @@ export function useAdMakerState() {
       update({ planReadOnly: false });
       return;
     }
+    // 저장 중에 또 누르면 PUT 이 두 번 나간다(09-22 로그에 1초 간격으로 두 번 찍혔다).
+    // 캡션 GPT 도 두 번 돌고, 느린 쪽 응답이 나중에 도착하면 방금 저장한 걸 덮어쓴다.
+    if (s.planSaving) return;
+    update({ planSaving: true });
     try {
       const cuts = (s.plan || []).map((c) => ({
         n: c.n, line: c.line || '', action: c.action || '', camera: c.camera || '',
       }));
       const sb = await StoryboardAPI.updatePlan(cuts);
-      update({ ...sb, planReadOnly: true });
+      update({ ...sb, planReadOnly: true, planSaving: false });
       toast('컷을 저장했어요');
-    } catch (e) { fail(e); }
+    } catch (e) {
+      update({ planSaving: false });
+      fail(e);
+    }
   }, [update, toast, fail]);
 
   const sendSb = useCallback(async () => {

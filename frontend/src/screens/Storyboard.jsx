@@ -224,8 +224,9 @@ export default function Storyboard({ state, actions }) {
             </span>
             {/* 캐릭터 시트의 "수정하기 / 수정 완료"와 같은 토글이다. */}
             {state.plan.length > 0 && (
-              <button className="ad-btn ghost xs" onClick={actions.togglePlanEdit}>
-                {editing ? '수정 완료' : '수정하기'}
+              <button className="ad-btn ghost xs" onClick={actions.togglePlanEdit}
+                disabled={state.planSaving}>
+                {state.planSaving ? '저장 중…' : editing ? '수정 완료' : '수정하기'}
               </button>
             )}
           </div>

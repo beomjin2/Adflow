@@ -95,7 +95,7 @@ function initialState() {
     // 네컷을 새로 그리면(makeComic) 그건 다른 구성이니 다시 저장할 수 있게 풀어준다.
     savedThisAd: false,
 
-    myTab: 'history', history: [],
+    myTab: 'history', history: [], mascots: [],
     // Result 화면이 "새로 만든 광고 끝"인지 "보관함에서 옛 항목을 보는 중"인지 구분한다 —
     // 후자면 "이대로 저장"을 보여주지 않는다(이미 저장된 걸 또 저장하면 중복이 생긴다).
     viewingHistory: false,
@@ -431,6 +431,29 @@ export function useAdMakerState() {
   }, [runGenerating]);
 
   /** 대화가 꼬였을 때 캐릭터만 처음 상태로. 가게 정보나 생산 기록은 건드리지 않는다. */
+  /** 마스코트 보관소 — 화면에 들어올 때마다 다시 받는다. 확정하면 늘어나기 때문이다. */
+  const loadMascots = useCallback(async () => {
+    try { update({ mascots: await CharacterAPI.listMascots() }); } catch (e) { fail(e); }
+  }, [update, fail]);
+
+  /** 보관소의 마스코트를 지금 쓰는 캐릭터로 불러온다. 원본은 보관소에 그대로 남는다. */
+  const useMascot = useCallback(async (id) => {
+    try {
+      const c = await CharacterAPI.useMascot(id);
+      update({ ...c, charInfoReadOnly: true });
+      toast('불러왔어요 — 대화로 고칠 수 있어요');
+      go('char');
+    } catch (e) { fail(e); }
+  }, [update, toast, fail, go]);
+
+  const deleteMascot = useCallback(async (id) => {
+    try {
+      await CharacterAPI.deleteMascot(id);
+      update((s) => ({ mascots: (s.mascots || []).filter((m) => m.id !== id) }));
+      toast('보관소에서 지웠어요');
+    } catch (e) { fail(e); }
+  }, [update, toast, fail]);
+
   const resetChar = useCallback(async () => {
     try {
       stopPolling();
@@ -652,6 +675,11 @@ export function useAdMakerState() {
   }, [update, toast, fail]);
 
   // ---------- 마이 / 생산기록 ----------
+  const myMascots = useCallback(() => {
+    update({ myTab: 'mascot', notifOpen: false });
+    loadMascots();
+  }, [update, loadMascots]);
+
   const myHistory = useCallback(() => update({ myTab: 'history', notifOpen: false }), [update]);
   const myStoreTab = useCallback(() => go('myStore'), [go]);
   const myChar = useCallback(() => {
@@ -791,7 +819,7 @@ export function useAdMakerState() {
       toggleSbSet, toggleSbProd, toggleSbStore, sendSb, resetSb, suggestStory, recommendMeme, makeComic,
       setPlanCut, togglePlanEdit, rerollCut,
       openResult, backToSb, download,
-      myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
+      myHistory, myMascots, loadMascots, useMascot, deleteMascot, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,
       exportData, importFile,
     },

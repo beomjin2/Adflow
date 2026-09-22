@@ -844,6 +844,44 @@ def reset_character(db: Session = Depends(get_db)):
     return _out(char, db)
 
 
+def _archive_mascot(char, db: Session) -> None:
+    """확정한 마스코트를 보관소에 한 장 남긴다.
+
+    `character` 는 행 하나라 새로 만들면 이전 것이 덮어써진다. 여기서 사본을
+    떠 두지 않으면 공들여 만든 마스코트를 되찾을 길이 없다.
+
+    같은 내용을 두 번 쌓지 않는다 — 확정을 다시 눌러도(시트를 고치고 재확정)
+    시트와 고른 그림이 그대로면 새 장을 안 만든다.
+    """
+    cands = list(char.candidates or [])
+    i = char.selected_index if char.selected_index is not None else -1
+    image = (cands[i] or {}).get("image", "") if 0 <= i < len(cands) else ""
+    # 🔴 퍼스널 키워드도 같이 담는다. ORDER 에는 없지만 _require_full_sheet 는 그 칸도
+    # 본다 — 안 담으면 불러온 뒤 "퍼스널 키워드가 남았다"며 재확정이 막힌다(실측).
+    snapshot = {f: sheet.value_of(char, f) for f in sheet.ORDER}
+    snapshot[sheet.KEYWORDS_FIELD] = list(char.keywords or [])
+
+    last = db.query(models.Mascot).order_by(models.Mascot.id.desc()).first()
+    if last and last.sheet == snapshot and last.image == image:
+        return
+
+    db.add(models.Mascot(
+        name=char.name or "",
+        sheet=snapshot,
+        image=image,
+        candidates=cands,
+        selected_index=i,
+        created_at=_kst_now_text(),
+    ))
+
+
+def _kst_now_text() -> str:
+    """보관 시각. 서버는 UTC라 그냥 now()를 쓰면 한국 시간 오전 9시 전에 날짜가
+    하루 밀린다(storyboard._kst_now 와 같은 이유)."""
+    from datetime import datetime, timedelta, timezone
+    return datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M")
+
+
 @router.post("/confirm", response_model=schemas.CharacterOut)
 def confirm_character(db: Session = Depends(get_db)):
     char = _get(db)
@@ -851,4 +889,53 @@ def confirm_character(db: Session = Depends(get_db)):
     if char.selected_index < 0:
         raise HTTPException(400, "마음에 드는 그림을 먼저 골라주세요")
     char.confirmed = True
+    _archive_mascot(char, db)
     return _out(char, db)
+
+
+@router.get("/mascots", response_model=list[schemas.MascotOut])
+def list_mascots(db: Session = Depends(get_db)):
+    """보관소의 마스코트 목록. 최근 것부터."""
+    return db.query(models.Mascot).order_by(models.Mascot.id.desc()).all()
+
+
+@router.post("/mascots/{mascot_id}/use", response_model=schemas.CharacterOut)
+def use_mascot(mascot_id: int, db: Session = Depends(get_db)):
+    """보관소의 마스코트를 **지금 쓰는 캐릭터로 불러온다.** 불러온 뒤 대화로 고칠 수 있다.
+
+    보관소의 원본은 그대로 둔다 — 불러와서 고쳐도 지난 마스코트가 바뀌지 않는다.
+    고친 것을 다시 확정하면 그때 새 장으로 쌓인다(_archive_mascot).
+
+    확정 상태로 불러온다. 이미 그림까지 고른 마스코트라 다시 고르라고 할 이유가 없다.
+    """
+    m = db.get(models.Mascot, mascot_id)
+    if not m:
+        raise HTTPException(404, "그 마스코트가 없어요")
+
+    char = _get(db)
+    for field in sheet.ORDER:
+        setattr(char, field, (m.sheet or {}).get(field, "") or "")
+    kw = (m.sheet or {}).get(sheet.KEYWORDS_FIELD) or []
+    # 옛 장은 키워드를 안 담았거나 쉼표 문자열로 담았을 수 있다.
+    char.keywords = kw if isinstance(kw, list) else [k.strip() for k in str(kw).split(",") if k.strip()]
+    char.candidates = list(m.candidates or [])
+    char.selected_index = m.selected_index if m.selected_index is not None else -1
+    char.confirmed = True
+    char.editing = ""
+    char.pending = {}
+    messages = list(char.messages or [])
+    _say(messages, f"보관소에서 '{m.name or '마스코트'}'를 불러왔어요. "
+                   "고치고 싶은 곳이 있으면 말씀해주세요.")
+    char.messages = messages
+    return _out(char, db)
+
+
+@router.delete("/mascots/{mascot_id}")
+def delete_mascot(mascot_id: int, db: Session = Depends(get_db)):
+    """보관소에서 한 장 지운다. 그림 파일은 안 지운다 — 다른 광고가 쓰고 있을 수 있다."""
+    m = db.get(models.Mascot, mascot_id)
+    if not m:
+        raise HTTPException(404, "그 마스코트가 없어요")
+    db.delete(m)
+    db.commit()
+    return {"ok": True}

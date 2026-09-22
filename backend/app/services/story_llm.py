@@ -54,7 +54,7 @@ _PLAN_SYSTEM = """\
 1. **사실은 사장님 말과 가게 정보에서만 가져온다.** 가격·할인율·수량·시간은 거기 적혀 있을 때만 쓴다.
    그 안에서 대사는 자유롭게 새로 쓴다 — 사장님 문장을 복사하지 않는다.
 2. 가게 정보에 있는 값(업종·소개)은 써도 된다. 비어 있는 칸은 쓰지 않는다.
-3. 마지막 컷은 마스코트가 손님에게 건네는 한마디로 끝낸다.
+3. 마지막 컷은 마스코트가 손님에게 건네는 한마디로 끝낸다(참고 밈이 있으면 그 밈의 틀로).
    주소·영업시간·가게 소개는 대사에 넣지 않는다 — 마지막 컷 그림의 입간판이 그걸 보여준다.
    마지막 컷의 **action(그림)** 만 "가게 앞에서 …" 로 시작한다 — line(대사)엔 이 말을 넣지 않는다.
 4. 주인공은 가게 마스코트 하나다. 사람 손님은 그리지 않는다 — 손님이 필요하면 동물 손님으로 적는다.
@@ -65,16 +65,22 @@ _PLAN_SYSTEM = """\
 출력은 이 모양의 JSON만:
 {{"meme_template": "밈의 말 틀(자리표시는 [ ]로) — 밈이 없으면 빈 문자열",
   "cuts": [{{"n": 1, "line": "...", "action": "...", "camera": "..."}}],
-  "meme_used": 말 틀을 실제로 대사에 쓴 밈의 id(문자열) 또는 null}}
+  "meme_used": 말 틀을 실제로 대사에 쓴 밈의 id(문자열) 또는 null,
+  "meme_cuts": [틀을 쓴 컷 번호들]}}
 사장님 말이 광고로 만들 내용이 아니면(인사·잡담·되묻는 질문·"몰라" 같은 말)
 {{"cuts": [], "meme_used": null}} 로 돌려준다. 그럴 때 아무 장면이나 지어내면 사장님이 만든 적 없는 광고가 된다.
 """
 
+# 밈을 최대한 쓴다(09-22 사용자 결정 — 처음 방식으로 회귀): 말 틀을 세 컷 이상에, 마지막 컷도 밈으로.
+# "한 컷 이상"으로 두었더니 틀을 찾고도 안 썼다(5편 중 1편). 순서가 있는 밈(하겠습니다 → 안 하겠습니다)은 컷을 이어서 쓴다.
 _MEME_RULE_SELECTED = (
-    "7. 아래 [참고 밈]을 쓴다 — 먼저 유래·활용예시에서 **말 틀**(반복되는 문장 구조, 자리표시는 [ ])을 찾아 "
-    "meme_template 에 적고, 그 틀의 자리에 이 가게의 것(빵·수량·시간·상황)을 넣은 대사를 **한 컷 이상** 만든다. "
-    "밈 이름을 그대로 붙이는 것(예: '○○ 마늘바게트')은 쓴 게 아니다. 틀을 못 찾겠으면 활용예시 문장의 어미·리듬을 그대로 따른다. "
-    "실제로 그렇게 썼을 때만 meme_used 에 id 를 적는다."
+    "7. **이 광고는 아래 [참고 밈]으로 만든다.** 먼저 유래·활용예시에서 말 틀(반복되는 문장 구조, 자리표시는 [ ])을 찾아 "
+    "meme_template 에 적는다. 그 틀의 자리에 이 가게의 것(빵·수량·시간·상황)을 넣은 대사를 **네 컷 중 세 컷 이상**에 쓴다. "
+    "말이 순서로 이어지는 밈(예: '하겠습니다' 다음에 '안 하겠습니다')은 그 순서대로 컷을 이어서 쓴다 — 1컷 앞말, 2컷 뒷말. "
+    "마지막 컷도 밈의 틀로 끝낸다(가게 정보는 입간판이 보여주니 대사엔 넣지 않는다). "
+    "밈 이름을 그대로 붙이는 것(예: '○○ 마늘바게트')은 쓴 게 아니다 — 틀의 문장 구조를 써야 한다. "
+    "틀을 못 찾겠으면 활용예시 문장의 어미·리듬을 그대로 따른다. 실제로 그렇게 썼을 때만 meme_used 에 id 를 적고, "
+    "meme_cuts 에 틀을 쓴 컷 번호를 적는다."
 )
 
 
@@ -114,7 +120,7 @@ def _ask(system: str, user: str) -> dict | None:
                 "Content-Type": "application/json",
             },
             json={
-                "model": settings.openai_model,
+                "model": settings.story_model,
                 "messages": [
                     {"role": "system", "content": system},
                     {"role": "user", "content": user},
@@ -129,7 +135,7 @@ def _ask(system: str, user: str) -> dict | None:
         content = response.json()["choices"][0]["message"]["content"]
         # 뜯어보기: 지시문 전체·보낸 내용·GPT 원문 답변 (기록 중일 때만 남는다)
         from app.services import trace
-        trace.step("대사 쓰기 (story_llm)", who=settings.openai_model, temperature=settings.story_temperature, system=system, sent=user, output_raw=content)
+        trace.step("대사 쓰기 (story_llm)", who=settings.story_model, temperature=settings.story_temperature, system=system, sent=user, output_raw=content)
         parsed = json.loads(content)
         return parsed if isinstance(parsed, dict) else None
     except Exception as exc:  # 네트워크·인증·응답 형식 무엇이든
@@ -257,7 +263,8 @@ def plan_from_text(
     said_used = bool(parsed.get("meme_used"))
     meme_used = {"id": trend_meme["id"], "name": trend_meme.get("name", ""), "template": template} if (trend_meme and said_used) else None
 
-    return {"cuts": cuts, "meme_used": meme_used, "meme_template": template}
+    meme_cuts = [int(x) for x in (parsed.get("meme_cuts") or []) if str(x).isdigit()]
+    return {"cuts": cuts, "meme_used": meme_used, "meme_template": template, "meme_cuts": meme_cuts}
 
 
 def _invents_numbers(value: str, haystack: str) -> bool:

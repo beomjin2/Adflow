@@ -272,6 +272,151 @@ def _invents_numbers(value: str, haystack: str) -> bool:
     return False
 
 
+_RECORD_SYSTEM = """\
+너는 동네 가게 사장님의 말에서 **생산 기록**만 뽑아낸다.
+생산 기록이란 "무엇을 몇 개 만들었다"는 **이미 일어난 사실**이다.
+
+이 모양의 JSON만 돌려준다:
+{"name": "품목 이름", "qty": "숫자만", "when": "today" 또는 "yesterday" 또는 ""}
+
+규칙:
+1. **품목 이름은 사장님 말에 나온 글자 그대로 쓴다.** 다듬거나 바꾸지 않는다.
+2. 수량을 말하지 않았으면 qty는 빈 문자열이다. **숫자를 지어내지 않는다.**
+3. "오늘"이면 today, "어제"면 yesterday, 아무 말 없으면 빈 문자열.
+4. 만들었다는 말이 아니면 {"name": ""} 로 돌려준다. 이것들은 생산 기록이 **아니다**:
+   · 계획·질문 — "소금빵 만들까?", "내일 마카롱 구울까 해요"
+   · 감상·소개 — "소금빵 맛있어요", "우리는 소금빵이 유명해요"
+   · 판매·안내 — "소금빵 팔아요", "소금빵 3000원이에요"
+   이것들은 생산 기록이 **맞다**:
+   · "소금빵 50개 구웠어요", "오늘 마카롱 20개 만들었어", "어제 식빵 다 구웠다"
+"""
+
+
+def extract_record(text: str) -> dict | None:
+    """사장님 말에서 생산 기록을 뽑는다. 없으면 None.
+
+    🔴 **여기서 지어내면 사장님이 만든 적 없는 기록이 DB에 남는다.** 프롬프트로
+    부탁만 하지 않고, 모델이 준 값이 사장님 말에 실제로 있는지 아래에서 다시 확인한다
+    (`_invents_numbers`와 같은 태도 — 프롬프트는 부탁이고 여기가 보장이다).
+
+    · 품목 이름이 사장님 말에 글자 그대로 없으면 버린다.
+    · 수량이 사장님 말에 없는 숫자면 수량만 버린다(기록 자체는 살린다).
+
+    실패해도 된다 — 키가 없거나 응답이 이상하면 None이고, 대화는 그대로 이어진다.
+    """
+    if not available() or not (text or "").strip():
+        return None
+    parsed = _ask(_RECORD_SYSTEM, text.strip())
+    if not parsed:
+        return None
+
+    name = str(parsed.get("name") or "").strip()
+    if not name or name not in text:
+        # 사장님이 안 쓴 품목이다. 모델이 다듬었거나 지어낸 것 — 받지 않는다.
+        return None
+
+    qty = re.sub(r"[^0-9]", "", str(parsed.get("qty") or ""))
+    if qty and qty not in re.sub(r"[^0-9]", "", text):
+        logger.info("사장님 말에 없는 수량이라 수량만 버립니다")
+        qty = ""
+
+    when = str(parsed.get("when") or "").strip()
+    return {"name": name, "qty": qty, "when": when if when in ("today", "yesterday") else ""}
+
+
+# 대화로 고칠 수 있는 가게 칸. hours는 없다 — open_time/close_time/closed_days로
+# 서버가 계산하는 표시용 문자열이라(store._format_hours) 직접 쓰면 다음 저장에 덮어써진다.
+STORE_FIELDS = {
+    "category": "업종",
+    "address": "주소",
+    "open_time": "여는 시각",
+    "close_time": "닫는 시각",
+    "closed_days": "휴무일",
+    "desc": "가게 소개",
+}
+_DAYS = ("월", "화", "수", "목", "금", "토", "일")
+_HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
+
+_STORE_EDIT_SYSTEM = """\
+너는 동네 가게 사장님의 말에서 **가게 등록 정보를 고쳐 달라는 요청**만 뽑아낸다.
+
+고칠 수 있는 칸은 이것뿐이다:
+  category     업종
+  address      주소
+  open_time    여는 시각 — "HH:MM" 24시간
+  close_time   닫는 시각 — "HH:MM" 24시간
+  closed_days  휴무일 — ["월","화"] 같은 요일 목록. 쉬는 날이 없으면 []
+  desc         가게 소개
+
+이 모양의 JSON만 돌려준다:
+{"fields": {"open_time": "09:00"}, "quote": "9시에 열어"}
+
+규칙:
+1. **사장님이 바꿔 달라고 말한 칸만 넣는다.** 말하지 않은 칸은 넣지 않는다.
+2. quote는 그렇게 판단한 근거가 된 **사장님 말 그대로의 조각**이다.
+   한 글자도 바꾸지 말고 원문에서 잘라 넣는다.
+3. 시각은 24시간 "HH:MM"으로 적는다 — "9시"는 "09:00", "저녁 8시"는 "20:00".
+4. 가게 정보를 고치라는 말이 아니면 {"fields": {}} 로 돌려준다.
+   **광고·스토리를 만들어 달라는 말은 여기 해당하지 않는다.**
+   · "영업시간을 알리고 싶어" — 광고 얘기다. {"fields": {}}
+   · "오픈시간 9시로 바꿔줘" — 가게 정보 수정이다.
+"""
+
+
+def extract_store_edit(text: str) -> dict | None:
+    """사장님 말에서 "가게 정보를 이렇게 바꿔 달라"를 뽑는다. 없으면 None.
+
+    돌려주는 모양: {"fields": {칸: 값}, "basis": [{"label","quote"}]}
+
+    🔴 **가게 정보는 덮어쓰기다.** 생산 기록은 한 줄 더하는 것이라 틀려도 지우면
+    그만이지만, 여기는 사장님이 적어 둔 값이 사라진다. 그래서 두 겹으로 막는다:
+    · 여기서 값의 모양을 검사하고(시각 HH:MM·요일 목록), 근거가 된 사장님 말이
+      실제로 원문에 있는지 확인한다. 없으면 통째로 버린다.
+    · 호출부는 before→after를 보여주고 승인받는다(라우터의 `_offer_store_edit`).
+    """
+    if not available() or not (text or "").strip():
+        return None
+    parsed = _ask(_STORE_EDIT_SYSTEM, text.strip())
+    if not parsed:
+        return None
+
+    raw = parsed.get("fields")
+    if not isinstance(raw, dict) or not raw:
+        return None
+
+    quote = str(parsed.get("quote") or "").strip()
+    if not quote or quote not in text:
+        # 사장님이 한 적 없는 말을 근거로 댔다. 값도 믿을 수 없다.
+        logger.info("가게 정보 수정 제안의 근거가 원문에 없어 버립니다")
+        return None
+
+    fields: dict = {}
+    for key, value in raw.items():
+        if key not in STORE_FIELDS:
+            continue
+        if key == "closed_days":
+            if not isinstance(value, list):
+                continue
+            days = [d for d in (str(x).strip() for x in value) if d in _DAYS]
+            if len(days) != len(value):
+                continue  # 요일이 아닌 게 섞였다 — 통째로 버린다
+            fields[key] = days
+        elif key in ("open_time", "close_time"):
+            v = str(value).strip()
+            if not _HHMM.match(v):
+                continue
+            fields[key] = v
+        else:
+            v = str(value).strip()
+            if not v or len(v) > 200:
+                continue
+            fields[key] = v
+
+    if not fields:
+        return None
+    return {"fields": fields, "basis": [{"label": "사장님 말", "quote": quote}]}
+
+
 _CAPTION_SYSTEM = """\
 너는 한국 동네 가게 사장님의 인스타그램 게시물 캡션을 써주는 카피라이터다.
 사장님이 이미 확정한 광고 컷 내용을 재료로, 인스타에 그대로 올릴 캡션 하나를 쓴다.

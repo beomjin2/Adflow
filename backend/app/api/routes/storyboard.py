@@ -104,6 +104,21 @@ def reset_storyboard(db: Session, trend_meme_id: str | None = None) -> models.St
     return sb
 
 
+def set_trend_meme(db: Session, trend_meme_id: str | None) -> models.Storyboard:
+    """대화는 그대로 두고 참고할 밈만 바꾼다.
+
+    `reset_storyboard`와 짝이다. 광고 설정을 다시 확정해도 **컷 수가 그대로면 대화를
+    지우지 않는다**(ad.apply_ad 참고) — 그때 밈만 맞춰 넣으려고 따로 뒀다.
+    """
+    sb = _get(db)
+    sb.trend_meme_id = trend_meme_id or ""
+    meme = db.get(models.Meme, trend_meme_id) if trend_meme_id else None
+    sb.trend_meme_name = meme.meme_name if meme else ""
+    db.commit()
+    db.refresh(sb)
+    return sb
+
+
 def _cuts_from_text(text: str) -> list[dict]:
     """사장님이 쓴 문장을 컷으로 쪼갠다. 한 문장이면 한 컷이다."""
     parts = [p.strip() for p in _SPLIT_RE.split(text or "")]

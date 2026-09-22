@@ -8,6 +8,24 @@ const POLL_MS = 3000;
 /** 안전장치 — 백엔드가 영영 끝났다고 말해주지 않아도 25분이면 폴링을 멈춘다. */
 const POLL_MAX_TICKS = 500;
 
+/** 새로고침해도 마지막 화면을 유지하려고 화면 위치(screen·stack)만 세션에 잠깐 적어 둔다.
+ *  데이터는 전부 백엔드에 있으니 여기엔 "어디 있었는지"만 남긴다 — 탭을 닫으면 사라져도 된다. */
+const SCREEN_NAV_KEY = 'adflow.nav';
+
+function loadScreenNav() {
+  try {
+    const raw = sessionStorage.getItem(SCREEN_NAV_KEY);
+    if (!raw) return { screen: 'home', stack: [] };
+    const parsed = JSON.parse(raw);
+    return {
+      screen: typeof parsed.screen === 'string' ? parsed.screen : 'home',
+      stack: Array.isArray(parsed.stack) ? parsed.stack : [],
+    };
+  } catch {
+    return { screen: 'home', stack: [] };
+  }
+}
+
 /** 오늘 날짜(YYYY-MM-DD). toISOString()은 UTC라서 한국 시간 오전 9시 전에는 어제가 나온다 —
  *  새벽에 만든 걸 기록하는 가게가 많아서 그대로 쓰면 하루씩 밀린다. */
 function today() {
@@ -31,8 +49,7 @@ function sheetFields(s) {
  *  히스토리·내보내기에 그대로 섞인다. */
 function initialState() {
   return {
-    screen: 'home',
-    stack: [],
+    ...loadScreenNav(),
     toast: '',
     loading: true,
     loadError: '',
@@ -155,6 +172,15 @@ export function useAdMakerState() {
     stopPolling();
     if (toastTimer.current) clearTimeout(toastTimer.current);
   }, [stopPolling]);
+
+  // 새로고침해도 마지막 화면을 유지한다 — 데이터는 아래 "처음 불러오기"가 다시 채운다.
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(SCREEN_NAV_KEY, JSON.stringify({ screen: state.screen, stack: state.stack }));
+    } catch {
+      // 세션 저장을 못 써도(사생활 보호 모드 등) 화면 이동 자체는 그대로 동작해야 한다.
+    }
+  }, [state.screen, state.stack]);
 
   /** 생성을 시작시키는 요청들의 공통 처리 — 응답을 반영하고, 그리는 중이면 폴링을 켠다. */
   const runGenerating = useCallback(async (call) => {
@@ -494,17 +520,17 @@ export function useAdMakerState() {
     } catch (e) { fail(e); }
   }, [update, startPolling, fail]);
 
-  const rerollCut = useCallback(async (n) => {
-    try {
-      const sb = await StoryboardAPI.rerollCut(n);
-      update(sb);
-      if (sb.sbGenerating) startPolling();
-    } catch (e) { fail(e); }
-  }, [update, startPolling, fail]);
-
   // ---------- 결과 / 저장 ----------
   const openResult = useCallback(() => {
-    if (!stateRef.current.plan.length) { toast('먼저 대화로 컷 구성을 만들어주세요'); return; }
+    const s = stateRef.current;
+    if (!s.plan.length) { toast('먼저 대화로 컷 구성을 만들어주세요'); return; }
+    // 4컷만화는 그림이 광고의 핵심이라 "네컷 그리기"를 먼저 끝내야 한다. 인스타 게시물은
+    // 문구만으로도 올릴 수 있는 형식이라 그림을 요구하지 않는다.
+    if (s.adType === '4컷만화') {
+      const cuts = s.comicCuts || [];
+      const ready = cuts.length >= s.plan.length && cuts.every((c) => c.status === 'done');
+      if (!ready) { toast('먼저 네컷 그리기를 끝내주세요'); return; }
+    }
     // 히스토리에서 옛 항목을 봤을 때(viewingHistory) 켜둔 값이 남아있을 수 있으니,
     // 새로 만드는 흐름으로 들어올 땐 항상 꺼둔다 — "이대로 저장" 버튼이 이 값으로 갈린다.
     update({ viewingHistory: false });
@@ -673,7 +699,7 @@ export function useAdMakerState() {
       saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion, autofillChar,
       confirmPending, declinePending,
       applyAd,
-      toggleSbSet, toggleSbProd, sendSb, suggestStory, makeComic, rerollCut,
+      toggleSbSet, toggleSbProd, sendSb, suggestStory, makeComic,
       openResult, backToSb, confirmResult, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,

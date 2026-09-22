@@ -23,6 +23,21 @@ function Accordion({ open, onToggle, label, pill, pillTone = '', children }) {
   );
 }
 
+/** 가게 정보 한 줄. 값이 없으면 "비어 있음"을 눈에 띄게 보여준다 — 빈 칸은 광고에
+ *  안 쓰이기 때문이다(backend/app/services/story_llm.py `_context`가 빈 칸을
+ *  "(비어 있음 — 쓰지 말 것)"으로 넘긴다). 어디가 비었는지 보이는 게 이 줄의 목적이다. */
+function StoreRow({ label, value }) {
+  const filled = String(value ?? '').trim();
+  return (
+    <div className="ad-row" style={{ fontSize: 14.5, alignItems: 'center' }}>
+      <span style={{ flex: 'none', minWidth: 60, color: 'var(--sub)' }}>{label}</span>
+      {filled
+        ? <b style={{ fontWeight: 600 }}>{filled}</b>
+        : <span className="ad-pill warn">비어 있음</span>}
+    </div>
+  );
+}
+
 /** 3단계 — 대화로 컷 구성을 만든다.
  *
  *  개선안(claude.ai/design 프로젝트 bdf26dfe, `app/screens-flow.js` 의 `/storyboard`)
@@ -36,6 +51,15 @@ function Accordion({ open, onToggle, label, pill, pillTone = '', children }) {
  */
 export default function Storyboard({ state, actions }) {
   const missingProds = state.prods.filter((p) => !p.soldOut);
+  // 오픈·마감 시각이 따로 등록돼 있으면 그걸 보여준다. 아니면 저장된 영업시간 문장을 쓴다.
+  const storeHours = (state.storeOpenTime && state.storeCloseTime)
+    ? `${state.storeOpenTime} ~ ${state.storeCloseTime}`
+    : (state.storeHours || '');
+  // 비어 있는 칸은 광고에 안 쓰인다. 어디가 비었는지 접힌 상태에서도 보이게 센다.
+  const storeEmpty = [
+    ['영업시간', storeHours], ['업종', state.storeCategory],
+    ['주소', state.storeAddress], ['소개', state.storeDesc],
+  ].filter(([, v]) => !String(v ?? '').trim()).map(([k]) => k);
   const sbSummary = [state.adType, state.adConcept, state.charName].filter(Boolean).join(' · ') || '아직 안 정함';
   // 4컷만화는 그림이 광고의 핵심이라 "네컷 그리기"를 먼저 끝내야 다음으로 넘어갈 수 있다.
   // 인스타 게시물은 문구만으로도 올릴 수 있는 형식이라 그림을 요구하지 않는다(openResult와 같은 규칙).
@@ -84,6 +108,29 @@ export default function Storyboard({ state, actions }) {
                     : <button className="ad-pill warn" onClick={actions.openProdTab} style={{ cursor: 'pointer' }}>매진 시각 입력</button>}
                 </div>
               ))}
+            </Accordion>
+
+            <Accordion
+              open={state.sbStoreOpen} onToggle={actions.toggleSbStore} label="가게 정보"
+              pillTone={storeEmpty.length ? 'warn' : ''}
+              pill={storeEmpty.length ? `빈 칸 ${storeEmpty.length}` : (storeHours || '등록됨')}
+            >
+              <div className="ad-row" style={{ alignItems: 'center' }}>
+                <span className="ad-hint">
+                  {storeEmpty.length
+                    ? `비어 있는 칸 — ${storeEmpty.join('·')}. 빈 칸은 광고 문구에 안 쓰여요.`
+                    : '광고 문구에 이 값들이 그대로 쓰여요.'}
+                </span>
+                <span className="ad-grow" />
+                <button className="ad-btn ghost xs" onClick={actions.goStore}>
+                  가게 정보 수정 ›
+                </button>
+              </div>
+              <StoreRow label="영업시간" value={storeHours} />
+              <StoreRow label="휴무일" value={state.storeClosedDays?.length ? state.storeClosedDays.join(' · ') : ''} />
+              <StoreRow label="업종" value={state.storeCategory} />
+              <StoreRow label="주소" value={state.storeAddress} />
+              <StoreRow label="소개" value={state.storeDesc} />
             </Accordion>
           </div>
 

@@ -69,7 +69,7 @@ function initialState() {
     trendRecommendPopupOpen: false,
 
     sbMsgs: [], sbInput: '', sbThinking: false,
-    plan: [], sbProdLogged: false, sbSetOpen: false, sbProdOpen: false, pending: {},
+    plan: [], sbSetOpen: false, sbProdOpen: false, pending: {},
     // 네컷 그림 칸과 진행 상태 — 캐릭터 후보와 같은 규칙(status: empty|generating|done|failed)
     comicCuts: [], sbGenerating: false, sbEta: 0,
     // "보관함에 저장"을 한 번 누르면 같은 구성으로 또 눌러도 중복 저장 안 되게 잠근다.

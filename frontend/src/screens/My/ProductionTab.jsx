@@ -80,7 +80,7 @@ export default function ProductionTab({ state, actions }) {
       </div>
       {state.prods.length === 0 ? (
         <div style={{ border: `1px dashed ${colors.inputBorder}`, borderRadius: 16, padding: 32, textAlign: 'center', fontSize: 14, color: colors.textFaint, lineHeight: '22px' }}>
-          아직 기록이 없어요.<br />위에서 적거나, 광고 만들기 대화에서 말씀하시면 자동으로 남아요.
+          아직 기록이 없어요.<br />위에서 적어주세요.
         </div>
       ) : groupByDate(state.prods).map(([dateKey, list]) => {
         const missingCount = list.filter(p => !p.soldOut).length;

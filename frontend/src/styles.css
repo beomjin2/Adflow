@@ -235,7 +235,7 @@ summary.ad-acc-sum::marker{content:''}
 /* 그래서 바닥값도 왼쪽 열이 진다 — 대화창은 이제 행 높이를 못 정한다.
    밈 카드 섹션을 걷어내면서 왼쪽 열 내용이 짧아져 대화창도 따라 짧아졌다 —
    바닥값을 420px보다 높여 대화창이 충분히 길게 보이도록 한다. */
-.ad-split.match > section:first-child{min-height:580px}
+.ad-split.match > section:first-child{min-height:720px}
 .ad-split.match > section > .ad-card:last-child{flex:1 1 auto}
 /* 남는 높이는 카드 안쪽 위에 두고, 버튼은 카드 바닥에 붙인다 — 눌러야 할 것이
    허공 위가 아니라 판 끝에 놓여야 어디서 끝나는 화면인지 읽힌다. */

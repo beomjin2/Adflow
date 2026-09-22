@@ -1,8 +1,8 @@
 import ChatPanel from '../components/ChatPanel.jsx';
 
-const EMPTY_HINT = `오늘 무엇을 만드셨나요?
-답해주시면 생산 기록으로 남기고, 그다음 어떤 장면이 좋을지 적어주시거나
-'스토리 제안받기'를 누르면 바로 만들어 드려요.
+const EMPTY_HINT = `오늘 알리고 싶은 내용을 편하게 적어주세요.
+적어주시면 그 이야기로 스토리를 만들어 드리고, 아무것도 안 적고
+'스토리 제안받기'를 눌러도 바로 만들어 드려요.
 
 예) 오늘 소금빵 30개 구웠어요
 예) 이번 주말에 새 메뉴를 내요`;
@@ -46,8 +46,8 @@ export default function Storyboard({ state, actions }) {
               <div className="ad-row" style={{ alignItems: 'center' }}>
                 <span className="ad-hint">종류와 느낌은 버튼을 눌러 바꿀 수 있어요.</span>
                 <span className="ad-grow" />
-                <button className="ad-btn sec sm" onClick={actions.goAd}>
-                  설정 바꾸기
+                <button className="ad-btn ghost xs" onClick={actions.goAd}>
+                  설정 바꾸기 ›
                 </button>
               </div>
             </Accordion>
@@ -59,15 +59,19 @@ export default function Storyboard({ state, actions }) {
                 ? '없음'
                 : missingProds.length ? `${state.prods.length}건 · 매진 미입력 ${missingProds.length}` : `${state.prods.length}건`}
             >
-              {state.prods.length === 0 && (
+              <div className="ad-row" style={{ alignItems: 'center' }}>
                 <span className="ad-hint">
-                  아직 기록이 없어요 — 대화에서 “오늘 소금빵 20개 만들었어요”처럼 말하면 자동으로 남아요.
+                  {state.prods.length === 0 ? '아직 기록이 없어요.' : '기록을 더 넣거나 고칠 수 있어요.'}
                 </span>
-              )}
+                <span className="ad-grow" />
+                <button className="ad-btn ghost xs" onClick={actions.openProdTab}>
+                  생산 기록 관리 ›
+                </button>
+              </div>
               {state.prods.slice(0, 3).map((p) => (
                 <div className="ad-row" key={p.id} style={{ fontSize: 14.5, flexWrap: 'wrap' }}>
                   <b>{p.name}</b>
-                  <span style={{ color: 'var(--sub)' }}>{p.qty ? `${p.qty} · ` : ''}{p.date} {p.time}</span>
+                  <span style={{ color: 'var(--sub)' }}>{p.qty ? `${p.qty}개 · ` : ''}{p.date} {p.time}</span>
                   <span className="ad-grow" />
                   {p.soldOut
                     ? <span className="ad-pill green">매진 {p.soldOut}</span>

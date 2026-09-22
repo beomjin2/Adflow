@@ -18,7 +18,7 @@ flowchart LR
     A --> SB
     subgraph SB[스토리보드]
         direction TB
-        B1[오늘 생산 기록 대화<br/>품목·수량·시각] --> B2[GPT 스토리 제안<br/>대화 즉시 · 트렌드에서 고른 밈 있으면 반영<br/>없으면 GPT가 스스로 살펴봄]
+        B1["AI와 대화<br/>알릴 내용을 적거나<br/>'스토리 제안받기' 버튼"] --> B2[GPT 스토리 제안<br/>트렌드에서 고른 밈 있으면 반영<br/>없으면 GPT가 스스로 살펴봄]
         B2 --> B3[승인]
         B3 --> B4[네컷 그리기<br/>확정 캐릭터를 참조로 컷마다 생성]
     end
@@ -58,8 +58,8 @@ sequenceDiagram
     participant G as GPT
     participant CF as ComfyUI (VM)
 
-    U->>API: POST /api/storyboard/chat (생산 기록 답변)
-    API->>G: 가게·상품·캐릭터 + (트렌드에서 고른 밈 또는 밈 후보) → 컷 구성
+    U->>API: POST /api/storyboard/chat (또는 /suggest)
+    API->>G: 가게·생산 기록·캐릭터 + (트렌드에서 고른 밈 또는 밈 후보) → 컷 구성
     G-->>API: 컷별 대사·행동·구도 (+ 반영한 밈)
     API-->>U: 제안 카드 (승인 / 거절)
     U->>API: POST /api/storyboard/comic
@@ -87,7 +87,7 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    U[사장님<br/>오늘 알릴 내용(선택)] -->|POST| API["/api/trend/recommend"]
+    U["사장님<br/>오늘 알릴 내용(선택)"] -->|POST| API["/api/trend/recommend"]
     API --> Q["크롤링 밈 전체<br/>(memes 테이블, 미분류 제외)"]
     API --> ST[가게 정보<br/>있으면]
     API --> CH[확정된 캐릭터 정보<br/>있으면]

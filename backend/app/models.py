@@ -82,6 +82,9 @@ class Storyboard(Base):
     messages = Column(JSON, default=list)  # [{role, kind, ...}]
     plan = Column(JSON, default=list)      # [{n, line, short}]
     comic_cuts = Column(JSON, default=list)  # [{n, short, line}]
+    # 쓰지 않는다. 예전엔 대화 첫 마디를 생산 기록으로 받았는지 표시했는데, 그 기능을
+    # 없애면서(생산 기록은 "내 정보 > 생산 기록" 탭에서만 남긴다) 더는 안 읽는다.
+    # 컬럼은 지우지 않는다 — 예전 DB에 남아 있고, 지우려면 별도 마이그레이션이 필요하다.
     prod_logged = Column(Boolean, default=False)
     pending = Column(JSON, default=dict)   # {pid: {which, kind, diffs, payload, status}}
     # 트렌드 확인 화면에서 미리 골라 온 밈(Meme.id). 광고 설정을 확정할 때(POST /api/ad/apply)

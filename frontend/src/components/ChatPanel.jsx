@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { colors, inputStyle, TAP } from '../theme.js';
-import { TextBubble, CandidatesBubble, ComicBubble, PlanBubble, ProdBubble, ConfirmBubble } from './bubbles/Bubbles.jsx';
+import { TextBubble, CandidatesBubble, ComicBubble, PlanBubble, ProdBubble, ConfirmBubble, OptionsBubble } from './bubbles/Bubbles.jsx';
 
 export default function ChatPanel({
   messages, thinking, thinkingLabel = '생각하는 중…',
@@ -92,6 +92,11 @@ export default function ChatPanel({
           if (m.kind === 'confirm') return (
             <ConfirmBubble key={i} pending={(pending || {})[m.pid]}
               onConfirm={() => onConfirm(m.pid)} onDecline={() => onDecline(m.pid)} />
+          );
+          // 고를 수 있는 스토리 제안 묶음. confirm 과 같은 pending/confirm 경로를 쓰고,
+          // 카드가 여러 장이라 pid 를 카드마다 따로 넘긴다.
+          if (m.kind === 'options') return (
+            <OptionsBubble key={i} items={m.items} pending={pending} onConfirm={onConfirm} />
           );
           return null;
         })}

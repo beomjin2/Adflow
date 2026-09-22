@@ -74,9 +74,54 @@ def verify_tags(candidates: list[str]) -> list[str]:
     valid = _valid_tags()
     seen: set[str] = set()
     result: list[str] = []
+    rejected: list[str] = []
     for raw in candidates:
         tag = raw.strip().strip(",").replace(" ", "_")
         if tag and tag in valid and tag not in seen:
             result.append(tag)
             seen.add(tag)
+        elif tag and tag not in seen:
+            rejected.append(tag)
+    # 뜯어보기: 기록 중이면 탈락 이유(없음/장수 부족/분류/폐기)까지 남긴다 — 기록이 없을 땐 비용 0
+    from app.services import trace
+    if trace.current() is not None:
+        trace.step("사전 확인", who="code", candidates=list(candidates), verified=result,
+                   rejected=explain_tags(rejected) if rejected else {})
     return result
+
+
+_CATEGORY_KO = {0: "일반", 1: "작가 이름", 3: "작품 이름", 4: "캐릭터 이름", 5: "메타"}
+
+
+def explain_tags(tags: list[str]) -> dict[str, str]:
+    """탈락한 후보가 **왜** 떨어졌나. 원본 parquet 를 그 태그들만 걸러 읽는다(몇 개라 빠르다).
+    뜯어보기(trace)용 — 정상 경로에선 부르지 않는다."""
+    if not tags:
+        return {}
+    path = Path(settings.danbooru_tags_path)
+    if not path.is_absolute():
+        path = BACKEND_ROOT / path
+    if not path.exists():
+        return {t: "사전 파일 없음" for t in tags}
+    import pyarrow.compute as pc
+    wanted = ["name", "post_count", "category", "is_deprecated"]
+    have = set(pq.read_schema(path).names)
+    table = pq.read_table(path, columns=[c for c in wanted if c in have],
+                          filters=[("name", "in", list(tags))])
+    found = {}
+    for row in table.to_pylist():
+        found[row["name"]] = row
+    out = {}
+    for t in tags:
+        r = found.get(t)
+        if r is None:
+            out[t] = "사전에 없는 말"
+        elif r.get("is_deprecated"):
+            out[t] = f"폐기된 태그 ({r.get('post_count'):,}장)"
+        elif r.get("category", 0) not in ALLOWED_CATEGORIES:
+            out[t] = f"{_CATEGORY_KO.get(r.get('category'), r.get('category'))}이라 못 씀 ({r.get('post_count'):,}장)"
+        elif (r.get("post_count") or 0) < MIN_POST_COUNT:
+            out[t] = f"{r.get('post_count'):,}장뿐 (2,000장 미만)"
+        else:
+            out[t] = "중복"
+    return out

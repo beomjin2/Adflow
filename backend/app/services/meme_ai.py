@@ -60,52 +60,13 @@ SHOT_SIZE_CHOICES = ("아주작게", "작게", "보통", "크게", "아주크게
 SHOT_ANGLE_CHOICES = ("정면", "위에서", "아래에서", "옆에서", "뒤에서")
 SHOT_COUNT_CHOICES = ("혼자", "여럿")
 
-# 스토리는 두 사람이 만든다 — **작가**(대사 먼저, 3편 쓰고 고른다) → **연출**(고른 대사를 슬롯으로).
-# 한 번에 10칸을 채우게 하면 GPT가 형식 맞추는 데 힘을 다 써서 대사가 남는 힘으로 나왔다(09-21 사용자:
-# "대사가 재미도 감동도 없다"). 대사를 먼저, 그림 지시는 나중에. 작가는 temperature 0.9, 연출은 0.3.
+# 대사는 GPT 한 번, 짧은 지시문. 09-22 사용자 결정(B): 내가 쌓았던 대사 규칙(끝 후보 5개·3편 중 고르기·
+# O/X 자기검사·지문 필터·동점 깨기)은 결과가 안 좋아 전부 뺐다. 이제부터는 단계별 기록(trace)으로 어디가
+# 문제인지 사용자가 직접 보고, 필요한 줄만 하나씩 넣는다. 그림 지시(연출)는 그대로 둔다 — 실측으로 효과가 확인된 쪽.
 _SCRIPT_PROMPT = (
-    "당신은 동네 빵집 SNS 네컷 만화의 **대사 작가**다. 대사만 쓴다 — 그림 지시는 다음 사람(연출)이 한다.\n\n"
-    "[주인공] 마스코트 시트가 주어진다. 말투는 시트의 성격·나이·취미·능력에서 나온다 — 느긋하면 느리게 끊어 말하고, "
-    "세 살이면 세 살처럼, 새벽에 굽는 게 자랑이면 그게 튀어나온다. 네 컷 내내 같은 사람이 말한다.\n\n"
-    "[밈 적합성 — 맨 먼저] template 의 자리표시에 넣을 것을 가게 정보에서 찾는다. 밈이 기대하는 규모·상황과 가게 숫자가 "
-    "안 맞으면(예: '100개 넘겠지?'는 아주 많은 것에 쓰는 말인데 빵은 20개) 숫자를 억지로 넣지 않고 규모가 맞는 다른 대상으로 옮긴다 — "
-    "새벽 4시부터 선 시간, 골목 끝 줄, 동네에 퍼진 냄새, 반죽 치댄 횟수, 사장님 다크서클. 옮긴 이유를 fit.note, 대상을 fit.target 에. "
-    "보기: 빵 20개에 '100개 넘겠지?' ✗ → 새벽부터 선 사장님에게 '오늘 100분은 잤겠지?' ✓ / 골목 줄에 '100명은 넘겠지?' ✓.\n\n"
-    "[순서 — 끝부터] ① 이 밈·이 가게·이 마스코트로 가능한 **마지막 컷 한 마디(오치)를 5개** 낸다. 각각에 '얼마나 뻔한가' 점수 0~1을 붙인다"
-    "(1.0 = 누구나 먼저 떠올림, 0.2 = 의외인데 말이 됨). ② 점수 **0.5 이하인 것 중 3개**를 고른다(없으면 낮은 순 3개). "
-    "③ 고른 오치 하나마다 한 편을 쓴다 — 4컷을 그 오치로 확정하고, 그 오치가 터지려면 1·2컷이 어떤 기대를 만들어야 하는지 **거꾸로** 짠다. "
-    "3컷은 그 기대를 **뒤집는** 컷이다: 예상 밖 반응 / 규모 반전(작은 것↔큰 것) / 성격과 반대 행동 중 하나. "
-    "3컷에도 **말이 있다** — 뒤집는 한 마디. 대사를 비우는 건 그림이 확실히 보여줄 수 있을 때(손님 무리·빈 진열대처럼 한눈에 보이는 것)만, "
-    "세 편 중 한 편까지.\n\n"
-    "[대사 칸 규칙] lines 에는 캐릭터가 **입으로 말하는 문장만** 넣는다. '미소', '(웃으며)', '구웅이 놀람' 같은 표정·행동·감정 설명은 "
-    "lines 에 절대 넣지 않고 beats 에 쓴다. 말이 없는 컷은 lines 를 빈 문자열로 둔다. 한 컷 15자 안팎.\n\n"
-    "[광고 느낌] 주어진 레시피를 따른다. 유쾌함이면 오치가 펀치라인, 감성이면 여운, 정보형이면 숫자 한 마디, 담백함이면 짧은 한 마디.\n\n"
-    "[하지 말 것] 주소·영업시간·'내일도 오세요' 같은 광고 문구를 대사에 넣지 않는다(그림 아래 캡션이 따로 맡는다). 가격·할인 지어내기. "
-    "사람 손님(→ 동물 손님). 카드의 avoid 위반. beats 의 장소는 주방·가게 안·가게 앞·골목·창가 중에서만. "
-    "**사장님은 그림에 안 나온다** — 대사로 부르거나 화면 밖에 있는 것으로만 쓴다(그릴 캐릭터가 마스코트 하나뿐이다).\n\n"
-    "[자기 검사] 편마다 checks 다섯 개를 true/false 로 정직하게 채운다: "
-    "no_copy(밈 문장을 그대로 베끼지 않았다) · no_stage(lines 에 지문·감정 설명이 없다) · twist(3컷이 1·2컷의 기대를 뒤집는다) · "
-    "empathy(사장님이나 손님이 실제로 느낄 법한 감정이 있다) · voice(마스코트 말투가 드러나는 대사가 있다). "
-    "'가장 웃긴 편'을 고르지 않는다 — 고르는 건 프로그램이 checks 로 한다.\n\n"
-    "출력 JSON: {\"fit\": {\"ok\", \"note\", \"target\"}, \"endings\": [{\"line\", \"obvious\": 0~1} ×5], "
-    "\"drafts\": [{\"title\", \"ending_index\", \"lines\": [4], \"beats\": [4], \"voice\", \"checks\": {\"no_copy\", \"no_stage\", \"twist\", \"empathy\", \"voice\"}} ×3]}\n\n"
-    "예시 — 분식집, 밈 '그게 되네'(안 될 것 같은 게 되는 반전), 유쾌함, 고슴도치 '콩이'(소심함, 취미 낮잠), 김밥 40줄:\n"
-    "{\"fit\": {\"ok\": true, \"note\": \"'안 될 것 같은 일'이 필요한데 40줄은 소심한 콩이에겐 충분히 무리다\", \"target\": \"김밥 40줄\"},\n"
-    " \"endings\": [{\"line\": \"그게 되네\", \"obvious\": 0.9}, {\"line\": \"...낮잠은 내일\", \"obvious\": 0.5}, "
-    "{\"line\": \"김밥이 나보다 인기 많네\", \"obvious\": 0.4}, {\"line\": \"손님: 사장님도 파세요?\", \"obvious\": 0.3}, "
-    "{\"line\": \"...접시가 되네\", \"obvious\": 0.2}],\n"
-    " \"drafts\": [\n"
-    "  {\"title\": \"낮잠은 내일\", \"ending_index\": 1, \"lines\": [\"마흔 줄은... 좀 무리 아닐까\", \"반만 팔려도 낮잠 잘 수 있어\", \"어... 줄이 왜 저기까지\", \"...그게 되네. 낮잠은 내일\"], "
-    "\"beats\": [\"주방, 김밥 산더미 앞에서 움츠림\", \"진열대에 한 줄씩 조심스레 놓음\", \"한 시간 뒤, 가게 밖까지 줄 선 동물 손님과 빈 접시\", \"빈 접시 안고 멍하니 서 있음\"], "
-    "\"voice\": \"'반만 팔려도 낮잠 잘 수 있어'\", \"checks\": {\"no_copy\": true, \"no_stage\": true, \"twist\": true, \"empathy\": true, \"voice\": true}},\n"
-    "  {\"title\": \"사장님도 파세요?\", \"ending_index\": 3, \"lines\": [\"오늘은 마흔 줄... 떨려\", \"한 줄만 팔려도 좋겠다\", \"다 주세요!\", \"...저는 안 팔아요\"], "
-    "\"beats\": [\"김밥 세는 콩이\", \"창밖 텅 빈 거리\", \"고양이 손님이 접시째 가리키고 콩이까지 가리킴\", \"콩이가 가시를 세우고 뒷걸음\"], "
-    "\"voice\": \"'...저는 안 팔아요'\", \"checks\": {\"no_copy\": true, \"no_stage\": true, \"twist\": true, \"empathy\": false, \"voice\": true}},\n"
-    "  {\"title\": \"접시가 되네\", \"ending_index\": 4, \"lines\": [\"마흔 줄... 다 팔 수 있을까\", \"안 팔리면 내가 먹지\", \"\", \"...접시가 되네\"], "
-    "\"beats\": [\"주방\", \"김밥 한 줄 슬쩍 먹음\", \"손님 줄이 늘고 접시가 비어 감\", \"빈 접시를 들고 배 두드림\"], "
-    "\"voice\": \"'안 팔리면 내가 먹지'\", \"checks\": {\"no_copy\": false, \"no_stage\": true, \"twist\": true, \"empathy\": true, \"voice\": true}}]}\n\n"
-    "예시에서 3컷을 비운 건 세 편 중 마지막 하나뿐이다(접시가 비어 가는 그림이 말을 대신할 수 있어서). 나머지 두 편은 3컷에 뒤집는 말이 있다.\n"
-    "예시는 다른 업종이다 — 형식만 가져오고 대사는 이 가게·이 마스코트로 새로 쓴다. JSON 하나만 출력한다."
+    "동네 빵집 SNS 네컷 만화의 대사를 쓴다. 주인공은 마스코트 한 마리(시트 참고).\n"
+    "밈 카드의 template 을 대사에 살려 쓰고, 가게 정보·생산 기록의 사실만 쓴다. 광고 느낌 레시피를 따른다.\n"
+    "출력 JSON: {\"title\": str, \"lines\": [대사 4개 — 컷마다 한 문장, 없으면 \"\"], \"beats\": [컷마다 무슨 일이 일어나는지 한 줄 4개]}"
 )
 
 # 컷 층의 닫힌 슬롯 선택지. chat_ai 의 표와 키가 같아야 한다.
@@ -151,14 +112,19 @@ def _client() -> OpenAI:
     return OpenAI(api_key=settings.openai_api_key)
 
 
-def _json_chat(system: str, user: str, temperature: float, model: str | None = None) -> dict:
-    resp = _client().chat.completions.create(
-        model=model or settings.openai_model,
-        temperature=temperature,
-        response_format={"type": "json_object"},
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-    )
+def _json_chat(system: str, user: str, temperature: float, model: str | None = None, label: str = "GPT") -> dict:
+    from app.services import trace
+    model = model or settings.openai_model
+    with trace.timer() as t:
+        resp = _client().chat.completions.create(
+            model=model,
+            temperature=temperature,
+            response_format={"type": "json_object"},
+            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+        )
     raw = resp.choices[0].message.content or "{}"
+    # 뜯어보기: 지시문 전체·보낸 내용·GPT 원문 답변을 그대로 남긴다
+    trace.step(label, who=model, temperature=temperature, sec=t.sec, system=system, sent=user, output_raw=raw)
     return json.loads(raw)
 
 
@@ -216,52 +182,6 @@ def direct_user_message(script: dict, ad: dict) -> str:
             f"[작가가 고른 대본]\n{json.dumps({'title': script['title'], 'lines': script['lines'], 'beats': script['beats']}, ensure_ascii=False, indent=1)}")
 
 
-CHECK_KEYS = ("no_copy", "no_stage", "twist", "empathy", "voice")
-
-
-def _score(draft: dict) -> int:
-    """O/X 다섯 개 중 true 개수. 지문이 대사에 있었으면(moved) no_stage 는 강제로 X."""
-    checks = draft.get("checks") if isinstance(draft.get("checks"), dict) else {}
-    n = sum(1 for k in CHECK_KEYS if checks.get(k) is True)
-    if draft.get("moved") and checks.get("no_stage") is True:
-        n -= 1
-    return n
-
-
-def _looks_like_stage(line: str, name: str) -> bool:
-    """'구웅이 미소', '(웃으며)', '구웅이가 빵을 든다' 처럼 말이 아니라 지문인가. 단순 규칙 — 따옴표·물음표·느낌표·말줄임이
-    있으면 말로 본다."""
-    t = line.strip()
-    if not t:
-        return False
-    if any(ch in t for ch in "?!…\"'“”‘’") or t.endswith(("요", "다", "지", "네", "야", "어", "래", "죠", "까", "게", "군", "걸", "니", "봐", "자", "라")):
-        # 종결어미로 끝나는 건 대부분 말. 단 '~한다/~든다' 같은 서술형(이름으로 시작)은 지문.
-        if not (name and t.startswith(name) and t.endswith(("다", "함", "림", "음", "짓", "임"))):
-            return False
-    if t.startswith("(") and t.endswith(")"):
-        return True
-    if name and t.startswith(name) and len(t) <= 14 and " " in t and not t.endswith(("요", "야", "어", "지")):
-        return True
-    return False
-
-
-def _split_stage(lines: list, beats: list, name: str) -> tuple[list[str], list[str], list[int]]:
-    """대사 칸에 섞인 지문을 beats 로 옮긴다. (lines, beats, 옮긴 컷 번호들)"""
-    ls = [str(x or "").strip() for x in lines][:4]
-    bs = [str(x or "").strip() for x in beats][:4]
-    while len(ls) < 4:
-        ls.append("")
-    while len(bs) < 4:
-        bs.append("")
-    moved = []
-    for i in range(4):
-        if _looks_like_stage(ls[i], name):
-            bs[i] = (bs[i] + " / " + ls[i]).strip(" /")
-            ls[i] = ""
-            moved.append(i + 1)
-    return ls, bs, moved
-
-
 def _pick(val, choices, default):
     v = str(val or "").strip()
     return v if v in choices else default
@@ -276,37 +196,23 @@ def propose_story(card: dict, meme_title: str, store: dict, prods: list[dict], a
         character = {"name": character}
     concept = concept_of(ad)
 
-    # 1) 작가 — 오치 5개(뻔함 점수) → 덜 뻔한 3개로 3편 → 편마다 O/X 5개
+    # 1) 대사 — GPT 한 번, 나온 그대로 (B)
     s_user = script_user_message(card, meme_title, store, prods, ad, character)
-    sdata = _json_chat(_SCRIPT_PROMPT, s_user, temperature=0.9, model=settings.openai_writer_model)
-    drafts = [d for d in (sdata.get("drafts") or []) if isinstance(d, dict) and isinstance(d.get("lines"), list)]
-    if not drafts:
-        raise RuntimeError("스토리 형식이 어긋났어요 — 다시 제안받아 주세요")
-    name = str(character.get("name") or "").strip()
-    for d in drafts:
-        d["lines"], d["beats"], d["moved"] = _split_stage(d["lines"], d.get("beats") or [], name)
-    # GPT 의 "가장 웃긴 편"은 사람과 안 맞는다(순위 정확도 51%, ICCC 2023 계열). O 개수로 프로그램이 고른다.
-    # 동점이면 오치의 '뻔함' 점수가 낮은(덜 뻔한) 편. 자기 검사는 대체로 전부 O 로 나와 동점이 잦다(09-22 실측 3/3).
-    endings = sdata.get("endings") if isinstance(sdata.get("endings"), list) else []
-
-    def obvious(d):
-        try:
-            return float(endings[int(d.get("ending_index"))].get("obvious", 1.0))
-        except (TypeError, ValueError, IndexError, AttributeError):
-            return 1.0
-
-    scored = [(_score(d), -obvious(d), -i, i) for i, d in enumerate(drafts)]
-    best = max(scored)[3]
-    chosen = drafts[best]
-    lines, beats = chosen["lines"], chosen["beats"]
-    script = {"title": str(chosen.get("title") or meme_title), "lines": lines, "beats": beats,
-              "voice": str(chosen.get("voice") or "")}
+    sdata = _json_chat(_SCRIPT_PROMPT, s_user, temperature=0.9, model=settings.openai_writer_model, label="대사 쓰기")
+    lines = [str(x or "").strip() for x in (sdata.get("lines") or [])][:4]
+    beats = [str(x or "").strip() for x in (sdata.get("beats") or [])][:4]
+    while len(lines) < 4:
+        lines.append("")
+    while len(beats) < 4:
+        beats.append("")
+    script = {"title": str(sdata.get("title") or meme_title), "lines": lines, "beats": beats, "voice": ""}
     if sum(1 for x in lines if x) < 2:
         raise RuntimeError("스토리 형식이 어긋났어요 — 다시 제안받아 주세요")
+    drafts, best = [dict(script)], 0
 
     # 2) 연출
     d_user = direct_user_message(script, ad)
-    ddata = _json_chat(_DIRECT_PROMPT, d_user, temperature=0.3)
+    ddata = _json_chat(_DIRECT_PROMPT, d_user, temperature=0.3, label="그림 지시 (연출)")
     raw_cuts = list(ddata.get("cuts") or [])
     cuts = []
     for i in range(4):
@@ -338,6 +244,5 @@ def propose_story(card: dict, meme_title: str, store: dict, prods: list[dict], a
             },
         })
     return {"title": script["title"], "cuts": cuts, "caption": caption_of(store), "concept": concept,
-            "fit": sdata.get("fit") or {}, "drafts": drafts, "best": best, "endings": sdata.get("endings") or [],
-            "scores": [_score(d) for d in drafts],
+            "drafts": drafts, "best": best,
             "voice": script["voice"], "script_user": s_user, "direct_user": d_user}

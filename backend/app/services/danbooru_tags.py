@@ -215,11 +215,17 @@ def _split_by_script(candidates: list[str]) -> tuple[list[str], list[str]]:
 
 
 def _ask_tags(messages: list[dict]) -> str:
+    from app.services import trace
     client = OpenAI(api_key=settings.openai_api_key)
-    resp = client.chat.completions.create(
-        model=settings.openai_model, messages=messages, temperature=0,
-    )
-    return resp.choices[0].message.content or ""
+    with trace.timer() as t:
+        resp = client.chat.completions.create(
+            model=settings.openai_model, messages=messages, temperature=0,
+        )
+    raw = resp.choices[0].message.content or ""
+    # 뜯어보기: 보낸 지시문 전체·보낸 문장·GPT 원문 답변
+    trace.step("태그 GPT", who=settings.openai_model, temperature=0, sec=t.sec,
+               system=messages[0]["content"], sent=[m["content"] for m in messages[1:]], output_raw=raw)
+    return raw
 
 
 def english_candidates(look: str, kind: str = "character") -> list[str]:

@@ -217,6 +217,8 @@ def generate_images(prompt: str, count: int = 1, seed: int | None = None,
 
     size = POSITION_CANVAS if position in POSITION_CROP else None
     crop = POSITION_CROP.get(position or "")
+    from app.services import trace
+    _t0 = time.monotonic()
     try:
         submit = _comfy_request("POST", "/prompt", json={
             "client_id": client_id,
@@ -261,6 +263,13 @@ def generate_images(prompt: str, count: int = 1, seed: int | None = None,
             # 저장에 실패해도 자리를 비워 둔 채로 넣는다. 건너뛰면 뒤 그림이 앞 칸으로
             # 당겨져 '후보2' 자리에 후보3 그림이 걸린다.
             out.append(_save_png(_crop_png(view.content, crop) if crop else view.content))
+        # 뜯어보기: 그림에 실제로 들어간 설정 전부
+        trace.step("그림 (ComfyUI)", who="comfyui", sec=round(time.monotonic() - _t0, 1),
+                   workflow=workflow_file or settings.comfy_workflow_file, seed=seed, batch=count,
+                   canvas=list(size) if size else "워크플로우 기본", crop=list(crop) if crop else None, position=position,
+                   reference=reference_name, ip_strength=ip_strength if ip_strength is not None else "워크플로우 기본",
+                   ip_start_at=ip_start_at if ip_start_at is not None else "워크플로우 기본",
+                   positive=prompt, negative=NEGATIVE_PROMPT, images=out)
         return out
     except requests.RequestException:
         logger.exception("ComfyUI request failed")

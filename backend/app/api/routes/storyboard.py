@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.core.config import settings
 from app.core.database import get_db
-from app.services import jobs
+from app.services import jobs, trace
 from app.services.chat_ai import (character_part, comic_prompt, comic_prompt_slots, day_from,
                                   fmt_day, is_skip, item_from, iso_day, new_pid, qty_from,
                                   time_from)
@@ -170,24 +170,35 @@ def _reference_path(char) -> Path | None:
     return path if path and path.is_file() else None
 
 
-def _fill_cuts(indexes: list[int], scenes: list[dict], char_part_text: str, reference: Path) -> None:
+def _fill_cuts(indexes: list[int], scenes: list[dict], char_part_text: str, reference: Path,
+               trace_id: str | None = None) -> None:
     """백그라운드 본체 — 컷마다 프롬프트를 만들고 한 장씩 뽑아 comic_cuts의 칸을 채운다.
     컷 문장의 태그 변환(GPT)도 여기서 한다. 실패한 칸은 failed로 남긴다.
     scenes[i] = {"slots": 팀장 시트의 컷 슬롯} 또는 옛 형식 {"text": 동작 문장, "camera": 구도 태그}.
-    슬롯이 있으면 comic_prompt_slots로, 없으면(직접 쓴 옛 컷) 옛 경로로 조립한다."""
+    슬롯이 있으면 comic_prompt_slots로, 없으면(직접 쓴 옛 컷) 옛 경로로 조립한다.
+    trace_id 가 있으면 제안 때 시작한 단계별 기록에 이어 쓴다(다른 스레드라 여기서 다시 잡는다)."""
+    tr = trace.Tracer.resume(trace_id)
+    with trace.use(tr):
+        _fill_cuts_traced(indexes, scenes, char_part_text, reference)
+
+
+def _fill_cuts_traced(indexes: list[int], scenes: list[dict], char_part_text: str, reference: Path) -> None:
     for index, scene in zip(indexes, scenes):
-        trace = None
+        slot_trace = None
         position = None
+        trace.step(f"컷 {index + 1} 시작", who="code", slots=scene.get("slots"), character_tags=char_part_text,
+                   reference=str(reference.name))
         if scene.get("slots"):
-            prompt, trace = comic_prompt_slots(char_part_text, scene["slots"])
+            prompt, slot_trace = comic_prompt_slots(char_part_text, scene["slots"])
             position = (scene["slots"].get("shot") or {}).get("position")   # 왼쪽·가운데·오른쪽 → 넓게 뽑아 자름
         else:
             prompt = comic_prompt(char_part_text, scene.get("text", ""), scene.get("camera", ""))
+        trace.step(f"컷 {index + 1} 프롬프트 조립", who="code", prompt=prompt, slot_to_tags=slot_trace)
         images = generate_images(prompt, 1, workflow_file=settings.comfy_comic_workflow_file,
                                  reference_path=reference, position=position)
         image = images[0] if images else None
 
-        def write(db: Session, index=index, image=image, prompt=prompt, trace=trace):
+        def write(db: Session, index=index, image=image, prompt=prompt, trace=slot_trace):
             sb = db.get(models.Storyboard, 1)
             if not sb:
                 return
@@ -219,7 +230,15 @@ def _start_cuts(sb: models.Storyboard, char: models.Character, indexes: list[int
     sb.comic_cuts = cuts
     db.commit()
     # 캐릭터 태그는 여기서 한 번만 계산한다(GPT 1회). 컷 문장 변환은 백그라운드에서.
-    jobs.submit(_fill_cuts, indexes, scenes, character_part(char), reference)
+    # 뜯어보기: 제안 때 시작한 기록(trace_id)에 이어 쓴다. 캐릭터 태깅도 그 기록 안에.
+    trace_id = next((c.get("trace_id") for c in cuts if c.get("trace_id")), None)
+    tr = trace.Tracer.resume(trace_id)
+    with trace.use(tr):
+        trace.step("그림 단계 시작", who="code", cuts=indexes, character_sheet={
+            "look": char.look, "outfit": char.outfit, "desc": char.desc, "age": char.age, "name": char.name})
+        char_text = character_part(char)
+        trace.step("캐릭터 태그 확정", who="code", character_tags=char_text)
+    jobs.submit(_fill_cuts, indexes, scenes, char_text, reference, trace_id)
 
 
 @router.post("/propose", response_model=schemas.StoryboardOut)
@@ -237,23 +256,29 @@ def propose(body: schemas.ProposeIn, db: Session = Depends(get_db)):
     ad = db.get(models.AdSettings, 1)
     char = db.get(models.Character, 1)
     prods = db.query(models.ProductionRecord).order_by(models.ProductionRecord.id.desc()).limit(10).all()
+    store_d = {"category": store.category, "address": store.address, "hours": store.hours, "desc": store.desc} if store else {}
+    prods_d = [{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time, "sold_out": p.sold_out} for p in prods]
+    ad_d = {"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {}
+    # 마스코트 시트 전부 — 대사 GPT가 말투를 여기서 뽑는다(전엔 이름만 보내 목소리가 없었다)
+    char_d = {"name": char.name, "age": char.age, "gender": char.gender, "desc": char.desc, "hobby": char.hobby,
+              "abilities": char.abilities, "keywords": list(char.keywords or [])} if char else {}
+    # 뜯어보기: 이 광고의 단계별 기록을 시작한다. 그림 단계는 같은 run_id 로 이어 쓴다(컷에 trace_id 를 실어 보냄).
+    tr = trace.Tracer.start(kind="comic", meme=meme.title)
+    tr.step("입력 모으기", who="code", meme_card=meme.card or {}, store=store_d, production=prods_d, ad=ad_d, character=char_d)
     try:
-        story = propose_story(
-            meme.card or {}, meme.title,
-            {"category": store.category, "address": store.address, "hours": store.hours, "desc": store.desc} if store else {},
-            [{"name": p.name, "qty": p.qty, "date": p.date, "time": p.time, "sold_out": p.sold_out} for p in prods],
-            {"ad_type": ad.ad_type, "ad_concept": ad.ad_concept} if ad else {},
-            # 마스코트 시트 전부 — 작가 GPT가 말투를 여기서 뽑는다(전엔 이름만 보내 목소리가 없었다)
-            {"name": char.name, "age": char.age, "gender": char.gender, "desc": char.desc, "hobby": char.hobby,
-             "abilities": char.abilities, "keywords": list(char.keywords or [])} if char else {},
-        )
+        with trace.use(tr):
+            story = propose_story(meme.card or {}, meme.title, store_d, prods_d, ad_d, char_d)
     except RuntimeError as e:
+        tr.step("실패", who="code", error=str(e))
         raise HTTPException(400, str(e))
     except Exception:
         logger.exception("스토리 제안 실패")
+        tr.step("실패", who="code", error="예외 — 서버 로그 참고")
         raise HTTPException(502, "스토리를 만들지 못했어요. 잠시 뒤 다시 시도해 주세요")
 
-    cuts = story["cuts"]
+    cuts = [{**c, "trace_id": tr.run_id} for c in story["cuts"]]
+    tr.step("제안 확정 대기", who="code", title=story["title"], cuts=cuts,
+            view=f"/api/debug/trace/{tr.run_id}/view")
     current = list(sb.plan or [])
     diffs = []
     for cut in cuts:
@@ -294,6 +319,7 @@ def make_comic(db: Session = Depends(get_db)):
          "action": c.get("action", ""), "camera": c.get("camera", ""),
          "slots": c.get("slots"),   # 팀장 시트의 컷 슬롯. 옛 plan엔 없다(→ 옛 경로)
          "caption": c.get("caption", ""),   # 그림 아래 캡션(가게 정보)
+         "trace_id": c.get("trace_id"),     # 뜯어보기 기록 — 제안 때 시작한 것에 이어 쓴다
          "label": f"{c['n']}컷", "image": None, "status": "generating"}
         for c in plan
     ]

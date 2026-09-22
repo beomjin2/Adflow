@@ -3,6 +3,21 @@ import { colors } from '../theme.js';
 import { TextInput, Select } from '../components/ui/Field.jsx';
 import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
 
+/** 상황 분류(situation) 값 → 화면에 보여줄 이름.
+ *  DB·분류 스크립트·추천 프롬프트는 내부 값("재미_밈놀이" 등)을 그대로 쓰고, 사용자에게
+ *  보일 때만 바꿔 끼운다. 밑줄 붙은 내부 이름이 칩·목록·추천 문구에 그대로 나와 어색했다.
+ *  표에 없는 값(새 카테고리가 생긴 경우)은 내부 값을 그대로 보여준다 — 지어내지 않는다. */
+const SITUATION_LABEL = {
+  재미_밈놀이: '재미·유행어',
+  전후_비교: '비포 & 애프터',
+  반응_기다림: '기다림·궁금증',
+  감탄_긍정반응: '감탄·칭찬',
+  신규_시작: '새 소식·오픈',
+  불만_토로: '하소연',
+  미분류: '기타',
+};
+const situationLabel = (s) => SITUATION_LABEL[s || '미분류'] || s;
+
 /** 화면에 보여줄 날짜 — periodStart(스파이크 구간 시작일) > peakDate(스파이크 정점일)
  *  > published(등록일) 순으로 있는 값을 쓴다. 스파이크를 못 찾은 밈은 peakDate까지
  *  비어 있을 수 있어 등록일로 대신한다.
@@ -184,7 +199,7 @@ export default function Trend({ state, actions }) {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {filterChip(`전체 (${trendItems.length})`, trendFilter === '전체', () => actions.set('trendFilter', '전체'))}
               {situations.map((s) => filterChip(
-                `${s.situation} (${s.count})`,
+                `${situationLabel(s.situation)} (${s.count})`,
                 trendFilter === s.situation,
                 () => actions.set('trendFilter', s.situation),
               ))}
@@ -244,7 +259,7 @@ export default function Trend({ state, actions }) {
                     fontSize: 10.5, fontWeight: 800, color: on ? colors.primarySoftText : colors.textSub,
                     background: on ? colors.primarySoft : colors.softBg, borderRadius: 7, padding: '4px 2px',
                     flex: 'none', width: 92, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>{m.situation || '미분류'}</span>
+                  }}>{situationLabel(m.situation)}</span>
                   {trendStatus(m, baseDate).ongoing && (
                     <span
                       title="아직 유행 중"
@@ -456,7 +471,7 @@ export default function Trend({ state, actions }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{ fontSize: 11.5, fontWeight: 800, color: colors.primaryHover, letterSpacing: .02 }}>GPT 추천</span>
               <span style={{ fontSize: 13, color: colors.textSub }}>
-                지금은 <b style={{ color: colors.text }}>{trendRecommendResult.situation}</b> 상황이라고 보고, 그 안에서 하나 골랐어요.
+                지금은 <b style={{ color: colors.text }}>{situationLabel(trendRecommendResult.situation)}</b> 쪽 밈이 어울린다고 보고, 그 안에서 하나 골랐어요.
               </span>
             </div>
 

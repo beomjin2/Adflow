@@ -14,8 +14,14 @@ confirm 카드로 올려 사장님이 승인해야 plan이 된다. 서비스가 
 
 스토리 제안은 자동으로 뜨지 않는다 — 사장님이 직접 적거나(POST /chat), 대화창의
 "스토리 제안받기" 버튼을 눌러야(POST /suggest) 만든다. 밈은 트렌드 화면에서 미리
-골라 왔으면(`Storyboard.trend_meme_id`) 그걸 반영하고, 안 골랐으면 GPT가 크롤링된
-밈 중 스스로 어울리는 걸 찾아본다 — 카드를 만들거나 고르는 별도 화면은 없다.
+골라 왔을 때만(`Storyboard.trend_meme_id`) 반영한다 — 안 골랐으면 밈 얘기 자체를
+꺼내지 않는다. GPT가 크롤링된 밈 중 스스로 골라 끼워 넣게 하면 사장님이 고른 적
+없는 밈이 광고에 섞일 수 있어서다. 카드를 만들거나 고르는 별도 화면도 없다.
+
+대화 중에 밈을 새로 추천받고 싶으면 "밈 추천받기" 버튼을 눌러야(POST /recommend-meme)
+한다 — 이때는 지금까지 사장님이 대화에서 쓴 문장을 근거로 trend/recommend.py와 같은
+GPT 추천(meme_recommend.recommend)을 한 번 더 돌린다. 결과도 confirm 카드로 올려
+승인해야 trend_meme_id가 바뀐다(kind="meme").
 
 생산 기록은 여기서 안 받는다 — "내 정보 > 생산 기록" 탭에서만 남긴다. 예전엔 대화
 첫 마디를 생산 기록으로 파싱했는데, 대화 한 번으로 두 가지 일을 하는 게 헷갈린다는
@@ -23,6 +29,7 @@ confirm 카드로 올려 사장님이 승인해야 plan이 된다. 서비스가 
 그대로다 — 그 기록을 만드는 자리만 옮긴 것이다.
 """
 
+import logging
 import re
 from pathlib import Path
 
@@ -35,6 +42,9 @@ from app.core.database import get_db
 from app.services import jobs, story_llm
 from app.services.chat_ai import COMIC_IDENTITY_FIELDS, character_part, comic_prompt, new_pid
 from app.services.image_gen import generate_images
+from app.services.meme_recommend import recommend as recommend_meme
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/storyboard", tags=["storyboard"])
 
@@ -98,23 +108,15 @@ def _cuts_from_text(text: str) -> list[dict]:
     ]
 
 
-def _meme_context(sb: models.Storyboard, db: Session) -> tuple[dict | None, list[dict]]:
-    """(trend_meme, meme_candidates) — 미리 골라 온 밈이 있으면 그것만, 없으면 GPT가
-    스스로 볼 후보 목록("미분류"는 진짜 활용 상황이 아니라 뺀다)."""
+def _meme_context(sb: models.Storyboard, db: Session) -> dict | None:
+    """트렌드 화면에서 미리 골라 온 밈이 있을 때만 그걸 돌려준다. 안 골랐으면 None —
+    GPT가 스스로 후보를 뒤져 끼워 넣게 하면 사장님이 고른 적 없는 밈이 광고에 섞일 수 있다."""
     if sb.trend_meme_id:
         m = db.get(models.Meme, sb.trend_meme_id)
         if m:
             return {"id": m.id, "name": m.meme_name, "origin": m.origin,
-                    "usage_example": m.usage_example}, []
-    candidates = (
-        db.query(models.Meme)
-        .filter(models.Meme.situation != "", models.Meme.situation != "미분류")
-        .all()
-    )
-    return None, [
-        {"id": m.id, "name": m.meme_name, "origin": m.origin, "usage_example": m.usage_example}
-        for m in candidates
-    ]
+                    "usage_example": m.usage_example}
+    return None
 
 
 def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> tuple[list[dict], dict | None] | None:
@@ -134,7 +136,7 @@ def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> tuple[list[dict
         db.query(models.ProductionRecord)
         .order_by(models.ProductionRecord.id.desc()).limit(10).all()
     )
-    trend_meme, meme_candidates = _meme_context(sb, db)
+    trend_meme = _meme_context(sb, db)
     proposed = story_llm.plan_from_text(
         text,
         store={"category": store.category, "address": store.address,
@@ -146,7 +148,6 @@ def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> tuple[list[dict
                 "sold_out": p.sold_out} for p in prods],
         current_plan=list(sb.plan or []),
         trend_meme=trend_meme,
-        meme_candidates=meme_candidates,
     )
     if proposed is None:
         return _cuts_from_text(text), None
@@ -262,6 +263,88 @@ def suggest(db: Session = Depends(get_db)):
     return schemas.storyboard_out(sb, jobs.queue_depth())
 
 
+@router.post("/recommend-meme", response_model=schemas.StoryboardOut)
+async def recommend_meme_from_chat(db: Session = Depends(get_db)):
+    """대화창의 "밈 추천받기" 버튼 — 자동으로는 안 뜬다. 지금까지 사장님이 대화에서 쓴
+    문장을 모아 trend/recommend.py와 같은 GPT 추천(meme_recommend.recommend)을 돌리고,
+    결과를 confirm 카드로 올린다. 승인해야만 trend_meme_id가 바뀐다 — 대화 흐름만 보고
+    GPT가 알아서 밈을 끼워 넣지 않는다.
+    """
+    sb = _get(db)
+    messages = list(sb.messages or [])
+    note = " ".join(
+        (m.get("text") or "") for m in messages if m.get("role") == "me" and m.get("kind") == "text"
+    ).strip()
+    if not note:
+        messages.append({
+            "role": "ai", "kind": "text",
+            "text": "대화에서 알릴 내용을 먼저 말씀해주시면 그걸 보고 밈을 추천해드릴게요.",
+        })
+        sb.messages = messages
+        db.commit()
+        db.refresh(sb)
+        return schemas.storyboard_out(sb, jobs.queue_depth())
+
+    all_memes = [m for m in db.query(models.Meme).all() if m.situation and m.situation != "미분류"]
+    if not all_memes:
+        messages.append({"role": "ai", "kind": "text", "text": "지금 추천할 수 있는 밈이 없어요."})
+        sb.messages = messages
+        db.commit()
+        db.refresh(sb)
+        return schemas.storyboard_out(sb, jobs.queue_depth())
+
+    store = db.get(models.Store, 1)
+    store_desc = ""
+    if store and store.saved:
+        parts = [store.category, store.address, store.hours, store.desc]
+        store_desc = " / ".join(p for p in parts if p)
+
+    char = db.get(models.Character, 1)
+    character_desc = ""
+    if char and char.confirmed:
+        parts = [char.name, char.look, char.outfit, char.abilities, ", ".join(char.keywords or []), char.desc]
+        character_desc = " / ".join(p for p in parts if p)
+
+    try:
+        result = await recommend_meme(
+            note, character_desc, store_desc,
+            candidates=[
+                {"id": m.id, "name": m.meme_name, "situation": m.situation,
+                 "origin": m.origin, "usage_example": m.usage_example}
+                for m in all_memes
+            ],
+        )
+    except RuntimeError as e:
+        raise HTTPException(400, str(e))
+    except Exception:
+        logger.exception("대화 기반 밈 추천 실패")
+        raise HTTPException(502, "추천을 만들지 못했어요. 잠시 뒤 다시 시도해 주세요")
+
+    by_id = {m.id: m for m in all_memes}
+    pick = result["picks"][0]
+    meme = by_id[pick["meme_id"]]
+
+    pending = dict(sb.pending or {})
+    pid = new_pid()
+    pending[pid] = {
+        "which": "sb", "kind": "meme",
+        "diffs": [{"label": "트렌드 밈", "from": sb.trend_meme_name or "아직 없음", "to": meme.meme_name}],
+        "why": pick["reason"],
+        "payload": {"meme_id": meme.id, "meme_name": meme.meme_name},
+        "status": "open",
+    }
+    sb.pending = pending
+    messages.append({
+        "role": "ai", "kind": "text",
+        "text": f"지금까지 나눈 얘기를 보니 '{meme.meme_name}' 밈이 어울릴 것 같아요.",
+    })
+    messages.append({"role": "ai", "kind": "confirm", "pid": pid})
+    sb.messages = messages
+    db.commit()
+    db.refresh(sb)
+    return schemas.storyboard_out(sb, jobs.queue_depth())
+
+
 def _reference_path(char) -> Path | None:
     """확정한 후보 그림의 디스크 경로. /api/media/<파일명> URL을 media_path의 파일로 되돌린다."""
     cands = list(char.candidates or [])
@@ -366,6 +449,13 @@ def confirm_pending(pid: str, db: Session = Depends(get_db)):
     if p["kind"] == "plan":
         sb.plan = p["payload"]["plan"]
         messages.append({"role": "ai", "kind": "plan", "ref": "plan"})
+    elif p["kind"] == "meme":
+        sb.trend_meme_id = p["payload"]["meme_id"]
+        sb.trend_meme_name = p["payload"]["meme_name"]
+        messages.append({
+            "role": "ai", "kind": "text",
+            "text": f"'{p['payload']['meme_name']}' 밈으로 바꿨어요. 다음 스토리부터 이 밈을 참고할게요.",
+        })
     sb.pending = pending
     sb.messages = messages
     db.commit()

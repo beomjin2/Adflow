@@ -10,10 +10,9 @@
 
 밈도 여기서 같이 본다(예전엔 meme_ai.py가 밈 카드+가게 정보로 스토리를 따로 만드는
 별도 경로였다 — 대화와 밈이 따로 놀아서 사장님이 뭘 눌러야 밈이 들어가는지 헷갈렸다).
-트렌드 확인 화면에서 미리 골라 온 밈이 있으면(`trend_meme`) 그걸 참고하고, 없으면
-크롤링된 밈 후보(`meme_candidates`)를 보여주고 자연스럽게 어울리는 게 있을 때만
-GPT가 스스로 골라 쓴다. 카드로 미리 요약해 두지 않는다 — 원문(유래·활용예시)만으로도
-충분하다(meme_recommend.py에서 이미 확인됨).
+트렌드 확인 화면에서 미리 골라 온 밈이 있을 때만(`trend_meme`) 참고한다 — 안 골랐으면
+밈 얘기 자체를 꺼내지 않는다. GPT가 크롤링된 밈 중에서 스스로 골라 끼워 넣게 하면
+사장님이 고른 적 없는 밈이 광고에 섞일 수 있어서다.
 
 **실패해도 된다.** 키가 없거나 네트워크가 끊겼거나 응답이 이상하면 `None` 을 돌려주고
 라우터가 규칙 기반(`_cuts_from_text`)으로 간다. sheet_llm 과 같은 약속이다.
@@ -71,30 +70,19 @@ _MEME_RULE_SELECTED = (
     "7. 아래 [참고 밈]을 스토리에 자연스럽게 녹인다 — 말투나 분위기를 빌려 오되, "
     "강제로 우겨넣어 어색해지면 안 된다. meme_used엔 그 밈의 id를 그대로 적는다."
 )
-_MEME_RULE_CANDIDATES = (
-    "7. [밈 후보] 중 지금 이야기에 자연스럽게 어울리는 게 있으면 하나 골라 살짝 녹여도 "
-    "된다(선택) — 없으면 그냥 이야기로만 만들고 meme_used는 null. 억지로 끼워맞추지 않는다."
-)
 
 
-def _meme_prompt_parts(trend_meme: dict | None, meme_candidates: list[dict]) -> tuple[str, str]:
-    """(meme_rule, meme_block) — meme_rule은 시스템 프롬프트에, meme_block은 사용자 메시지에 넣는다."""
-    if trend_meme:
-        block = (
-            f"[참고 밈: {trend_meme.get('name', '')}]\n"
-            f"유래: {(trend_meme.get('origin') or '')[:200]}\n"
-            f"활용예시: {(trend_meme.get('usage_example') or '')[:200]}\n\n"
-        )
-        return _MEME_RULE_SELECTED, block
-    if meme_candidates:
-        lines = [
-            f"- id: {m['id']} / 이름: {m['name']} / 유래: {(m.get('origin') or '')[:120]} "
-            f"/ 활용예시: {(m.get('usage_example') or '')[:120]}"
-            for m in meme_candidates
-        ]
-        block = "[밈 후보]\n" + "\n".join(lines) + "\n\n"
-        return _MEME_RULE_CANDIDATES, block
-    return "", ""
+def _meme_prompt_parts(trend_meme: dict | None) -> tuple[str, str]:
+    """(meme_rule, meme_block) — meme_rule은 시스템 프롬프트에, meme_block은 사용자 메시지에 넣는다.
+    trend_meme이 없으면 둘 다 빈 문자열이다 — 프롬프트에 밈 얘기 자체가 안 들어간다."""
+    if not trend_meme:
+        return "", ""
+    block = (
+        f"[참고 밈: {trend_meme.get('name', '')}]\n"
+        f"유래: {(trend_meme.get('origin') or '')[:200]}\n"
+        f"활용예시: {(trend_meme.get('usage_example') or '')[:200]}\n\n"
+    )
+    return _MEME_RULE_SELECTED, block
 
 # 사장님이 말한 적 없는 숫자를 잡는다. 프롬프트로 "지어내지 마라"를 적어도 모델은
 # "단돈 3,000원!" 같은 문장을 만든다 — 그건 가게에 실제로 없는 가격이다.
@@ -190,19 +178,17 @@ def plan_from_text(
     prods: list[dict],
     current_plan: list[dict],
     trend_meme: dict | None = None,
-    meme_candidates: list[dict] = (),
 ) -> dict | None:
     """사장님 문장 → 컷 구성. 못 쓰면 None, 광고 내용이 아니면 {"cuts": [], "meme_used": None}.
 
-    trend_meme — 트렌드 화면에서 미리 골라 온 밈({id,name,origin,usage_example}). 주면
-    meme_candidates는 무시한다(이미 정해졌으니 고를 필요가 없다).
-    meme_candidates — 안 골랐을 때 GPT가 스스로 볼 후보 목록. 비어 있으면 밈 얘기 자체를 안 한다.
+    trend_meme — 트렌드 화면에서 미리 골라 온 밈({id,name,origin,usage_example}). 없으면
+    밈 얘기 자체를 프롬프트에 안 넣는다 — GPT가 스스로 밈을 골라 끼워 넣지 않는다.
     """
     if not available() or not (text or "").strip():
         return None
 
     n = cut_count(ad.get("ad_type", ""))
-    meme_rule, meme_block = _meme_prompt_parts(trend_meme, list(meme_candidates))
+    meme_rule, meme_block = _meme_prompt_parts(trend_meme)
     system = _PLAN_SYSTEM.format(cameras=" | ".join(CAMERA_TAGS), n=n, meme_rule=meme_rule)
     user = (
         f"{_context(store, char, ad, prods, current_plan)}\n\n"
@@ -251,16 +237,8 @@ def plan_from_text(
         return None
 
     # trend_meme이 있으면 이미 정해진 값을 그대로 쓴다(GPT의 echo를 믿을 필요가 없다).
-    # meme_candidates뿐이었다면 GPT가 실제로 고른 id를 후보 목록에서 확인해서 쓴다 —
-    # 후보에 없는 값이 오면(지어냈거나 형식이 어긋났으면) 안 쓴 것으로 조용히 넘어간다.
-    meme_used = None
-    if trend_meme:
-        meme_used = {"id": trend_meme["id"], "name": trend_meme.get("name", "")}
-    elif meme_candidates:
-        raw_id = str(parsed.get("meme_used") or "")
-        match = next((m for m in meme_candidates if str(m["id"]) == raw_id), None)
-        if match:
-            meme_used = {"id": match["id"], "name": match.get("name", "")}
+    # 없으면 애초에 프롬프트에 밈 얘기를 안 넣었으니 meme_used는 항상 None이다.
+    meme_used = {"id": trend_meme["id"], "name": trend_meme.get("name", "")} if trend_meme else None
 
     return {"cuts": cuts, "meme_used": meme_used}
 

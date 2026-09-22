@@ -502,6 +502,16 @@ export function useAdMakerState() {
     } catch (e) { update({ sbThinking: false }); fail(e); }
   }, [update, fail]);
 
+  /** "밈 추천받기" 버튼 — 지금까지 대화에서 쓴 문장을 근거로 밈을 추천받는다. 자동으로는
+   *  안 뜨고 이 버튼을 눌러야만 부른다. 결과는 confirm 카드로 오고 승인해야 반영된다. */
+  const recommendMeme = useCallback(async () => {
+    update({ sbThinking: true });
+    try {
+      const updated = await StoryboardAPI.recommendMeme();
+      update({ ...updated, sbThinking: false });
+    } catch (e) { update({ sbThinking: false }); fail(e); }
+  }, [update, fail]);
+
   const confirmPending = useCallback(async (pid) => {
     try { update(await StoryboardAPI.confirm(pid)); toast('반영했어요'); } catch (e) { fail(e); }
   }, [update, toast, fail]);
@@ -698,7 +708,7 @@ export function useAdMakerState() {
       saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion, autofillChar,
       confirmPending, declinePending,
       applyAd,
-      toggleSbSet, toggleSbProd, sendSb, suggestStory, makeComic,
+      toggleSbSet, toggleSbProd, sendSb, suggestStory, recommendMeme, makeComic,
       openResult, backToSb, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,

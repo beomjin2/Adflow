@@ -1,8 +1,9 @@
 import ChatPanel from '../components/ChatPanel.jsx';
 
 const EMPTY_HINT = `오늘 알리고 싶은 내용을 편하게 적어주세요.
-적어주시면 그 이야기로 스토리를 만들어 드리고, 아무것도 안 적고
-'스토리 제안받기'를 눌러도 바로 만들어 드려요.
+적어주시면 그 이야기로 스토리를 만들어 드려요.
+아무것도 안 적고 '스토리 제안받기'를 눌러도 만들어 드리지만,
+가게·생산 기록 정보가 적으면 구성이 부실할 수 있어요 — 되도록 직접 적어주세요.
 
 예) 오늘 소금빵 30개 구웠어요
 예) 이번 주말에 새 메뉴를 내요`;
@@ -28,9 +29,9 @@ function Accordion({ open, onToggle, label, pill, pillTone = '', children }) {
  *  대로다. 왼쪽은 카드 두 장(설정·생산 기록 / 정해진 내용), 오른쪽이 대화창.
  *  네컷 그림은 왼쪽 미리보기가 아니라 **대화창 안**에서 채워진다(ComicBubble).
  *
- *  밈은 따로 고르는 화면이 없다 — 트렌드 화면에서 미리 골라 왔으면(트렌드 참고해서
- *  만들기) 대화가 그 밈을 자동으로 반영하고, 안 골라 왔으면 GPT가 크롤링된 밈 중
- *  자연스럽게 붙는 게 있는지 스스로 살펴보고 있으면 "이런 밈도 있어요"라고 알려준다
+ *  밈은 따로 고르는 화면이 없다 — 트렌드 화면에서 미리 골라 왔을 때만(트렌드 참고해서
+ *  만들기) 대화가 그 밈을 반영한다. 안 골라 왔으면 밈 얘기 자체를 안 꺼낸다 — GPT가
+ *  스스로 골라 끼워 넣으면 사장님이 고른 적 없는 밈이 섞이기 때문이다
  *  (backend/app/services/story_llm.py 참고).
  */
 export default function Storyboard({ state, actions }) {
@@ -146,6 +147,7 @@ export default function Storyboard({ state, actions }) {
         onInputChange={(v) => actions.set('sbInput', v)}
         onSend={actions.sendSb}
         onSuggest={actions.suggestStory}
+        onRecommendMeme={actions.recommendMeme}
         plan={state.plan}
         comic={state.comicCuts}
         comicEta={state.sbEta}

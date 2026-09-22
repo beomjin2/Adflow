@@ -13,7 +13,7 @@ export default function ChatPanel({
   comic, comicEta = 0,
   prods, onPatchProd,
   pending, onConfirm, onDecline,
-  onSuggest,
+  onSuggest, onRecommendMeme,
   title = '',
   height = 430
 }) {
@@ -39,11 +39,20 @@ export default function ChatPanel({
         <div className="ad-chat-h">
           <h3>{title}</h3>
           <span className="ad-grow" />
-          {onSuggest && (
-            <button className="ad-btn tint sm" onClick={onSuggest} disabled={thinking}>
-              ✨ 스토리 제안받기
-            </button>
-          )}
+          {/* 두 버튼을 한 덩어리로 묶어서, 좁은 화면에서 줄바꿈될 때도 따로 떨어지지 않고
+              같이 다음 줄로 넘어간다. */}
+          <div style={{ display: 'flex', gap: 8 }}>
+            {onRecommendMeme && (
+              <button className="ad-btn sec sm" onClick={onRecommendMeme} disabled={thinking}>
+                밈 추천받기
+              </button>
+            )}
+            {onSuggest && (
+              <button className="ad-btn tint sm" onClick={onSuggest} disabled={thinking}>
+                스토리 제안받기
+              </button>
+            )}
+          </div>
         </div>
       )}
 

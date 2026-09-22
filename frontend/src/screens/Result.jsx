@@ -87,6 +87,9 @@ export default function Result({ state, actions }) {
           {tags.length > 0 && (
             <span style={{ fontSize: 14, fontWeight: 600, color: colors.primarySoftText }}>{tags.join(' ')}</span>
           )}
+          <span style={{ fontSize: 11.5, lineHeight: '16px', color: colors.textFaint }}>
+            AI가 만든 내용이에요 — GPT도 실수할 수 있으니 올리기 전에 한 번 확인해주세요.
+          </span>
         </div>
 
         <div style={{ display: 'flex', gap: 8 }}>

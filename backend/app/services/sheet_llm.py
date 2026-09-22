@@ -81,6 +81,12 @@ _EXTRACT_SYSTEM = """\
      "돈개잘버는게 능력이야"   -> abilities: "돈을 잘 버는 것"
      "이름은 곰이로 할래"       -> name: "곰이"
      "나이는 세 살쯤인 것 같아" -> age: "세 살"
+3-2. **칸 이름을 값 안에 다시 쓰지 않는다.** 그 값이 어느 칸에 적히는지는 이미 정해져
+   있다. 값 안에 칸 이름을 또 넣으면 시트에 같은 말이 두 번 적히고, 그림 프롬프트와
+   광고 대사에도 그대로 실려 나간다.
+     "돈개잘버는게 능력이야" -> abilities: "돈을 잘 버는 것"
+        (X: "돈개잘버는게 능력" · X: "돈을 잘 버는 능력")
+     "이름은 곰이야"         -> name: "곰이"        (X: "이름은 곰이")
 4. 한 문장에 여러 칸이 섞여 있으면 나눠서 각 칸에 넣는다.
    **눈에 보이는 것만 외형이다.** 한 문장에 생김새와 성격·특기가 같이 들어 있으면
    생김새만 look 에 넣고 나머지는 desc·abilities 로 보낸다. 생김새 한 조각이 섞여
@@ -128,6 +134,13 @@ _EXTRACT_SYSTEM = """\
    눈에 보이는 것을 적는 칸에만 쓴다.)
 
    이때 fields 는 반드시 비운다 — 부탁을 칸에 적으면 사장님이 쓴 적 없는 묘사가 남는다.
+
+   🔴 **뒤집어 말하면, fields 에 값을 넣었으면 wants_help 는 반드시 false 다.**
+   둘 중 하나다 — 값을 말했거나, 대신 정해 달라고 했거나. 값을 말했는데 부탁으로 읽으면
+   그 말은 시트에 안 들어가고 **우리가 지어낸 값이 승인 카드로 올라간다.** 사장님이
+   답을 했는데 되묻는 꼴이다.
+     "돈개잘버는게 능력이야"  -> abilities 에 값이 있다. wants_help = false.
+     "능력 알아서 정해줘"      -> 값이 없다. wants_help = true.
 
 10. wants_all — 사장님이 **남은 칸을 전부 대신 정해달라**는 뜻이면 true.
    한 칸이 아니라 여러 칸이나 나머지 전체를 가리키는 말이다("나머지 알아서",
@@ -187,8 +200,13 @@ _PROPOSE_SYSTEM = """\
    빈 칸을 처음 채우는 것이면 이 규칙은 해당 없다.
 5-1. **[이미 보여드린 제안]이 있으면 그것과 달라야 한다.** 거기 적힌 것을 그대로,
    또는 조사만 바꿔 다시 내면 안 된다. 사장님이 다시 물은 건 그게 아니었다는 뜻이다.
-   "좀 더 자세히"라고 했으면 **같은 값에 말을 덧붙이는 게 아니라** 색·소재·모양·소품처럼
-   **새로운 것을 실제로 더한** 값을 낸다.
+5-2. **"더 자세히"는 바꾸라는 말이 아니다.** 둘을 가른다.
+   - "좀 더 자세히 / 디테일하게" -> **이미 정해진 것은 그대로 두고** 살을 붙인다.
+     종류·색처럼 정해진 것을 바꾸면 안 된다. 색·재질·눈매·표정·소품 같은 **없던 것**을 더한다.
+       외형이 "북극곰" 일 때
+         (O) "흰 털에 동그란 얼굴과 큰 눈을 가진 중간 몸집의 북극곰"
+         (X) "짧고 곱슬거리는 털을 가진 중간 크기의 강아지"   <- 종이 바뀌었다
+   - "다른 걸로 / 마음에 안 들어 / 바꿔줘" -> 그때만 종류부터 다르게 간다.
 
 **reasoning → basis → why → proposal 순서로 채운다.** 사장님 말이 무슨 뜻인지(대신
 정해 달라는 것인지, 그냥 묻는 것인지) 먼저 한두 문장으로 정리하고, 무엇을 참고할지
@@ -574,7 +592,10 @@ def understand(char, text: str, asked_field: str = "", store=None) -> dict:
     for field, value in fields.items():
         if field not in _FILLABLE or not isinstance(value, str):
             continue
-        value = value.strip()
+        # 프롬프트로 "명사구로 쓰라"고 적어도 문장이 그대로 돌아온다 — 09-22 실측:
+        # 설명 칸에 "…베이커리의 마스코트입니다." 가 마침표까지 그대로 들어갔다.
+        # 프롬프트는 부탁이고 코드가 보장이다. 제안 값과 같은 잣대로 다듬는다.
+        value = _as_value(value)
         if not value:
             continue
         # 그 칸의 기존 값도 근거로 친다. 규칙 7(덧붙이기)이 기존 값을 합쳐 내보내는데,
@@ -667,7 +688,7 @@ def _grounded(value: str, text: str) -> bool:
     )
 
 
-def propose_field(char, field: str, text: str, store=None, avoid=()) -> dict:
+def propose_field(char, field: str, text: str, store=None, avoid=(), asked_for: bool = False) -> dict:
     """사장님이 "몰라, 알아서 해줘"라고 했을 때 그 칸에 넣을 값을 하나 제안한다.
 
     돌려주는 모양:
@@ -692,10 +713,15 @@ def propose_field(char, field: str, text: str, store=None, avoid=()) -> dict:
     seen = [v for v in dict.fromkeys(a.strip() for a in avoid if a and a.strip())]
     shown = ("\n\n[이미 보여드린 제안 — 이것과 달라야 한다]\n"
              + "\n".join(f"- {v}" for v in seen[-3:])) if seen else ""
+    # 부탁인지 아닌지는 **이미 가려졌다**(understand 의 wants_help). 여기서 다시 묻지
+    # 않는다 — 두 호출이 서로 다르게 판단하면 사장님은 "채워 달라"고 했는데 아무것도
+    # 안 나온다(09-22 실측: "능력채워" 에 제안이 안 나오고 되묻기만 돌아왔다).
+    decided = ("\n\n[이미 가려진 것]\n사장님은 이 칸을 대신 정해 달라고 하셨다. "
+               "반드시 intent 를 \"help\" 로 하고 제안을 낸다.") if asked_for else ""
     prompt = _context(
         char, store,
         f"[지금 묻고 있는 칸]\n{label}({field})\n\n"
-        f"[사장님이 방금 한 말]\n{(text or '').strip()}{shown}",
+        f"[사장님이 방금 한 말]\n{(text or '').strip()}{decided}{shown}",
     )
     # 무엇을 제안할지는 **여기서도 프롬프트에서도 정하지 않는다.** 금지어로 소재를
     # 막는 것도, "가게 정보에서 끌어내야만 한다"고 못 박는 것도 똑같이 고정이다 —
@@ -704,7 +730,7 @@ def propose_field(char, field: str, text: str, store=None, avoid=()) -> dict:
     # 코드가 보장하는 건 형식뿐이다: 명사구인가(_as_value), 한 문단을 넘지 않는가.
     parsed = _ask(_PROPOSE_SYSTEM, prompt, _T_PROPOSE)
     _log_reasoning("제안 판단", parsed)
-    value = _proposal_from(parsed)
+    value = _proposal_from(parsed, force=asked_for)
     # **길이로 버리지 않는다.** 예전에는 90자를 넘으면 통째로 버렸는데, 그러면 "알아서
     # 정해줘"라고 한 사장님에게 아무 제안도 못 준다. 길면 긴 대로 카드에 올리고, 보고
     # 정하는 건 사장님 몫이다 — 시트의 외형·아웃핏·설명·능력은 여러 줄 입력 칸이다.
@@ -719,9 +745,14 @@ def propose_field(char, field: str, text: str, store=None, avoid=()) -> dict:
     return {"value": value, "say": spoken, **evidence_from(parsed, char, store)}
 
 
-def _proposal_from(parsed: dict) -> str:
-    """제안 응답에서 시트에 적을 값만. 대신 정해달라는 뜻이 아니면 빈 문자열."""
-    if parsed.get("intent") != "help":
+def _proposal_from(parsed: dict, force: bool = False) -> str:
+    """제안 응답에서 시트에 적을 값만. 대신 정해달라는 뜻이 아니면 빈 문자열.
+
+    `force` 는 **부를 때 이미 부탁이라고 가려 놓은 경우**다. 그때는 이 응답의 intent
+    판단을 따르지 않는다 — 같은 말을 두 번 가리게 두면 판단이 엇갈리고, 사장님은
+    "채워 달라"고 했는데 아무 제안도 못 받는다.
+    """
+    if not force and parsed.get("intent") != "help":
         return ""
     value = parsed.get("proposal")
     if not isinstance(value, str):

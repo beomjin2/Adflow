@@ -137,7 +137,9 @@ def _recorded_line(char, filling: dict) -> str:
             continue
         if len(value) > 40:
             value = value[:40] + "…"
-        parts.append(f"'{_label(field)}'에 \"{value}\"라고 적어뒀어요.")
+        # 조사를 붙이지 않는다 — 값 끝이 받침으로 끝나느냐에 따라 '라고/이라고'가
+        # 갈려서, 한쪽으로 고정하면 반은 틀린 말이 된다. 줄표로 잇는다.
+        parts.append(f"'{_label(field)}'에 이렇게 적어뒀어요 — \"{value}\".")
     return " ".join(parts)
 
 
@@ -248,6 +250,10 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     complete_before = sheet.is_complete(char)
     # 우리가 **실제로 물어본** 칸. 비어 있으면 아직 아무것도 묻지 않았다는 뜻이다.
     asked = char.editing
+    # **첫 마디인가.** 아래에서 target 이 asked 를 덮어쓰기 때문에 여기서 미리 잡아 둔다.
+    # 안 잡으면 "자 드가자"(= 시작하자) 한마디에 target='look' 이 붙어 곧바로 외형 제안
+    # 카드가 뜬다(09-22 실측). 첫 마디는 부탁이 아니라 인사다 — 안내부터 한다.
+    first_turn = not asked
 
     # LLM이 붙어 있으면 한 문장에서 여러 칸을 한 번에 읽고, **어느 칸 얘기인지**와
     # **대신 정해달라는 뜻인지**까지 같이 가려낸다.
@@ -277,7 +283,12 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
         # 예전에는 못 읽으면 물어본 칸에 사장님 말을 통째로 넣었다(`{asked: text}`).
         # 그래서 "몰라 좀 해봐"가 설명 칸에, "모른다고"가 능력 칸에 그대로 적혔다.
         # 답이 아닌 말은 답이 아니다. 시트는 사장님이 **정한 것**만 담아야 한다.
-        filling = dict(fields)
+        # **지금과 똑같은 값은 바꿀 내용이 아니다.** 추출 규칙 7(기존 값과 합쳐서 내기)
+        # 때문에 그 칸의 기존 값이 그대로 되돌아오는 일이 잦은데, 그걸 덮어쓰기로 치면
+        # "'외형'에는 이미 이렇게 적혀 있어요"로 끝나 대화가 막힌다(09-22 실측).
+        # 걸러 두면 아래 _handle_non_answer 로 내려가 제안하거나 되묻는다.
+        filling = {f: v for f, v in fields.items()
+                   if (sheet.value_of(char, f) or "").strip() != (v or "").strip()}
 
         # **이미 값이 있는 칸은 조용히 갈아치우지 않고 승인 카드로 올린다.**
         # 빈 칸을 채우는 건 보여줄 전/후가 없어 바로 넣지만, 덮어쓰기는 사장님이 공들여
@@ -299,27 +310,10 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
             filling = {asked: text}
 
         if filling:
-            for field, value in filling.items():
-                sheet.absorb(char, field, value)
-            # 사장님이 그 칸을 직접 말해서 채웠다 — 같은 칸을 두고 띄워 둔 제안은
-            # 이미 지나간 얘기다. 안 닫으면 옛 제안 카드가 화면에 남는다.
-            _supersede(char, filling)
-            # 적힌 줄을 눈으로 확인할 수 있게 **우리가** 앞에 붙인다(_recorded_line).
-            recorded = _recorded_line(char, filling)
-
-            following = sheet.next_field(char)
-            if following:
-                char.editing = following
-                said = _guide(char, text, filling, following, store,
-                              fallback=sheet.QUESTIONS[following])
-                _say(messages, f"{recorded} {said}".strip())
-            else:
-                # 묻는 칸이 다 찼다 — 키워드를 뽑아 제안한다.
-                char.editing = ""
-                _say(messages, f"{recorded} 시트가 다 채워졌어요.".strip())
-                _propose_keywords(char, messages, store)
+            _record_and_continue(char, messages, filling, text, store)
         else:
-            _handle_non_answer(char, messages, text, asked, store, wants_help=wants_help)
+            _handle_non_answer(char, messages, text, asked, store,
+                               wants_help=wants_help, first_turn=first_turn)
     else:
         # ---- 다 찬 뒤의 수정 — 승인받고 반영한다 ----
         # 시트에서 칸을 눌러 '이 칸을 고치겠다'고 한 게 asked다. 그게 없어도
@@ -339,6 +333,33 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
 
     char.messages = messages
     return _out(char, db)
+
+
+def _record_and_continue(char, messages: list, filling: dict, text: str, store) -> None:
+    """읽어낸 값을 시트에 적고, **무엇을 적었는지 알린 뒤** 다음 칸으로 간다.
+
+    빈 칸을 채울 때는 승인을 안 받는다 — 전/후가 없어 보여 줄 게 없고, 사장님이 방금
+    직접 한 말을 한 번 더 승인하게 만들 이유도 없다.
+    """
+    for field, value in filling.items():
+        sheet.absorb(char, field, value)
+    # 사장님이 그 칸을 직접 말해서 채웠다 — 같은 칸을 두고 띄워 둔 제안은 이미 지나간
+    # 얘기다. 안 닫으면 옛 제안 카드가 화면에 남는다.
+    _supersede(char, filling)
+    # 적힌 줄을 눈으로 확인할 수 있게 **우리가** 앞에 붙인다(_recorded_line).
+    recorded = _recorded_line(char, filling)
+
+    following = sheet.next_field(char)
+    if following:
+        char.editing = following
+        said = _guide(char, text, filling, following, store,
+                      fallback=sheet.QUESTIONS[following])
+        _say(messages, f"{recorded} {said}".strip())
+    else:
+        # 묻는 칸이 다 찼다 — 키워드를 뽑아 제안한다.
+        char.editing = ""
+        _say(messages, f"{recorded} 시트가 다 채워졌어요.".strip())
+        _propose_keywords(char, messages, store)
 
 
 def _handle_complete_chat(char, messages: list, text: str, store) -> None:
@@ -392,7 +413,7 @@ def _handle_complete_chat(char, messages: list, text: str, store) -> None:
 
 
 def _handle_non_answer(char, messages: list, text: str, asked: str, store,
-                       wants_help: bool = False) -> None:
+                       wants_help: bool = False, first_turn: bool = False) -> None:
     """시트에 넣을 내용이 없는 말에 답한다. **사장님 말이 시트에 적히는 일은 없다.**
 
     세 갈래다.
@@ -406,7 +427,7 @@ def _handle_non_answer(char, messages: list, text: str, asked: str, store,
         _say(messages, "시트가 다 찼어요. 고치고 싶은 칸을 시트에서 눌러주세요.")
         return
 
-    if not asked:
+    if first_turn:
         char.editing = following
         _say(messages, _guide(
             char, text, {}, following, store,
@@ -434,8 +455,15 @@ def _handle_non_answer(char, messages: list, text: str, asked: str, store,
         # 추출 쪽이 지금 값을 그대로 되돌려주는 일이 잦은데, 그걸 카드로 올리면
         # "'능력'에는 이미 이렇게 적혀 있어요"로 끝난다 — 부탁을 거절한 셈이다
         # (09-22 실측). 그런 값은 버리고 아래 제안 갈래로 내려간다.
-        if value and value != (sheet.value_of(char, following) or "").strip():
-            _open_suggestion(char, messages, {following: value}, phase="filling")
+        current = (sheet.value_of(char, following) or "").strip()
+        if value and value != current:
+            if current:
+                _open_suggestion(char, messages, {following: value}, phase="filling")
+            else:
+                # 빈 칸이다. 사장님이 직접 말한 값이니 승인받을 게 없다 — 바로 적는다.
+                # 여기에까지 카드를 띄우면 사장님은 자기가 한 말을 한 번 더 승인해야 한다
+                # (09-22 실측: "돈개잘버는게 능력이야"가 빈 능력 칸에 카드로 올라왔다).
+                _record_and_continue(char, messages, {following: value}, text, store)
             return
 
     # 🔴 **제안은 사장님이 부탁했을 때만 낸다.**
@@ -445,7 +473,8 @@ def _handle_non_answer(char, messages: list, text: str, asked: str, store,
     if wants_help:
         # 이미 보여 드린 값과 같은 건 안 받는다 — 같은 제안이 두 번 오면 대화가 멈춘다.
         proposal = sheet_llm.propose_field(
-            char, following, text, store, avoid=_shown_values(char, following))
+            char, following, text, store,
+            avoid=_shown_values(char, following), asked_for=True)
         if proposal:
             char.editing = following
             # 물어보신 말에 먼저 답하고, 그 답의 결론을 카드로 올린다. 카드만 띄우면

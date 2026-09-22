@@ -1,7 +1,9 @@
 """스토리보드 대화에 붙는 LLM. 붙어 있지 않아도 서비스는 그대로 돈다.
 
-하는 일은 하나뿐이다 — `plan_from_text()` 가 사장님이 쓴 말을 **광고 컷 구성**으로
-나눈다. 전에는 정규식이 문장부호에서 잘랐다(`_cuts_from_text`). 그건 컷 구성이 아니라
+하는 일은 둘이다 — `plan_from_text()` 가 사장님이 쓴 말을 **광고 컷 구성**으로
+나누고, `generate_caption()` 이 확정된 컷으로 인스타에 올릴 캡션을 따로 쓴다(컷
+대사는 말풍선용 40자 제한이 있어 그대로 이어붙이면 SNS 톤이 안 살아서다).
+plan_from_text 는 전에는 정규식이 문장부호에서 잘랐다(`_cuts_from_text`). 그건 컷 구성이 아니라
 사장님 문장을 토막낸 것이다 — "오늘 소금빵 30개 구웠어요" 는 한 컷이 되고, 그 한 컷이
 그대로 그림 프롬프트로 들어가 글자를 못 쓰는 모델에게 대사를 그리라고 시켰다.
 
@@ -128,8 +130,8 @@ def _ask(system: str, user: str) -> dict | None:
 
 
 def cut_count(ad_type: str) -> int:
-    """광고 종류가 정하는 컷 수. 4컷만화는 네 컷, 나머지는 세 컷."""
-    return 4 if (ad_type or "").strip() == "4컷만화" else 3
+    """광고 종류가 정하는 컷 수. 4컷만화는 네 컷, 인스타 게시물은 한 장짜리 게시물이라 한 컷."""
+    return 4 if (ad_type or "").strip() == "4컷만화" else 1
 
 
 def _context(store: dict, char: dict, ad: dict, prods: list[dict], current_plan: list[dict]) -> str:
@@ -232,8 +234,10 @@ def plan_from_text(
             "props": [str(p) for p in (c.get("props") or []) if str(p).strip()],
         })
 
-    # 한 컷짜리 광고는 컷 구성이라고 부를 수 없다. 모델이 형식을 놓친 것으로 본다.
-    if len(cuts) < 2:
+    # 컷이 하나도 안 왔으면 모델이 형식을 놓친 것으로 본다. 인스타 게시물은 원래
+    # 한 컷이 정상이라 여기서 최소 개수를 강제하지 않는다 — n이 몇 개를 요구했는지는
+    # 위에서 이미 raw[:n]로 잘라냈다.
+    if not cuts:
         return None
 
     # trend_meme이 있으면 이미 정해진 값을 그대로 쓴다(GPT의 echo를 믿을 필요가 없다).
@@ -251,3 +255,84 @@ def _invents_numbers(value: str, haystack: str) -> bool:
         if number not in digits:
             return True
     return False
+
+
+_CAPTION_SYSTEM = """\
+너는 한국 동네 가게 사장님의 인스타그램 게시물 캡션을 써주는 카피라이터다.
+사장님이 이미 확정한 광고 컷 내용을 재료로, 인스타에 그대로 올릴 캡션 하나를 쓴다.
+
+규칙:
+1. 컷 내용·가게 정보에 없는 사실(가격·할인율·수량·시간)은 지어내지 않는다.
+2. 실제 SNS 게시물처럼 쓴다 — 짧은 문장, 줄바꿈, 어울리는 이모지 1~3개, 자연스러운
+   마무리(질문·초대 등). 컷 대사를 그대로 나열하지 않는다 — 하나의 글로 자연스럽게 잇는다.
+3. 광고 느낌(컨셉)을 말투에 반영한다. 느낌을 설명하는 문장을 쓰지 않는다.
+4. 마지막 줄에 해시태그 3~5개(#으로 시작, 공백 없이) — 업종·동네·컷에 나온 품목에서 뽑는다.
+5. 전체 300자를 넘기지 않는다.
+{meme_rule}
+
+출력은 캡션 텍스트만 — 설명, 따옴표, 마크다운 없이 그대로.
+"""
+
+
+def generate_caption(
+    *,
+    store: dict,
+    char: dict,
+    ad: dict,
+    prods: list[dict],
+    plan: list[dict],
+    trend_meme: dict | None = None,
+) -> str | None:
+    """확정된 컷(plan)으로 인스타 캡션을 새로 쓴다. 컷 대사(line)는 말풍선용이라 40자
+    제한이 있어 그대로 이어붙이면 SNS 톤이 안 산다 — 컷 내용을 재료 삼아 이모지·줄바꿈·
+    해시태그가 있는 실제 캡션을 따로 만든다.
+
+    실패하면(키 없음·네트워크·형식 이상·가게에 없는 숫자를 지어냄) None — 호출부가
+    컷 이어붙이기(옛 방식)로 조용히 돌아간다.
+    """
+    if not available() or not plan:
+        return None
+
+    meme_rule = ""
+    meme_block = ""
+    if trend_meme:
+        meme_rule = "6. [참고 밈]을 캡션 말투나 분위기에 살짝 녹여도 된다 — 억지로 우겨넣지 않는다."
+        meme_block = (
+            f"\n[참고 밈: {trend_meme.get('name', '')}]\n"
+            f"유래: {(trend_meme.get('origin') or '')[:150]}\n"
+        )
+
+    system = _CAPTION_SYSTEM.format(meme_rule=meme_rule)
+    cuts_text = "\n".join(f"{c.get('n')}. {c.get('line', '')}" for c in plan)
+    context = _context(store, char, ad, prods, [])
+    user = f"{context}\n{meme_block}\n[확정된 컷]\n{cuts_text}"
+
+    try:
+        response = requests.post(
+            f"{settings.openai_base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.openai_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": settings.openai_model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "temperature": 0.6,
+            },
+            timeout=settings.openai_timeout_seconds,
+        )
+        response.raise_for_status()
+        caption = (response.json()["choices"][0]["message"]["content"] or "").strip()
+    except Exception as exc:
+        logger.warning("캡션 생성 실패, 컷 이어붙이기로 진행합니다: %s", type(exc).__name__)
+        return None
+
+    if not caption or len(caption) > 500:
+        return None
+    if _invents_numbers(caption, cuts_text + " " + context):
+        logger.info("가게에 없는 숫자를 지어내 캡션을 버렸습니다")
+        return None
+    return caption

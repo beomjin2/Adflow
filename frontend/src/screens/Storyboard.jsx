@@ -138,6 +138,7 @@ export default function Storyboard({ state, actions }) {
 
       <ChatPanel
         title="무엇을 알리고 싶으세요? — AI와 대화"
+        disclaimer="AI가 만든 내용이에요 — GPT도 실수할 수 있으니 올리기 전에 한 번 확인해주세요."
         messages={state.sbMsgs}
         thinking={state.sbThinking}
         thinkingLabel="정리하는 중…"

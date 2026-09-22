@@ -8,10 +8,22 @@ const fieldStyle = {
   background: '#fff', color: colors.text, fontSize: 16, padding: '0 14px', width: '100%', minWidth: 0
 };
 
+// 한 번에 보여주는 날짜 그룹 수. "더보기"를 누를 때마다 이만큼 더 연다.
+const DAYS_PAGE = 7;
+
 export default function ProductionTab({ state, actions }) {
   // 리스트가 길어지면 지금 어떤 기록을 보고 있었는지 놓치기 쉽다 — 줄을 클릭하면 노란
   // 테두리로 표시해 둔다. 서버에 남기는 값이 아니라 화면에서만 쓰는 표시라 로컬 state.
   const [selectedId, setSelectedId] = useState(null);
+  // 안쪽에 스크롤 박스를 두면 페이지 스크롤 안에 스크롤이 하나 더 생겨 오히려 쓰기
+  // 불편하다(특히 모바일). 대신 날짜 그룹을 최근 것부터 일정 개수만 보여주고,
+  // "더보기"를 눌러야 그 이전 날짜가 나오게 한다.
+  const [visibleDays, setVisibleDays] = useState(DAYS_PAGE);
+  // 날짜 카드는 기본적으로 "오늘이거나 매진 미입력이 남아있으면 펼침"을 매 렌더마다
+  // 새로 계산한다 — 미입력 기록을 하나 채워도 같은 날짜에 다른 미입력이 남아있으면
+  // 계속 펼쳐져 있어야 한다. 사장님이 직접 펼치거나 접은 날짜만 여기에 기록해서
+  // 그 선택을 계산값보다 우선한다.
+  const [manualOpen, setManualOpen] = useState({});
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
@@ -63,11 +75,11 @@ export default function ProductionTab({ state, actions }) {
           <LabeledField label="만든 날짜" style={{ flex: '1 1 150px' }}>
             <input type="date" value={state.draftDate} onChange={e => actions.set('draftDate', e.target.value)} aria-label="만든 날짜" style={fieldStyle} />
           </LabeledField>
-          <LabeledField label="만든 시각" style={{ flex: '1 1 124px' }}>
-            <input type="time" value={state.draftTime} onChange={e => actions.set('draftTime', e.target.value)} aria-label="만든 시각" style={fieldStyle} />
+          <LabeledField label="만든 시각" style={{ flex: '1 1 160px' }}>
+            <TimeNowInput value={state.draftTime} onChange={v => actions.set('draftTime', v)} ariaLabel="만든 시각" />
           </LabeledField>
-          <LabeledField label="매진 시각 (나중에 적어도 돼요)" style={{ flex: '1 1 124px' }}>
-            <input type="time" value={state.draftSold} onChange={e => actions.set('draftSold', e.target.value)} aria-label="매진 시각" style={fieldStyle} />
+          <LabeledField label="매진 시각 (나중에 적어도 돼요)" style={{ flex: '1 1 160px' }}>
+            <TimeNowInput value={state.draftSold} onChange={v => actions.set('draftSold', v)} ariaLabel="매진 시각" />
           </LabeledField>
         </div>
         <PrimaryButton onClick={actions.addProd} disabled={!state.draftItem} style={{ alignSelf: 'flex-start', minWidth: 160 }}>
@@ -82,35 +94,62 @@ export default function ProductionTab({ state, actions }) {
         <div style={{ border: `1px dashed ${colors.inputBorder}`, borderRadius: 16, padding: 32, textAlign: 'center', fontSize: 14, color: colors.textFaint, lineHeight: '22px' }}>
           아직 기록이 없어요.<br />위에서 적어주세요.
         </div>
-      ) : groupByDate(state.prods).map(([dateKey, list]) => {
-        const missingCount = list.filter(p => !p.soldOut).length;
-        // 오늘 것과, 매진 시각이 빠진 게 있는 날은 펼쳐서 눈에 띄게 둔다 — 그 밖의 지난
-        // 기록은 접어서 며칠치가 쌓여도 스크롤이 안 길어지게 한다.
-        const openByDefault = dateKey === todayKey() || missingCount > 0;
+      ) : (() => {
+        const groups = groupByDate(state.prods);
+        // 매진 시각 미입력이 있는 날짜는 며칠 전이든 상관없이 항상 보여준다 — "더보기"
+        // 뒤에 숨으면 사장님이 챙겨야 할 걸 놓친다. 나머지(다 채워진 날짜)만 최근
+        // visibleDays개까지만 먼저 보여주고 그 이후는 "더보기"로 넘긴다.
+        const recentKeys = new Set(groups.slice(0, visibleDays).map(([k]) => k));
+        const shown = groups.filter(([k, list]) => recentKeys.has(k) || list.some(p => !p.soldOut));
+        const rest = groups.length - shown.length;
         return (
-          <details key={dateKey || '_none'} open={openByDefault}
-            style={{ background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: 16, overflow: 'hidden' }}>
-            <summary className="prod-summary" style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '13px 15px', cursor: 'pointer', minHeight: 48, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 14.5, fontWeight: 700 }}>{dateLabel(dateKey)}</span>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: colors.textSub, background: colors.bg, borderRadius: 999, padding: '3px 9px' }}>{list.length}건</span>
-              {missingCount > 0 && (
-                <span style={{ fontSize: 12, fontWeight: 700, color: colors.warnText, background: colors.warnBg, border: `1px solid ${colors.warnBorder}`, borderRadius: 999, padding: '3px 9px' }}>
-                  매진 시각 미입력 {missingCount}
-                </span>
-              )}
-              <span style={{ flex: 1 }} />
-              <span className="arr" style={{ fontSize: 13, color: colors.textFaint }}>⌄</span>
-            </summary>
-            <div style={{ padding: '0 15px 13px', display: 'flex', flexDirection: 'column', gap: 11 }}>
-              {list.map(p => (
-                <RecordRow key={p.id} p={p} items={state.items} actions={actions}
-                  selected={selectedId === p.id}
-                  onSelect={() => setSelectedId(selectedId === p.id ? null : p.id)} />
-              ))}
-            </div>
-          </details>
+          <>
+            {shown.map(([dateKey, list]) => {
+              const missingCount = list.filter(p => !p.soldOut).length;
+              // 오늘 것과, 매진 시각이 빠진 게 있는 날은 펼쳐서 눈에 띄게 둔다 — 그 밖의
+              // 지난 기록은 접어서 한 줄만 차지하게 한다. 사장님이 직접 펼치거나 접었으면
+              // (manualOpen) 그 선택을 그대로 따른다.
+              const openByDefault = dateKey === todayKey() || missingCount > 0;
+              const isOpen = Object.prototype.hasOwnProperty.call(manualOpen, dateKey)
+                ? manualOpen[dateKey] : openByDefault;
+              const toggle = () => setManualOpen((m) => ({ ...m, [dateKey]: !isOpen }));
+              return (
+                <div key={dateKey || '_none'}
+                  style={{ background: '#fff', border: `1px solid ${colors.cardBorder}`, borderRadius: 16, overflow: 'hidden' }}>
+                  <div role="button" tabIndex={0} onClick={toggle}
+                    onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '13px 15px', cursor: 'pointer', minHeight: 48, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 14.5, fontWeight: 700 }}>{dateLabel(dateKey)}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: colors.textSub, background: colors.bg, borderRadius: 999, padding: '3px 9px' }}>{list.length}건</span>
+                    {missingCount > 0 && (
+                      <span style={{ fontSize: 12, fontWeight: 700, color: colors.warnText, background: colors.warnBg, border: `1px solid ${colors.warnBorder}`, borderRadius: 999, padding: '3px 9px' }}>
+                        매진 시각 미입력 {missingCount}
+                      </span>
+                    )}
+                    <span style={{ flex: 1 }} />
+                    <span style={{ fontSize: 13, color: colors.textFaint, transition: 'transform .15s', transform: isOpen ? 'rotate(180deg)' : 'none' }}>⌄</span>
+                  </div>
+                  {isOpen && (
+                    <div style={{ padding: '0 15px 13px', display: 'flex', flexDirection: 'column', gap: 11 }}>
+                      {list.map(p => (
+                        <RecordRow key={p.id} p={p} items={state.items} actions={actions}
+                          selected={selectedId === p.id}
+                          onSelect={() => setSelectedId(selectedId === p.id ? null : p.id)} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {rest > 0 && (
+              <button type="button" onClick={() => setVisibleDays(v => v + DAYS_PAGE)}
+                style={{ alignSelf: 'center', height: 44, padding: '0 20px', borderRadius: 12, border: `1.5px solid ${colors.inputBorder}`, background: '#fff', color: colors.textSub, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                이전 기록 더보기 (남은 {rest}일)
+              </button>
+            )}
+          </>
         );
-      })}
+      })()}
     </div>
   );
 }
@@ -120,6 +159,12 @@ export default function ProductionTab({ state, actions }) {
 function todayKey() {
   const n = new Date();
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+}
+
+/** 지금 시:분(HH:MM). "지금" 버튼이 시각 칸을 채울 때 쓴다. */
+function nowHM() {
+  const n = new Date();
+  return `${String(n.getHours()).padStart(2, '0')}:${String(n.getMinutes()).padStart(2, '0')}`;
 }
 
 /** 날짜 칸을 "오늘"/"어제"/"9월 18일 (금)"으로. 날짜가 비어 있으면 "날짜 없음". */
@@ -152,38 +197,100 @@ function groupByDate(prods) {
   return keys.map((k) => [k, byDate.get(k)]);
 }
 
+/** 지나간 기록은 대부분 훑어보기만 한다 — 매번 5칸짜리 편집 폼을 펼쳐두면 하루에 몇
+ *  건만 쌓여도 화면이 입력칸으로 빽빽해진다. 접혀 있을 땐 한 줄 요약만 보여주고,
+ *  눌러야(선택 상태) 그때 고칠 수 있는 폼이 펼쳐진다. */
 function RecordRow({ p, items, actions, selected, onSelect }) {
   const missing = !p.soldOut;
+  const boxStyle = {
+    background: missing ? colors.warnBg : '#fff',
+    border: `${selected ? 2 : 1}px solid ${selected ? colors.warnAccent : (missing ? colors.warnBorder : colors.cardBorder)}`,
+    borderRadius: 14,
+  };
+
+  if (!selected) {
+    return (
+      <div onClick={onSelect} role="button" tabIndex={0}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(); } }}
+        style={{ ...boxStyle, padding: '13px 15px', cursor: 'pointer' }}>
+        <RecordSummary p={p} />
+      </div>
+    );
+  }
+
   return (
-    <div onClick={onSelect} style={{
-      display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '11px 13px', alignItems: 'start',
-      background: missing ? colors.warnBg : '#fff',
-      border: `${selected ? 2 : 1}px solid ${selected ? colors.warnAccent : (missing ? colors.warnBorder : colors.cardBorder)}`,
-      borderRadius: 14, padding: selected ? '12px 14px' : '13px 15px', cursor: 'pointer',
-    }}>
-      <RowField label="품목">
-        <Select value={p.name} onChange={e => actions.patchProd(p.id, { name: e.target.value })} aria-label="품목" style={fieldStyle}>
-          {/* 품목 목록에서 지워졌거나 이름이 바뀐 뒤에도 이 기록엔 옛 이름이 남아있을 수 있다 —
-              목록에 없으면 지금 값을 옵션으로 하나 더 넣어서 "골랐는데 안 보이는" 상태를 막는다. */}
-          {!items.includes(p.name) && p.name && <option value={p.name}>{p.name}</option>}
-          {items.map(i => <option key={i} value={i}>{i}</option>)}
-        </Select>
-      </RowField>
-      <RowField label="수량">
-        <DraftInput value={p.qty} onCommit={(v) => actions.patchProd(p.id, { qty: v })} sanitize={digitsOnly}
-          inputMode="numeric" aria-label="수량" style={fieldStyle} />
-      </RowField>
-      <RowField label="만든 날짜"><input type="date" value={p.date} onChange={e => actions.patchProd(p.id, { date: e.target.value })} aria-label="만든 날짜" style={fieldStyle} /></RowField>
-      <RowField label="만든 시각"><input type="time" value={p.time} onChange={e => actions.patchProd(p.id, { time: e.target.value })} aria-label="만든 시각" style={fieldStyle} /></RowField>
-      <RowField label="매진 시각"><input type="time" value={p.soldOut} onChange={e => actions.setSoldOut(p.id, e.target.value)} aria-label="매진 시각" style={{ ...fieldStyle, borderColor: missing ? '#E0BE74' : colors.inputBorder }} /></RowField>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
-        <span style={fieldLabel}>상태</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 48 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: missing ? colors.warnText2 : colors.primary }}>{missing ? '매진 시각 미입력' : `매진 ${p.soldOut}`}</span>
-          <span style={{ flex: 1 }} />
-          <ConfirmDelete onDelete={() => actions.delProd(p.id)} width={64} />
+    <div style={{ ...boxStyle, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 11 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: '11px 13px', alignItems: 'start' }}>
+        <RowField label="품목">
+          <Select value={p.name} onChange={e => actions.patchProd(p.id, { name: e.target.value })} aria-label="품목" style={fieldStyle}>
+            {/* 품목 목록에서 지워졌거나 이름이 바뀐 뒤에도 이 기록엔 옛 이름이 남아있을 수 있다 —
+                목록에 없으면 지금 값을 옵션으로 하나 더 넣어서 "골랐는데 안 보이는" 상태를 막는다. */}
+            {!items.includes(p.name) && p.name && <option value={p.name}>{p.name}</option>}
+            {items.map(i => <option key={i} value={i}>{i}</option>)}
+          </Select>
+        </RowField>
+        <RowField label="수량(개)">
+          <DraftInput value={p.qty} onCommit={(v) => actions.patchProd(p.id, { qty: v })} sanitize={digitsOnly}
+            inputMode="numeric" aria-label="수량(개)" style={fieldStyle} />
+        </RowField>
+        <RowField label="만든 날짜"><input type="date" value={p.date} onChange={e => actions.patchProd(p.id, { date: e.target.value })} aria-label="만든 날짜" style={fieldStyle} /></RowField>
+        <RowField label="만든 시각">
+          <TimeNowInput value={p.time} onChange={v => actions.patchProd(p.id, { time: v })} ariaLabel="만든 시각" />
+        </RowField>
+        <RowField label="매진 시각">
+          <TimeNowInput value={p.soldOut} onChange={v => actions.setSoldOut(p.id, v)} ariaLabel="매진 시각"
+            inputStyle={{ borderColor: missing ? '#E0BE74' : colors.inputBorder }} />
+        </RowField>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+          <span style={fieldLabel}>상태</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 48 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: missing ? colors.warnText2 : colors.primary }}>{missing ? '매진 시각 미입력' : `매진 ${p.soldOut}`}</span>
+            <span style={{ flex: 1 }} />
+            <ConfirmDelete onDelete={() => actions.delProd(p.id)} width={64} />
+          </div>
         </div>
       </div>
+      <button type="button" onClick={onSelect}
+        style={{ alignSelf: 'flex-end', height: 34, padding: '0 12px', borderRadius: 8, border: 0, background: colors.softBg, color: colors.textSub, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+        접기 ▲
+      </button>
+    </div>
+  );
+}
+
+/** 한 줄 요약 — 품목·수량·만든 시각과 매진 상태만. 날짜는 바깥 아코디언(날짜별 그룹)이
+ *  이미 보여주고 있어서 여기선 반복하지 않는다. */
+function RecordSummary({ p }) {
+  const missing = !p.soldOut;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <span style={{ fontSize: 14.5, fontWeight: 700 }}>{p.name || '이름 없음'}</span>
+      {p.qty && <span style={{ fontSize: 13.5, color: colors.textSub }}>{p.qty}개</span>}
+      <span style={{ fontSize: 13.5, color: colors.textSub }}>{p.time || '시각 없음'}</span>
+      <span style={{ flex: 1 }} />
+      {missing ? (
+        <span style={{ fontSize: 12, fontWeight: 700, color: colors.warnText2, background: colors.warnBg, border: `1px solid ${colors.warnBorder}`, borderRadius: 999, padding: '3px 9px' }}>
+          매진 시각 미입력
+        </span>
+      ) : (
+        <span style={{ fontSize: 12, fontWeight: 700, color: colors.primary, background: colors.primarySoft, borderRadius: 999, padding: '3px 9px' }}>
+          매진 {p.soldOut}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** 시각 칸 옆의 "지금" 버튼 — 매번 손으로 시:분을 고르지 않고 한 번에 채운다. */
+function TimeNowInput({ value, onChange, ariaLabel, inputStyle }) {
+  return (
+    <div style={{ display: 'flex', gap: 6 }}>
+      <input type="time" value={value} onChange={e => onChange(e.target.value)} aria-label={ariaLabel}
+        style={{ ...fieldStyle, ...inputStyle, flex: 1, minWidth: 0 }} />
+      <button type="button" onClick={() => onChange(nowHM())}
+        style={{ flex: 'none', height: 48, padding: '0 12px', borderRadius: 12, border: `1.5px solid ${colors.inputBorder}`, background: '#fff', color: colors.textSub, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+        지금
+      </button>
     </div>
   );
 }

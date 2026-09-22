@@ -15,6 +15,7 @@ export default function ChatPanel({
   pending, onConfirm, onDecline,
   onSuggest, onRecommendMeme,
   title = '',
+  disclaimer = '',
   height = 430
 }) {
   const listRef = useRef(null);
@@ -102,6 +103,12 @@ export default function ChatPanel({
           }}>{thinkingLabel}</div>
         )}
       </div>
+
+      {card && disclaimer && (
+        <span style={{ fontSize: 11.5, lineHeight: '16px', color: colors.textFaint, padding: '0 20px' }}>
+          {disclaimer}
+        </span>
+      )}
 
       <div className={card ? 'in' : undefined} style={card ? undefined : { display: 'flex', gap: 8 }}>
         <input

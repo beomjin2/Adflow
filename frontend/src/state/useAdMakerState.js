@@ -567,6 +567,7 @@ export function useAdMakerState() {
             status: drawn?.status || 'empty',
           };
         }),
+        caption: s.sbCaption || '',
       });
       update((st) => ({ history: [entry, ...st.history], savedThisAd: true }));
       toast('구성을 보관함에 저장했어요');
@@ -591,6 +592,8 @@ export function useAdMakerState() {
         n: c.n ?? i + 1, short: c.short || '', line: c.line || '',
         image: c.image || null, status: c.image ? 'done' : 'empty',
       })),
+      // 저장 시점의 SNS 캡션도 같이 복원한다 — 없으면(옛 항목) 컷 이어붙이기로 대신 보여준다.
+      sbCaption: h.caption || '',
       // 이미 저장된 항목을 보는 것뿐이라 "이대로 저장"은 필요 없다 — Result.jsx가 이 값으로 숨긴다.
       viewingHistory: true,
     });

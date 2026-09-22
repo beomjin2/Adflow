@@ -1,17 +1,24 @@
 import { colors } from '../theme.js';
 import { PrimaryButton, SecondaryButton, SoftButton } from '../components/ui/Button.jsx';
 import { buildAdText, adTextForClipboard, copyToClipboard, characterImage } from '../lib/adText.js';
+import { downloadImages } from '../lib/download.js';
 import ComicPanels from '../components/ComicPanels.jsx';
 
 export default function Result({ state, actions }) {
   const { headline, lines, info, tags, empty } = buildAdText(state);
   const charImg = characterImage(state);
+  const hasImages = (state.comicCuts || []).some((c) => c.status === 'done');
 
   const copy = async () => {
     const text = adTextForClipboard(state);
     if (!text) { actions.toast('복사할 문구가 없어요'); return; }
     const ok = await copyToClipboard(text);
     actions.toast(ok ? '문구를 복사했어요' : '복사가 안 돼요 — 아래 문구를 길게 눌러 직접 복사해주세요');
+  };
+
+  const saveImages = async () => {
+    const ok = await downloadImages(state.comicCuts, state.charName);
+    if (!ok) actions.toast('받을 그림이 없어요');
   };
 
   if (empty) {
@@ -82,7 +89,12 @@ export default function Result({ state, actions }) {
           )}
         </div>
 
-        <SoftButton onClick={copy} style={{ height: 48, fontSize: 15 }}>문구 복사하기</SoftButton>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <SoftButton onClick={copy} style={{ height: 48, fontSize: 15, flex: 1 }}>문구 복사하기</SoftButton>
+          {hasImages && (
+            <SoftButton onClick={saveImages} style={{ height: 48, fontSize: 15, flex: 1 }}>이미지 저장</SoftButton>
+          )}
+        </div>
         <SecondaryButton onClick={actions.backToSb} style={{ height: 52, fontSize: 16 }}>대화로 돌아가 고치기</SecondaryButton>
         {/* 보관함에서 옛 항목을 보는 중이면 이미 저장된 것이라 또 저장할 필요가 없다 — 중복 저장 방지. */}
         {!state.viewingHistory && (

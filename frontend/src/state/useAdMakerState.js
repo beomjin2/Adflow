@@ -86,7 +86,7 @@ function initialState() {
     trendRecommendPopupOpen: false,
 
     sbMsgs: [], sbInput: '', sbThinking: false,
-    plan: [], sbSetOpen: false, sbProdOpen: false, pending: {},
+    plan: [], sbSetOpen: false, sbProdOpen: false, sbStoreOpen: false, pending: {},
     // 네컷 그림 칸과 진행 상태 — 캐릭터 후보와 같은 규칙(status: empty|generating|done|failed)
     comicCuts: [], sbGenerating: false, sbEta: 0,
     // "보관함에 저장"을 한 번 누르면 같은 구성으로 또 눌러도 중복 저장 안 되게 잠근다.
@@ -481,6 +481,9 @@ export function useAdMakerState() {
   // ---------- 광고 구성(스토리보드) ----------
   const toggleSbSet = useCallback(() => update((s) => ({ sbSetOpen: !s.sbSetOpen })), [update]);
   const toggleSbProd = useCallback(() => update((s) => ({ sbProdOpen: !s.sbProdOpen })), [update]);
+  // 광고에 실제로 쓰이는 가게 정보를 대화 옆에서 바로 확인한다. 비어 있는 칸은
+  // LLM이 쓰지 않으므로(story_llm._context), 어디가 비었는지 보이는 게 중요하다.
+  const toggleSbStore = useCallback(() => update((s) => ({ sbStoreOpen: !s.sbStoreOpen })), [update]);
 
   const sendSb = useCallback(async () => {
     const text = stateRef.current.sbInput.trim();
@@ -711,7 +714,7 @@ export function useAdMakerState() {
       saveCharSheet, focusCharField, acceptCharSuggestion, declineCharSuggestion, autofillChar,
       confirmPending, declinePending,
       applyAd,
-      toggleSbSet, toggleSbProd, sendSb, suggestStory, recommendMeme, makeComic,
+      toggleSbSet, toggleSbProd, toggleSbStore, sendSb, suggestStory, recommendMeme, makeComic,
       openResult, backToSb, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,

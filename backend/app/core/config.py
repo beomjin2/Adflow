@@ -42,11 +42,21 @@ class Settings(BaseSettings):
     # 쓰므로 base_url을 보지 않는다.
     openai_base_url: str = "https://api.openai.com/v1"
     openai_timeout_seconds: int = 20
+    # 네컷 대사 GPT 의 temperature. 0.4 는 사장님 문장을 그대로 쪼개는 답만 냈다(09-22) → 0.9.
+    story_temperature: float = 0.9
+    # 네컷 대사 GPT 모델. mini 는 "세 컷 이상에 밈 틀"을 안 지켰다(09-22: 4컷 한 줄만). 광고 하나에 한 번이라 4o 를 쓴다.
+    story_model: str = "gpt-4o"
 
     # deepghs/site_tags(HF, CC-BY-4.0)의 danbooru.donmai.us/tags.parquet 미러 경로.
     # backend/ 기준 상대경로(또는 절대경로) — GPT가 뽑은 태그 후보의 실존·게시물수를 검증한다.
     # 저장소에 없다(gitignore). 없으면 태그 검증을 건너뛰고 화이트리스트로 폴백한다.
     danbooru_tags_path: str = "data/danbooru_tags/danbooru.donmai.us/tags.parquet"
+
+    # 네컷 굽기(말풍선·입간판) 한글 폰트. 비우면 Windows 맑은 고딕 → 리눅스 나눔/Noto 순으로 찾는다.
+    comic_font_bold: str = ""
+    comic_font_regular: str = ""
+    # 마지막 컷 간판 검사용 WD14 태거(model.onnx + selected_tags.csv). 없으면 검사를 건너뛴다(선택 기능).
+    wd14_dir: str = "data/wd14"
 
     @property
     def cors_origin_list(self) -> list[str]:

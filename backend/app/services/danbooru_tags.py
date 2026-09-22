@@ -164,8 +164,31 @@ _SCENE_SYSTEM_PROMPT = (
 )
 
 
+# 슬롯 한 칸(표정·동작·장소·소품·빛 중 하나)만 바꿀 때. 장면 프롬프트를 그대로 쓰면 "자신만만" 한 칸에도
+# shop, indoors 가 붙어 한 프롬프트에 같은 태그가 네 번 들어갔다(2026-09-21 실측). 칸 이름을 앞에 붙여 보내고
+# 그 칸의 태그만 1~3개. 형식·어휘는 예시로(예시 태그 31개 전부 사전 실존 확인).
+_SLOT_SYSTEM_PROMPT = (
+    "You convert ONE slot of a 4-panel bakery mascot comic panel into 1-3 Danbooru imageboard tags. "
+    "The input is 'slot name: Korean phrase'. Output ONLY a comma-separated list of real Danbooru "
+    "tags in exact tag format (lowercase English, spaces as underscores) for THAT slot only — "
+    "no setting or place tags unless the slot is 'place', never Korean words, never invented compound "
+    "tags, never the mascot's appearance. Examples: "
+    "'expression: 자신만만' -> smug, smile; 'expression: 머쓱함' -> embarrassed, sweatdrop; "
+    "'expression: 행복, 눈 감음' -> happy, closed_eyes, smile; 'expression: 놀람' -> surprised, open_mouth; "
+    "'pose: 쟁반 들기' -> holding_tray; 'pose: 팔짱' -> crossed_arms; 'pose: 손 흔들기' -> waving, arm_up; "
+    "'pose: 빵 먹기' -> eating, holding_food; 'pose: 서있기' -> standing; "
+    "'place: 가게 안' -> shop, indoors; 'place: 가게 앞' -> shop, outdoors, door; 'place: 주방' -> kitchen, indoors; "
+    "'props: 소금빵, 쟁반' -> bread, tray; 'props: 빈 쟁반' -> tray, plate; 'props: 고양이 손님, 강아지 손님' -> cat, dog, crowd; "
+    "'light: 아침 햇살' -> sunlight, morning; 'light: 저녁 노을' -> sunset, orange_sky; 'light: 밤' -> night."
+)
+
+
 def _system_prompt(kind: str) -> str:
-    return _SCENE_SYSTEM_PROMPT if kind == "scene" else _LLM_SYSTEM_PROMPT
+    if kind == "scene":
+        return _SCENE_SYSTEM_PROMPT
+    if kind == "slot":
+        return _SLOT_SYSTEM_PROMPT
+    return _LLM_SYSTEM_PROMPT
 
 
 # 프롬프트로 "영어로만"을 아무리 적어도 GPT는 스토리 문장에서 한국어를 그대로 뱉는다.
@@ -194,11 +217,17 @@ def _split_by_script(candidates: list[str]) -> tuple[list[str], list[str]]:
 
 
 def _ask_tags(messages: list[dict]) -> str:
+    from app.services import trace
     client = OpenAI(api_key=settings.openai_api_key)
-    resp = client.chat.completions.create(
-        model=settings.openai_model, messages=messages, temperature=0,
-    )
-    return resp.choices[0].message.content or ""
+    with trace.timer() as t:
+        resp = client.chat.completions.create(
+            model=settings.openai_model, messages=messages, temperature=0,
+        )
+    raw = resp.choices[0].message.content or ""
+    # 뜯어보기: 보낸 지시문 전체·보낸 문장·GPT 원문 답변 (기록 중일 때만)
+    trace.step("태그 GPT", who=settings.openai_model, temperature=0, sec=t.sec,
+               system=messages[0]["content"], sent=[m["content"] for m in messages[1:]], output_raw=raw)
+    return raw
 
 
 def english_candidates(look: str, kind: str = "character") -> list[str]:

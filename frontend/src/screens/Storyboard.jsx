@@ -31,21 +31,66 @@ const CAMERA_KO = {
   from_below: '아래에서', from_above: '위에서', wide_shot: '멀리서',
 };
 
-/** 컷 안의 한 줄. 라벨을 왼쪽에 붙여 대사와 그림 설명이 섞여 보이지 않게 한다. */
-function CutRow({ label, value, strong = false }) {
-  const text = String(value ?? '').trim();
-  if (!text) return null;
+/** 고를 수 있는 구도. story_llm.CAMERA_TAGS 와 **같은 여섯 개**여야 한다 —
+ *  그림 모델이 알아듣는 태그가 그것뿐이다. 빈 값은 "지정 안 함". */
+const CAMERA_CHOICES = ['', ...Object.keys(CAMERA_KO)];
+
+/** 구도 고르기 — 자유 입력이 아니라 뱃지다. 손으로 쓰면 그림 모델이 못 알아듣는
+ *  말이 들어가고, 그건 화면에선 멀쩡해 보이는데 그림만 조용히 엉뚱해진다. */
+function CameraPicker({ value, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+      <span style={cutTagStyle}>구도</span>
+      {CAMERA_CHOICES.map((tag) => {
+        const on = (value || '') === tag;
+        return (
+          <button key={tag || 'none'} type="button" onClick={() => onChange(tag)} style={{
+            border: `1.5px solid ${on ? 'var(--green-deep)' : 'var(--input-line)'}`,
+            background: on ? 'var(--green-soft)' : '#fff',
+            color: on ? 'var(--green-deep)' : 'var(--sub)',
+            borderRadius: 999, padding: '4px 11px', fontSize: 12.5,
+            fontWeight: on ? 800 : 600, cursor: 'pointer',
+          }}>{tag ? CAMERA_KO[tag] : '지정 안 함'}</button>
+        );
+      })}
+    </div>
+  );
+}
+
+const cutTagStyle = {
+  flex: 'none', fontSize: 11, fontWeight: 800, color: 'var(--sub)',
+  background: 'var(--soft)', borderRadius: 999, padding: '2px 7px', minWidth: 30,
+  textAlign: 'center',
+};
+
+/** 컷 안의 한 줄. 라벨을 왼쪽에 붙여 대사와 그림 설명이 섞여 보이지 않게 한다.
+ *
+ *  `onChange` 를 주면 입력칸이 된다 — 대화로만 고칠 수 있으면 한 글자 바꾸려고
+ *  문장을 새로 말해야 하고, 그러면 GPT가 나머지 컷까지 다시 쓴다. */
+function CutRow({ label, value, strong = false, onChange }) {
+  const text = String(value ?? '');
+  if (!onChange && !text.trim()) return null;
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', minWidth: 0 }}>
-      <span style={{
-        flex: 'none', fontSize: 11, fontWeight: 800, color: 'var(--sub)',
-        background: 'var(--soft)', borderRadius: 999, padding: '2px 7px', minWidth: 30,
-        textAlign: 'center',
-      }}>{label}</span>
-      <span style={{
-        minWidth: 0, fontSize: strong ? 15 : 13.5, lineHeight: strong ? '22px' : '20px',
-        color: strong ? 'var(--ink)' : 'var(--sub)', fontWeight: strong ? 600 : 400,
-      }}>{text}</span>
+      <span style={cutTagStyle}>{label}</span>
+      {onChange ? (
+        <textarea
+          value={text}
+          onChange={(e) => onChange(e.target.value)}
+          rows={strong ? 1 : 2}
+          style={{
+            flex: 1, minWidth: 0, resize: 'vertical',
+            border: '1.5px solid var(--input-line)', borderRadius: 8, padding: '6px 9px',
+            fontSize: strong ? 15 : 13.5, lineHeight: strong ? '22px' : '20px',
+            color: 'var(--ink)', fontFamily: 'inherit', background: '#fff',
+          }}
+        />
+      ) : (
+        <span style={{
+          minWidth: 0, fontSize: strong ? 15 : 13.5, lineHeight: strong ? '22px' : '20px',
+          color: strong ? 'var(--ink)' : 'var(--sub)', fontWeight: strong ? 600 : 400,
+        }}>{text}</span>
+      )}
     </div>
   );
 }
@@ -90,6 +135,7 @@ export default function Storyboard({ state, actions }) {
   const sbSummary = [state.adType, state.adConcept, state.charName].filter(Boolean).join(' · ') || '아직 안 정함';
   // 4컷만화는 그림이 광고의 핵심이라 "네컷 그리기"를 먼저 끝내야 다음으로 넘어갈 수 있다.
   // 인스타 게시물은 문구만으로도 올릴 수 있는 형식이라 그림을 요구하지 않는다(openResult와 같은 규칙).
+  const editing = !state.planReadOnly;
   const needsComic = state.adType === '4컷만화';
   const comicReady = !needsComic
     || (state.comicCuts.length >= state.plan.length && state.comicCuts.every((c) => c.status === 'done'));
@@ -176,6 +222,13 @@ export default function Storyboard({ state, actions }) {
             <span className={`ad-pill ${state.plan.length ? 'green' : ''}`.trim()}>
               {state.plan.length ? `${state.plan.length}컷` : '비어 있음'}
             </span>
+            {/* 캐릭터 시트의 "수정하기 / 수정 완료"와 같은 토글이다. */}
+            {state.plan.length > 0 && (
+              <button className="ad-btn ghost xs" onClick={actions.togglePlanEdit}
+                disabled={state.planSaving}>
+                {state.planSaving ? '저장 중…' : editing ? '수정 완료' : '수정하기'}
+              </button>
+            )}
           </div>
 
           {state.plan.length === 0 ? (
@@ -192,9 +245,14 @@ export default function Storyboard({ state, actions }) {
                 <div className="ad-cut" key={c.n}>
                   <span className="n">{c.n}</span>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
-                    <CutRow label="대사" value={c.line} strong />
-                    <CutRow label="그림" value={c.action} />
-                    {(c.camera || (c.props || []).length > 0) && (
+                    <CutRow label="대사" value={c.line} strong
+                      onChange={editing ? (v) => actions.setPlanCut(c.n, 'line', v) : undefined} />
+                    <CutRow label="그림" value={c.action}
+                      onChange={editing ? (v) => actions.setPlanCut(c.n, 'action', v) : undefined} />
+                    {editing && (
+                      <CameraPicker value={c.camera} onChange={(v) => actions.setPlanCut(c.n, 'camera', v)} />
+                    )}
+                    {!editing && (c.camera || (c.props || []).length > 0) && (
                       <CutRow
                         label="구도"
                         value={[CAMERA_KO[c.camera] || c.camera, (c.props || []).join(' · ')]
@@ -241,6 +299,7 @@ export default function Storyboard({ state, actions }) {
         plan={state.plan}
         comic={state.comicCuts}
         comicEta={state.sbEta}
+        onRerollCut={actions.rerollCut}
         prods={state.prods}
         onPatchProd={actions.patchProd}
         pending={state.pending}

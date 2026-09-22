@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { colors } from '../theme.js';
 import { TextInput, Select } from '../components/ui/Field.jsx';
 import { PrimaryButton, SecondaryButton } from '../components/ui/Button.jsx';
+import { situationLabel } from '../lib/situationLabel.js';
 
 /** 화면에 보여줄 날짜 — periodStart(스파이크 구간 시작일) > peakDate(스파이크 정점일)
  *  > published(등록일) 순으로 있는 값을 쓴다. 스파이크를 못 찾은 밈은 peakDate까지
@@ -47,6 +48,26 @@ function trendStatus(m, base) {
   const ongoing = (base.getTime() - e.getTime()) / 86400000 <= 3;
   return { estimated: false, ongoing };
 }
+
+/** 팝업 공통 — **가시성**이 목적이다.
+ *
+ *  전에는 배경이 rgba(...,.42) 뿐이고 블러도 없어서, 뒤의 밈 목록(칩·카드가 빽빽한
+ *  화면)이 그대로 비쳐 팝업이 떠 있는지가 잘 안 보였다. 같은 화면의 이미지 확대
+ *  팝업은 이미 .72 를 쓰고 있었다 — 그쪽에 맞춘다.
+ *
+ *  내용이 길 때 아래가 잘리던 것도 같이 고친다(maxHeight + 스크롤). */
+const POPUP_OVERLAY = {
+  position: 'fixed', inset: 0, background: 'rgba(15,17,19,.66)', zIndex: 100,
+  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+  backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)',
+};
+
+const POPUP_CARD = {
+  width: '100%', background: '#fff', borderRadius: 18, padding: 22,
+  display: 'flex', flexDirection: 'column', gap: 14, animation: 'pop .18s ease',
+  boxShadow: '0 24px 60px rgba(0,0,0,.34)', border: '1px solid rgba(0,0,0,.06)',
+  maxHeight: '86vh', overflowY: 'auto',
+};
 
 export default function Trend({ state, actions }) {
   // 밈 대표 이미지 확대 보기. 썸네일이 150px 정사각으로 잘려 있어 원본 구도가 안 보인다 —
@@ -184,7 +205,7 @@ export default function Trend({ state, actions }) {
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {filterChip(`전체 (${trendItems.length})`, trendFilter === '전체', () => actions.set('trendFilter', '전체'))}
               {situations.map((s) => filterChip(
-                `${s.situation} (${s.count})`,
+                `${situationLabel(s.situation)} (${s.count})`,
                 trendFilter === s.situation,
                 () => actions.set('trendFilter', s.situation),
               ))}
@@ -244,7 +265,7 @@ export default function Trend({ state, actions }) {
                     fontSize: 10.5, fontWeight: 800, color: on ? colors.primarySoftText : colors.textSub,
                     background: on ? colors.primarySoft : colors.softBg, borderRadius: 7, padding: '4px 2px',
                     flex: 'none', width: 92, textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  }}>{m.situation || '미분류'}</span>
+                  }}>{situationLabel(m.situation)}</span>
                   {trendStatus(m, baseDate).ongoing && (
                     <span
                       title="아직 유행 중"
@@ -395,14 +416,11 @@ export default function Trend({ state, actions }) {
         <div
           onClick={(e) => { if (e.target === e.currentTarget) actions.set('trendRecommendPopupOpen', false); }}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(15,17,19,.42)', zIndex: 100,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            ...POPUP_OVERLAY,
           }}
         >
           <div style={{
-            width: '100%', maxWidth: 380, background: '#fff', borderRadius: 18, padding: 22,
-            display: 'flex', flexDirection: 'column', gap: 14, animation: 'pop .18s ease',
-            boxShadow: '0 20px 50px rgba(0,0,0,.22)',
+            ...POPUP_CARD, maxWidth: 380,
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: -.3 }}>✨ 밈 추천받기</span>
@@ -444,19 +462,16 @@ export default function Trend({ state, actions }) {
         <div
           onClick={(e) => { if (e.target === e.currentTarget) actions.closeTrendRecommend(); }}
           style={{
-            position: 'fixed', inset: 0, background: 'rgba(15,17,19,.42)', zIndex: 100,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+            ...POPUP_OVERLAY,
           }}
         >
           <div style={{
-            width: '100%', maxWidth: 400, background: '#fff', borderRadius: 18, padding: 22,
-            display: 'flex', flexDirection: 'column', gap: 14, animation: 'pop .18s ease',
-            boxShadow: '0 20px 50px rgba(0,0,0,.22)',
+            ...POPUP_CARD, maxWidth: 400,
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{ fontSize: 11.5, fontWeight: 800, color: colors.primaryHover, letterSpacing: .02 }}>GPT 추천</span>
               <span style={{ fontSize: 13, color: colors.textSub }}>
-                지금은 <b style={{ color: colors.text }}>{trendRecommendResult.situation}</b> 상황이라고 보고, 그 안에서 하나 골랐어요.
+                지금은 <b style={{ color: colors.text }}>{situationLabel(trendRecommendResult.situation)}</b> 쪽 밈이 어울린다고 보고, 그 안에서 하나 골랐어요.
               </span>
             </div>
 

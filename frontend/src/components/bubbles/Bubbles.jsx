@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { colors } from '../../theme.js';
 import ImageSlot, { formatEta } from '../ImageSlot.jsx';
 import Lightbox from '../Lightbox.jsx';
+import ComicPanels from '../ComicPanels.jsx';
+import { situationLabel } from '../../lib/situationLabel.js';
 
 
 /** 말풍선. 모양은 styles.css 의 `.ad-msg` 가 정한다 — 개선안에서 캐릭터 대화와
@@ -58,13 +60,15 @@ export function CandidatesBubble({ items, selected, onSelect, onReroll, eta = 0 
   );
 }
 
-/** 네컷 그림. 대화 안의 **한 장짜리 말풍선**이다 — 캐릭터 후보와 똑같이 작은 칸 몇 개로
- *  놓고, 크게 보려면 눌러서 본다. 대화창 폭을 통째로 먹는 큰 그림판을 끼워 넣으면
- *  그건 대화가 아니라 화면이 하나 더 열린 것이고, 스크롤도 그만큼 길어진다.
+/** 네컷 그림 — 대화 안에서 **말풍선까지 얹어** 보여준다.
  *
- *  대사가 얹힌 큰 네컷은 결과 화면의 몫이다. */
-export function ComicBubble({ cuts, eta = 0 }) {
-  const [preview, setPreview] = useState(-1);
+ *  전에는 작은 칸 넉 장(ImageSlot)만 놓았다. 그림은 보이는데 대사가 안 보여서,
+ *  사장님은 광고가 어떻게 나올지 확인하려면 결과 화면까지 가야 했다. 지금은 여기서
+ *  바로 완성된 모양을 본다 — 결과 화면·저장본과 같은 말풍선이다.
+ *
+ *  ComicPanels 를 그대로 쓴다. 대화창 폭에 맞춰 줄어들고, 더블클릭하면 한 컷을
+ *  크게 본다. 컷마다 ↻ 로 그 칸만 다시 그릴 수 있다. */
+export function ComicBubble({ cuts, eta = 0, onReroll }) {
   const items = cuts || [];
   if (!items.length) return null;
 
@@ -78,28 +82,21 @@ export function ComicBubble({ cuts, eta = 0 }) {
         {drawing > 0
           ? `네컷을 그리는 중 — ${drawing}컷 남았어요`
           : done > 0
-            ? '네컷이 나왔어요 — 눌러서 크게 보세요'
+            ? '네컷이 나왔어요 — 더블클릭하면 크게 보여요'
             : '아직 그림이 없어요'}
       </span>
       {drawing > 0 && eta > 0 && (
         <span style={hintStyle}>약 {formatEta(eta)}. 이 화면을 닫아도 계속 그려요.</span>
       )}
-      <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
-        {items.map((c, i) => (
-          <ImageSlot
-            key={c.n ?? i} slot={c} size={92} eta={eta}
-            selectable onClick={() => setPreview(i)}
-          />
-        ))}
-      </div>
+      <ComicPanels cuts={items} eta={eta} onReroll={onReroll} gap={6} />
       {failed > 0 && (
         <span style={{ ...hintStyle, color: colors.warnText }}>
-          {failed}컷은 그리지 못했어요. "네컷 다시 그리기"를 눌러 다시 시도해주세요.
+          {failed}컷은 그리지 못했어요. ↻ 를 누르면 그 자리만 다시 그려요.
         </span>
       )}
-      {/* 네컷은 고르는 게 아니라 보는 것이라 onSelect를 주지 않는다. */}
-      <Lightbox items={items} index={preview} selected={-1}
-        onClose={() => setPreview(-1)} onMove={setPreview} />
+      {done > 0 && drawing === 0 && (
+        <span style={hintStyle}>마음에 안 드는 컷은 ↻ 로 그 칸만 다시 그릴 수 있어요.</span>
+      )}
     </div>
   );
 }
@@ -317,21 +314,25 @@ export function MemeOptionsBubble({ items, pending, onConfirm }) {
     const m = it.meme || {};
     const 기간 = [m.period_start, m.period_end].filter(Boolean).join(' ~ ');
     const rows = [
-      ['유래', m.origin], ['활용 예시', m.usage_example], ['활용 상황', m.situation],
+      ['유래', m.origin], ['활용 예시', m.usage_example], ['활용 상황', m.situation && situationLabel(m.situation)],
       ['유행 시기', 기간 || m.peak_date || m.published], ['출처', m.source_label],
     ].filter(([, v]) => String(v || '').trim());
+    // 배경을 충분히 어둡게 하고 블러를 준다 — 뒤가 대화 기록이라 옅게 깔면
+    // 팝업이 떠 있는지가 잘 안 보인다(Trend.jsx 의 POPUP_OVERLAY 와 같은 값).
     return (
       <div onClick={onClose} style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', zIndex: 60,
+        position: 'fixed', inset: 0, background: 'rgba(15,17,19,.66)', zIndex: 60,
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 18,
+        backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)',
       }}>
         <div onClick={(e) => e.stopPropagation()} style={{
           background: '#fff', borderRadius: 16, padding: 20, maxWidth: 520, width: '100%',
           maxHeight: '82vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12,
+          boxShadow: '0 24px 60px rgba(0,0,0,.34)', border: '1px solid rgba(0,0,0,.06)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 17, fontWeight: 800, color: colors.text }}>{m.name}</span>
-            {m.situation && <span style={{ fontSize: 11.5, fontWeight: 700, color: colors.primarySoftText, background: colors.onboardBg, borderRadius: 999, padding: '3px 9px' }}>{m.situation}</span>}
+            {m.situation && <span style={{ fontSize: 11.5, fontWeight: 700, color: colors.primarySoftText, background: colors.onboardBg, borderRadius: 999, padding: '3px 9px' }}>{situationLabel(m.situation)}</span>}
             <span style={{ flex: 1 }} />
             <button onClick={onClose} style={{ border: 0, background: 'none', fontSize: 20, cursor: 'pointer', color: colors.textFaint, lineHeight: 1 }}>×</button>
           </div>
@@ -376,7 +377,7 @@ export function MemeOptionsBubble({ items, pending, onConfirm }) {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 14.5, fontWeight: 800, color: colors.text }}>{m.name}</span>
-                {m.situation && <span style={{ fontSize: 11, fontWeight: 700, color: colors.primarySoftText, background: colors.onboardBg, borderRadius: 999, padding: '2px 8px' }}>{m.situation}</span>}
+                {m.situation && <span style={{ fontSize: 11, fontWeight: 700, color: colors.primarySoftText, background: colors.onboardBg, borderRadius: 999, padding: '2px 8px' }}>{situationLabel(m.situation)}</span>}
                 <span style={{ fontSize: 11.5, color: colors.textFaint }}>눌러서 자세히 ›</span>
               </div>
               <span style={{ fontSize: 13, lineHeight: '19px', color: colors.textSub }}>{it.reason}</span>

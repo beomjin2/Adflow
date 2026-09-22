@@ -32,6 +32,7 @@ GPT 추천(meme_recommend.recommend)을 한 번 더 돌린다. 결과도 confirm
 "내 정보 > 생산 기록" 탭은 그대로 있다 — 자리가 하나 늘었을 뿐이다.
 """
 
+import asyncio
 import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -44,9 +45,11 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.core.config import settings
 from app.core.database import get_db
-from app.services import comic_compose, jobs, story_llm
-from app.services.chat_ai import COMIC_IDENTITY_FIELDS, character_part, comic_prompt, new_pid
-from app.services.image_gen import generate_images
+from app.services import comic_bake, director, jobs, sign_check, story_llm, trace
+from app.services.chat_ai import (COMIC_GLOBAL_TAGS, COMIC_IDENTITY_FIELDS, character_part, comic_prompt,
+                                  comic_prompt_slots, new_pid)
+from app.services.danbooru_lookup import verify_tags
+from app.services.image_gen import _save_png, generate_images
 from app.services.meme_recommend import recommend as recommend_meme
 
 logger = logging.getLogger(__name__)
@@ -185,12 +188,26 @@ def _plan_with(ctx: dict, text: str) -> tuple[list[dict], dict | None] | None:
     **None은 "규칙으로도 되돌아가지 않는다"는 뜻이다.** GPT가 "알릴 거리가 없다"고
     본 경우에만 나온다 — 그때 규칙으로 쪼개면 "안녕하세요"가 1컷이 되어 버린다.
     """
-    proposed = story_llm.plan_from_text(text, **ctx)
+    # 뜯어보기(trace) — 광고 하나가 만들어지는 단계를 통째로 남긴다. 그림 단계가
+    # 컷의 trace_id 를 보고 이어 쓴다. trace 는 threading.local 이라 제안 여러 개를
+    # 병렬로 만들 때도 스레드마다 따로 잡힌다(_propose_options).
+    tr = trace.Tracer.start(kind="comic", text=text[:80])
+    tr.step("입력 모으기", who="code", said=text, store=ctx.get("store"), character=ctx.get("char"),
+            ad=ctx.get("ad"), production=ctx.get("prods"), trend_meme=ctx.get("trend_meme"),
+            current_plan=ctx.get("current_plan"))
+    with trace.use(tr):
+        proposed = story_llm.plan_from_text(text, **ctx)
+
     if proposed is None:
-        return _cuts_from_text(text), None
+        cuts = _cuts_from_text(text)
+        tr.step("대사 정리", who="code", note="GPT 를 못 써 문장부호로 잘랐다", cuts=cuts)
+        return [{**c, "trace_id": tr.run_id} for c in cuts], None
     if not proposed["cuts"]:
+        tr.step("대사 정리", who="code", note="GPT 가 광고 내용이 아니라고 봄")
         return None
-    return proposed["cuts"], proposed["meme_used"]
+    tr.step("대사 정리", who="code", cuts=proposed["cuts"], meme_used=proposed["meme_used"],
+            view=f"/api/debug/trace/{tr.run_id}/view")
+    return [{**c, "trace_id": tr.run_id} for c in proposed["cuts"]], proposed["meme_used"]
 
 
 def _plan_cuts(text: str, sb: models.Storyboard, db: Session) -> tuple[list[dict], dict | None] | None:
@@ -344,6 +361,41 @@ def _offer_store_edit(sb: models.Storyboard, db: Session, edit: dict, messages: 
 
 # 밈 추천도 하나만 던지면 "이게 최선인가"를 확인할 길이 없다. 셋을 놓고 고르게 한다.
 MEME_OPTIONS = 3
+
+
+# "밈"만으로는 안 가른다 — "이 밈으로 광고 만들어줘"는 지금 쓰는 밈을 쓰라는 말이지
+# 새로 추천해 달라는 말이 아니다. **고르는 동작**을 뜻하는 말이 같이 있어야 한다.
+_ASKS_MEME = re.compile(r"밈.{0,12}(추천|골라|골러|바꿔|바꾸|다른|새로|말고)|(추천|골라|바꿔|다른|새로).{0,12}밈")
+
+
+def _asks_for_meme(text: str) -> bool:
+    """사장님이 말로 밈을 추천해 달라고 했는가.
+
+    LLM 호출을 하나 더 늘리지 않으려고 글자로 가른다. 여기서 못 잡아도 "밈 추천받기"
+    버튼이 그대로 있으니 손해가 없고, 잘못 잡으면 밈 카드가 뜰 뿐 무엇도 안 바뀐다
+    (고르는 건 여전히 사장님이다). 그래서 이 자리에는 글자 판단이 맞다.
+    """
+    return bool(_ASKS_MEME.search(text or ""))
+
+
+def _shown_meme_ids(sb: models.Storyboard) -> set[str]:
+    """이 대화에서 이미 보여준 밈 id.
+
+    "밈 추천받기"를 다시 누르면 **다른 밈이 나와야 한다.** 그런데 같은 가게 정보로
+    같은 후보를 넘기면 GPT는 거의 같은 답을 낸다(temperature 0.4 로는 안 흔들린다).
+    그래서 이미 보여준 것을 후보에서 빼고 부른다.
+
+    지금 참고 중인 밈(trend_meme_id)도 뺀다 — 쓰고 있는 걸 또 권하면 추천이 아니다.
+    """
+    ids = {sb.trend_meme_id} if sb.trend_meme_id else set()
+    for m in list(sb.messages or []):
+        if m.get("kind") != "meme_options":
+            continue
+        for it in m.get("items") or []:
+            mid = ((it or {}).get("meme") or {}).get("id")
+            if mid:
+                ids.add(mid)
+    return ids
 
 
 def _meme_card(meme: models.Meme) -> dict:
@@ -529,7 +581,13 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
         #
         # _topic_seeds가 읽는 sb.messages에는 방금 그 말이 아직 안 들어 있다(맨 끝에서
         # 한 번에 저장한다). 그래서 방금 거절당한 문장이 씨앗으로 다시 들어가지 않는다.
-        if not _propose_options(
+        # "다른 밈 추천해줘" 같은 말은 스토리 소재가 아니라 여기(거절)로 떨어진다.
+        # 버튼을 말로 누른 것이므로 같은 함수를 부른다. _recommend_memes 는 async 라
+        # 여기서 새 루프로 돌린다 — chat 은 sync 라 FastAPI 가 스레드풀에서 부르고,
+        # 그 스레드에는 도는 루프가 없어서 asyncio.run 이 안전하다.
+        if _asks_for_meme(text):
+            asyncio.run(_recommend_memes(sb, db, messages))
+        elif not _propose_options(
             sb, db, messages,
             "무엇을 알릴지 아직 못 잡았어요. 이런 스토리는 어떠세요? 마음에 드는 걸 골라주세요.",
         ):
@@ -554,6 +612,43 @@ def chat(body: schemas.ChatIn, db: Session = Depends(get_db)):
     return schemas.storyboard_out(sb, jobs.queue_depth())
 
 
+@router.put("/plan", response_model=schemas.StoryboardOut)
+def update_plan(body: schemas.PlanUpdate, db: Session = Depends(get_db)):
+    """사장님이 컷을 **직접** 고친다. 캐릭터 시트의 "수정하기"와 같은 자리다.
+
+    대화로만 고칠 수 있으면 한 글자 바꾸려고 문장을 새로 말해야 하고, 그러면 GPT가
+    나머지 컷까지 다시 쓴다. 손으로 고치는 길이 따로 있어야 한다.
+
+    확인 카드를 안 거친다 — 사장님이 직접 친 글자다. 지어낼 여지가 없다.
+    """
+    sb = _get(db)
+    current = {c.get("n"): dict(c) for c in (sb.plan or [])}
+    for patch in body.cuts:
+        cut = current.get(patch.n)
+        if cut is None:
+            continue
+        if patch.line is not None:
+            cut["line"] = patch.line.strip()
+            # short 는 목록에서 줄여 보여줄 때 쓰는 값이라 대사를 고치면 같이 따라가야 한다.
+            cut["short"] = cut["line"][:14]
+        if patch.action is not None:
+            cut["action"] = patch.action.strip()
+        if patch.camera is not None:
+            # 여섯 개 태그 아니면 통째로 버리고 "지정 안 함"으로 둔다. 화면이 뱃지로만
+            # 고르게 해도, 라우터는 화면을 안 믿는다(_invents_numbers 와 같은 태도).
+            camera = patch.camera.strip()
+            cut["camera"] = camera if camera in story_llm.CAMERA_TAGS else ""
+        current[patch.n] = cut
+    sb.plan = [current[n] for n in sorted(current)]
+
+    # 캡션은 확정된 컷으로 쓴 글이라 컷이 바뀌면 같이 다시 쓴다(confirm 과 같은 규칙).
+    # 실패해도 조용히 빈 문자열이고, 화면이 옛 방식(컷 이어붙이기)으로 대신 보여준다.
+    sb.caption = _generate_caption(sb, db) or ""
+    db.commit()
+    db.refresh(sb)
+    return schemas.storyboard_out(sb, jobs.queue_depth())
+
+
 @router.post("/poster")
 def make_poster(db: Session = Depends(get_db)):
     """네컷 + 대사를 **한 장으로 구워** 내려받을 URL을 돌려준다.
@@ -561,7 +656,7 @@ def make_poster(db: Session = Depends(get_db)):
     화면의 말풍선은 프론트가 그림 위에 얹은 CSS 레이어라, "이미지 저장"으로 받으면
     ComfyUI 원본만 받아져 **대사가 통째로 사라진다.** 여기서 굽는다.
 
-    굽는 쪽은 `comic_compose` 다 — 왜 ComfyUI 워크플로가 아닌지는 그 파일 머리에 적었다.
+    굽는 쪽은 `comic_bake` 다 — 말풍선을 캐릭터 반대편에 두고 3배로 그려 줄인다.
     """
     sb = _get(db)
     cuts = [c for c in (sb.comic_cuts or []) if c.get("status") == "done" and c.get("image")]
@@ -583,7 +678,7 @@ def make_poster(db: Session = Depends(get_db)):
         raise HTTPException(400, "그림 파일을 찾지 못했어요. 네컷을 다시 그려주세요")
 
     try:
-        url = comic_compose.compose_poster(paths, lines)
+        url = comic_bake.compose_poster(paths, lines)
     except Exception:
         logger.exception("완성본 합성 실패")
         raise HTTPException(500, "완성본을 만들지 못했어요")
@@ -635,35 +730,26 @@ def suggest(db: Session = Depends(get_db)):
     return schemas.storyboard_out(sb, jobs.queue_depth())
 
 
-@router.post("/recommend-meme", response_model=schemas.StoryboardOut)
-async def recommend_meme_from_chat(db: Session = Depends(get_db)):
-    """대화창의 "밈 추천받기" 버튼 — 자동으로는 안 뜬다. 지금까지 사장님이 대화에서 쓴
-    문장을 모아 trend/recommend.py와 같은 GPT 추천(meme_recommend.recommend)을 돌리고,
-    결과를 confirm 카드로 올린다. 승인해야만 trend_meme_id가 바뀐다 — 대화 흐름만 보고
-    GPT가 알아서 밈을 끼워 넣지 않는다.
+async def _recommend_memes(sb: models.Storyboard, db: Session, messages: list[dict]) -> None:
+    """밈을 추천해 `messages` 에 고를 수 있는 카드를 붙인다. 못 하면 이유를 글로 붙인다.
+
+    버튼("밈 추천받기")과 말("다른 밈 추천해줘") 둘 다 여기로 온다 — 같은 요청이
+    입구만 다른 것이라 같은 함수를 쓴다. 승인해야만 trend_meme_id 가 바뀐다.
     """
-    sb = _get(db)
-    messages = list(sb.messages or [])
     note = _chat_note(messages)
     if not note:
         messages.append({
             "role": "ai", "kind": "text",
             "text": "대화에서 알릴 내용을 먼저 말씀해주시면 그걸 보고 밈을 추천해드릴게요.",
         })
-        sb.messages = messages
-        db.commit()
-        db.refresh(sb)
-        return schemas.storyboard_out(sb, jobs.queue_depth())
+        return
 
     # 밈 분류명을 다시 정리하면서 "미분류"도 정상적인 활용 상황 후보 중 하나로 포함한다
     # (trend.py의 /recommend와 같은 이유).
     all_memes = [m for m in db.query(models.Meme).all() if m.situation]
     if not all_memes:
         messages.append({"role": "ai", "kind": "text", "text": "지금 추천할 수 있는 밈이 없어요."})
-        sb.messages = messages
-        db.commit()
-        db.refresh(sb)
-        return schemas.storyboard_out(sb, jobs.queue_depth())
+        return
 
     store = db.get(models.Store, 1)
     store_desc = ""
@@ -686,6 +772,7 @@ async def recommend_meme_from_chat(db: Session = Depends(get_db)):
                 for m in all_memes
             ],
             n=MEME_OPTIONS,
+            exclude=_shown_meme_ids(sb),
         )
     except RuntimeError as e:
         raise HTTPException(400, str(e))
@@ -723,6 +810,14 @@ async def recommend_meme_from_chat(db: Session = Depends(get_db)):
                     "눌러서 어떤 밈인지 보고 하나만 골라주세요.",
         })
         messages.append({"role": "ai", "kind": "meme_options", "group": group, "items": items})
+
+
+@router.post("/recommend-meme", response_model=schemas.StoryboardOut)
+async def recommend_meme_from_chat(db: Session = Depends(get_db)):
+    """대화창의 "밈 추천받기" 버튼. 자동으로는 안 뜬다 — 사장님이 눌러야 부른다."""
+    sb = _get(db)
+    messages = list(sb.messages or [])
+    await _recommend_memes(sb, db, messages)
     sb.messages = messages
     db.commit()
     db.refresh(sb)
@@ -741,27 +836,105 @@ def _reference_path(char) -> Path | None:
     return path if path and path.is_file() else None
 
 
-def _fill_cuts(indexes: list[int], scenes: list[dict], char_part_text: str, reference: Path) -> None:
+# 마지막 컷 규칙 — 가게 앞 전경(wide_shot) + 캐릭터 오른쪽(크롭) + 왼쪽 아래 코드 입간판.
+# sign 태그는 일부러 뺀다: 넣으면 모델이 제 칠판을 그려 우리 입간판과 두 개가 된다(09-22 실측).
+_STOREFRONT_TAGS = ["wide_shot", "full_body", "solo", "outdoors", "shop", "door", "standing", "waving", "smile", "looking_at_viewer"]
+_SIGN_RETRIES = 2
+
+
+def _storefront_prompt(char_part_text: str) -> str:
+    return ", ".join(p for p in [COMIC_GLOBAL_TAGS, char_part_text, ", ".join(verify_tags(_STOREFRONT_TAGS))] if p)
+
+
+def _fill_cuts(indexes: list[int], scenes: list[dict], char_part_text: str, reference: Path,
+               trace_id: str | None = None, board_lines: list[str] | None = None) -> None:
     """백그라운드 본체 — 컷마다 프롬프트를 만들고 한 장씩 뽑아 comic_cuts의 칸을 채운다.
-    컷 문장의 태그 변환(GPT)도 여기서 한다. 실패한 칸은 failed로 남긴다.
-    scenes[i] = {"text": 동작 문장(없으면 대사), "camera": 구도 태그 또는 ""}."""
-    for index, scene in zip(indexes, scenes):
-        prompt = comic_prompt(char_part_text, scene.get("text", ""), scene.get("camera", ""))
-        images = generate_images(prompt, 1, workflow_file=settings.comfy_comic_workflow_file,
-                                 reference_path=reference)
-        image = images[0] if images else None
+    scenes[i] = {"text", "camera", "slots"(연출, 없을 수 있음), "last": 마지막 컷인가, "n", "line"}.
+    슬롯이 있으면 연출 경로(comic_prompt_slots + 위치 크롭), 없으면 옛 경로(comic_prompt).
+    마지막 컷은 가게 앞 전경 + 간판 검사·재시도 + 입간판 굽기. 다 끝나면 2×2 완성본을 만든다.
+    trace_id 가 있으면 제안 때 시작한 단계별 기록에 이어 쓴다(다른 스레드라 여기서 다시 잡는다)."""
+    tr = trace.Tracer.resume(trace_id)
+    with trace.use(tr):
+        for index, scene in zip(indexes, scenes):
+            slots = scene.get("slots")
+            slot_trace = None
+            position = None
+            tries: list[dict] = []
+            if scene.get("last"):
+                prompt = _storefront_prompt(char_part_text)
+                position = "오른쪽"
+                trace.step(f"컷 {scene.get('n')} 규칙", who="code", rule="마지막 컷 = 가게 앞 전경 + 캐릭터 오른쪽 + 왼쪽 아래 입간판", prompt=prompt)
+                image = None
+                for attempt in range(_SIGN_RETRIES + 1):
+                    images = generate_images(prompt, 1, workflow_file=settings.comfy_comic_workflow_file,
+                                             reference_path=reference, position=position)
+                    image = images[0] if images else None
+                    if not image:
+                        break
+                    hit = sign_check.sign_tags(settings.media_path / image.rsplit("/", 1)[-1])
+                    tries.append({"attempt": attempt + 1, "image": image, "sign_tags": hit})
+                    trace.step(f"컷 {scene.get('n')} 간판 검사 {attempt + 1}회", who="wd14", image=image, sign_tags=hit,
+                               verdict="검사 없음(태거 없음)" if hit is None else ("다시" if hit and attempt < _SIGN_RETRIES else "채택"))
+                    if not hit:
+                        break
+                if image and board_lines:
+                    from PIL import Image
+                    src = settings.media_path / image.rsplit("/", 1)[-1]
+                    baked = comic_bake.board(Image.open(src), board_lines)
+                    from io import BytesIO
+                    buf = BytesIO(); baked.save(buf, format="PNG")
+                    image = _save_png(buf.getvalue()) or image
+                    trace.step(f"컷 {scene.get('n')} 입간판 굽기", who="code", lines=board_lines, image=image)
+            else:
+                if slots:
+                    prompt, slot_trace = comic_prompt_slots(char_part_text, slots)
+                    position = (slots.get("shot") or {}).get("position")
+                else:
+                    prompt = comic_prompt(char_part_text, scene.get("text", ""), scene.get("camera", ""))
+                trace.step(f"컷 {scene.get('n')} 프롬프트 조립", who="code", prompt=prompt, slot_to_tags=slot_trace, position=position)
+                images = generate_images(prompt, 1, workflow_file=settings.comfy_comic_workflow_file,
+                                         reference_path=reference, position=position)
+                image = images[0] if images else None
 
-        def write(db: Session, index=index, image=image):
-            sb = db.get(models.Storyboard, 1)
-            if not sb:
-                return
-            cuts = list(sb.comic_cuts or [])
-            if 0 <= index < len(cuts):
-                cuts[index] = {**cuts[index], "image": image, "status": "done" if image else "failed"}
-                sb.comic_cuts = cuts
-                db.commit()
+            def write(db: Session, index=index, image=image, prompt=prompt, slot_trace=slot_trace, tries=tries):
+                sb = db.get(models.Storyboard, 1)
+                if not sb:
+                    return
+                cuts = list(sb.comic_cuts or [])
+                if 0 <= index < len(cuts):
+                    cuts[index] = {**cuts[index], "image": image, "status": "done" if image else "failed",
+                                   "prompt": prompt, "trace": slot_trace, "tries": tries}
+                    sb.comic_cuts = cuts
+                    db.commit()
 
-        jobs.with_session(write)
+            jobs.with_session(write)
+        _compose_if_done()
+
+
+def _compose_if_done() -> None:
+    """모든 컷이 done 이면 말풍선을 굽고 2×2 로 합쳐 완성본 URL 을 각 컷의 final 에 적는다."""
+    from PIL import Image
+
+    def run(db: Session):
+        sb = db.get(models.Storyboard, 1)
+        if not sb:
+            return
+        cuts = list(sb.comic_cuts or [])
+        if not cuts or any(c.get("status") != "done" or not c.get("image") for c in cuts):
+            return
+        panels = []
+        for c in cuts:
+            im = Image.open(settings.media_path / c["image"].rsplit("/", 1)[-1])
+            side = comic_bake.bubble_side(((c.get("slots") or {}).get("shot") or {}).get("position"), c.get("n", 1))
+            panels.append(comic_bake.bubble(im, c.get("line", ""), side))
+        from io import BytesIO
+        buf = BytesIO(); comic_bake.compose(panels).save(buf, format="PNG")
+        final = _save_png(buf.getvalue())
+        sb.comic_cuts = [{**c, "final": final} for c in cuts]
+        db.commit()
+        trace.step("말풍선 굽기 · 2×2 합치기", who="code", final=final)
+
+    jobs.with_session(run)
 
 
 def _start_cuts(sb: models.Storyboard, char: models.Character, indexes: list[int], db: Session) -> None:
@@ -769,17 +942,32 @@ def _start_cuts(sb: models.Storyboard, char: models.Character, indexes: list[int
     if reference is None:
         raise HTTPException(400, "캐릭터를 먼저 확정해주세요 — 확정한 캐릭터 그림을 참조로 씁니다")
     cuts = list(sb.comic_cuts or [])
+    last = len(cuts) - 1
     # 그림엔 대사가 아니라 동작을 넣는다(대사·글자는 말풍선 몫). 동작이 없으면(직접 쓴 컷) 대사 문장을 쓴다.
-    scenes = [{"text": cuts[i].get("action") or cuts[i].get("line", ""), "camera": cuts[i].get("camera", "")}
+    scenes = [{"n": cuts[i].get("n", i + 1), "line": cuts[i].get("line", ""),
+               "text": cuts[i].get("action") or cuts[i].get("line", ""), "camera": cuts[i].get("camera", ""),
+               "slots": cuts[i].get("slots"), "last": i == last}
               for i in indexes]
     for i in indexes:
-        cuts[i] = {**cuts[i], "image": None, "status": "generating"}
+        cuts[i] = {**cuts[i], "image": None, "status": "generating", "final": None}
     sb.comic_cuts = cuts
     db.commit()
-    # 캐릭터 태그는 여기서 한 번만 계산한다(GPT 1회). 컷 문장 변환은 백그라운드에서.
-    # 생김새·옷·나이만 넘긴다 — 성격·능력에서 나오는 표정·소품 태그는 컷마다 정해지는
-    # 표정과 부딪친다(chat_ai.COMIC_IDENTITY_FIELDS).
-    jobs.submit(_fill_cuts, indexes, scenes, character_part(char, COMIC_IDENTITY_FIELDS), reference)
+    # 입간판 글 — 가게 정보 + 최근 생산 기록
+    store = db.get(models.Store, 1)
+    prods = db.query(models.ProductionRecord).order_by(models.ProductionRecord.id.desc()).limit(1).all()
+    board_lines = comic_bake.board_lines(
+        {"hours": store.hours, "address": store.address} if store else {},
+        [{"name": p.name, "qty": p.qty} for p in prods])
+    # 뜯어보기: 제안 때 시작한 기록(trace_id)에 이어 쓴다. 캐릭터 태깅도 그 기록 안에.
+    trace_id = next((c.get("trace_id") for c in cuts if c.get("trace_id")), None)
+    tr = trace.Tracer.resume(trace_id)
+    with trace.use(tr):
+        trace.step("그림 단계 시작", who="code", cuts=indexes, board_lines=board_lines,
+                   character_sheet={"look": char.look, "outfit": char.outfit, "age": char.age})
+        # 캐릭터 태그는 여기서 한 번만 계산한다(GPT 1회). 생김새·옷·나이만(COMIC_IDENTITY_FIELDS).
+        char_text = character_part(char, COMIC_IDENTITY_FIELDS)
+        trace.step("캐릭터 태그 확정", who="code", character_tags=char_text)
+    jobs.submit(_fill_cuts, indexes, scenes, char_text, reference, trace_id, board_lines)
 
 
 @router.post("/comic", response_model=schemas.StoryboardOut)
@@ -792,11 +980,19 @@ def make_comic(db: Session = Depends(get_db)):
     char = db.get(models.Character, 1)
     if not char or not char.confirmed:
         raise HTTPException(400, "캐릭터를 먼저 확정해주세요")
+    # 연출 — 대사·상황을 그림 슬롯으로(크기·각도·위치·시선·표정…). GPT 를 못 쓰면 None → 옛 경로.
+    ad = db.get(models.AdSettings, 1)
+    trace_id = next((c.get("trace_id") for c in plan if c.get("trace_id")), None)
+    with trace.use(trace.Tracer.resume(trace_id)):
+        slots = director.direct([c.get("line", "") for c in plan], [c.get("action") or c.get("line", "") for c in plan],
+                                (ad.ad_concept if ad else "") or "")
+        trace.step("연출 정리", who="code", slots=slots)
     sb.comic_cuts = [
         {"n": c["n"], "short": c.get("short", ""), "line": c.get("line", ""),
          "action": c.get("action", ""), "camera": c.get("camera", ""),
+         "slots": slots[i] if slots and i < len(slots) else None, "trace_id": c.get("trace_id"),
          "label": f"{c['n']}컷", "image": None, "status": "generating"}
-        for c in plan
+        for i, c in enumerate(plan)
     ]
     # 네컷은 대화창 안에서 보여준다. 그림이 대화 흐름 밖에서 나오면 사장님은 무엇 때문에
     # 그게 나왔는지 놓친다. 말풍선은 comic_cuts를 그대로 비추므로 **하나만** 둔다 —
@@ -814,6 +1010,30 @@ def make_comic(db: Session = Depends(get_db)):
     messages.append({"role": "ai", "kind": "comic"})
     sb.messages = messages
     _start_cuts(sb, char, list(range(len(plan))), db)
+    db.refresh(sb)
+    return schemas.storyboard_out(sb, jobs.queue_depth())
+
+
+@router.post("/comic/{n}/reroll", response_model=schemas.StoryboardOut)
+def reroll_cut(n: int, db: Session = Depends(get_db)):
+    """컷 하나만 다시 뽑는다.
+
+    되살린 것이다 — 2787723("컷별 리롤과 결과 화면 이미지 크기를 정리한다")이 이 라우트를
+    지웠고, 00095fe 가 남아 있던 프론트 배선(ComicBubble 의 onReroll)까지 걷어냈다.
+    제목만 보면 정리한 것처럼 읽히지만 실제로는 기능이 사라졌다.
+
+    한 컷만 마음에 안 들 때 넷을 다 다시 그리면 1분을 더 기다리고, 마음에 들던
+    나머지 셋도 다른 그림이 된다.
+    """
+    sb = _get(db)
+    cuts = list(sb.comic_cuts or [])
+    index = next((i for i, c in enumerate(cuts) if c.get("n") == n), None)
+    if index is None:
+        raise HTTPException(404, "그 컷이 없어요")
+    char = db.get(models.Character, 1)
+    if not char or not char.confirmed:
+        raise HTTPException(400, "캐릭터를 먼저 확정해주세요")
+    _start_cuts(sb, char, [index], db)
     db.refresh(sb)
     return schemas.storyboard_out(sb, jobs.queue_depth())
 

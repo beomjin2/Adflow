@@ -68,7 +68,7 @@ export default function Result({ state, actions }) {
           <div style={{ padding: '12px 12px 0' }}>
             {/* 완성된 광고를 보는 화면이다 — 컷을 다시 그리려면 "대화로 돌아가 고치기"로
                 가야 한다. 여기서 1컷씩 바꾸면 그 자리에서 문구와 그림이 어긋난다. */}
-            <ComicPanels cuts={state.comicCuts || []} eta={state.sbEta} />
+            <ComicPanels cuts={state.comicCuts || []} eta={state.sbEta} onReroll={actions.rerollCut} />
           </div>
         )}
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>

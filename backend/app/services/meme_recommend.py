@@ -55,11 +55,24 @@ def _client() -> AsyncOpenAI:
     return AsyncOpenAI(api_key=settings.openai_api_key, timeout=settings.openai_timeout_seconds)
 
 
-async def recommend(note: str, character_desc: str, store_desc: str, candidates: list[dict], n: int = 1) -> dict:
+async def recommend(note: str, character_desc: str, store_desc: str, candidates: list[dict],
+                    n: int = 1, exclude: set[str] | None = None) -> dict:
     """candidates: [{"id","name","situation","origin","usage_example"}, ...] — situation별로
     미리 좁히지 않은 전체 후보. "미분류"도 정상적인 situation 중 하나로 그대로 들어온다.
     반환: {"situation": str, "picks": [{"meme_id","reason"}, ...]} (picks 1~n개).
-    situation이 후보 목록에 없거나, 유효한 pick이 하나도 안 남으면 RuntimeError."""
+    situation이 후보 목록에 없거나, 유효한 pick이 하나도 안 남으면 RuntimeError.
+
+    exclude — 이미 보여준 밈의 id. **후보에서 미리 빼고 GPT에 넘긴다.**
+    프롬프트로 "빼 달라"고 부탁하는 것과 다르다 — 목록에 없으면 고를 수가 없다.
+    빼고 나서 아무것도 안 남으면 뺀 걸 되살린다. 추천이 아예 안 나오는 것보다는
+    같은 게 다시 나오는 편이 낫다."""
+    pool = candidates
+    if exclude:
+        trimmed = [c for c in candidates if c["id"] not in exclude]
+        if trimmed:
+            pool = trimmed
+    candidates = pool
+
     situations = sorted({c["situation"] for c in candidates if c.get("situation")})
     if not situations:
         raise RuntimeError("분류된 밈이 없어요")

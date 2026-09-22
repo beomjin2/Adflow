@@ -145,12 +145,16 @@ class ApplyAdOut(BaseModel):
 class PlanCutPatch(BaseModel):
     """컷 하나에서 사장님이 직접 고칠 수 있는 칸. 비워 보낸 칸은 안 바꾼다.
 
-    n(번호)·camera·props 는 받지 않는다 — 번호는 자리이고, 구도·소품은 그림
-    프롬프트로 그대로 나가는 태그라 손으로 고칠 자리가 아니다(story_llm.CAMERA_TAGS).
+    n(번호)과 props 는 받지 않는다 — 번호는 자리이고, 소품은 대사·동작에서 따라 나온다.
+
+    camera 는 받되 **아무 글자나 받지 않는다.** 그림 모델이 알아듣는 태그는
+    story_llm.CAMERA_TAGS 여섯 개뿐이라, 화면에서도 그 여섯 개를 뱃지로 고르게 하고
+    라우터가 한 번 더 거른다. 빈 문자열은 "구도 지정 안 함"이라는 뜻이라 허용한다.
     """
     n: int
     line: str | None = None
     action: str | None = None
+    camera: str | None = None
 
 
 class PlanUpdate(BaseModel):

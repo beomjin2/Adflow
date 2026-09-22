@@ -514,7 +514,9 @@ export function useAdMakerState() {
       return;
     }
     try {
-      const cuts = (s.plan || []).map((c) => ({ n: c.n, line: c.line || '', action: c.action || '' }));
+      const cuts = (s.plan || []).map((c) => ({
+        n: c.n, line: c.line || '', action: c.action || '', camera: c.camera || '',
+      }));
       const sb = await StoryboardAPI.updatePlan(cuts);
       update({ ...sb, planReadOnly: true });
       toast('컷을 저장했어요');
@@ -585,6 +587,15 @@ export function useAdMakerState() {
   }, [update, startPolling, fail]);
 
   // ---------- 결과 / 저장 ----------
+  /** 컷 하나만 다시 그린다. 그리는 동안 그 칸만 generating 이 되므로 폴링을 켠다. */
+  const rerollCut = useCallback(async (n) => {
+    try {
+      const sb = await StoryboardAPI.rerollCut(n);
+      update({ ...sb, savedThisAd: false });
+      if (sb.sbGenerating) startPolling();
+    } catch (e) { fail(e); }
+  }, [update, fail, startPolling]);
+
   const openResult = useCallback(() => {
     const s = stateRef.current;
     if (!s.plan.length) { toast('먼저 대화로 컷 구성을 만들어주세요'); return; }
@@ -766,7 +777,7 @@ export function useAdMakerState() {
       confirmPending, declinePending,
       applyAd,
       toggleSbSet, toggleSbProd, toggleSbStore, sendSb, resetSb, suggestStory, recommendMeme, makeComic,
-      setPlanCut, togglePlanEdit,
+      setPlanCut, togglePlanEdit, rerollCut,
       openResult, backToSb, download,
       myHistory, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,

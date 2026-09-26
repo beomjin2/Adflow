@@ -308,3 +308,31 @@ class TrendRecommendPick(BaseModel):
 class TrendRecommendOut(BaseModel):
     situation: str
     picks: list[TrendRecommendPick]
+
+
+# ── 인스타그램 게시 (services/instagram.py)
+class InstagramStatusOut(BaseModel):
+    """연결 상태. connected 가 false 면 화면이 게시 버튼을 숨기고 reason 을 보여준다."""
+    connected: bool = False
+    username: str = ""
+    reason: str = ""
+    saved: bool = False        # 사장님이 온보딩에서 저장해 둔 계정이 있는가(토큰 만료와 구분)
+    expires_at: str = ""       # 토큰 만료 예정일(YYYY-MM-DD)
+    days_left: int = -1        # 만료까지 남은 날. 모르면 -1
+
+
+class InstagramConnectIn(BaseModel):
+    """온보딩 화면에서 받은 값. 저장 전에 이 값으로 계정 이름을 불러와 맞는지 확인한다."""
+    user_id: str = ""
+    access_token: str = ""
+
+
+class InstagramPublishIn(BaseModel):
+    """caption — 사장님이 화면에서 고친 캡션. 비우면 저장된 캡션을 쓴다."""
+    caption: str = ""
+
+
+class InstagramPublishOut(BaseModel):
+    media_id: str = ""
+    permalink: str = ""
+    image: str = ""

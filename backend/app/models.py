@@ -192,6 +192,25 @@ class Mascot(Base):
     created_at = Column(String, default="")
 
 
+class InstagramAccount(Base):
+    """사장님이 연결한 인스타그램 계정. 한 가게에 하나라 id=1 고정(Store·Character와 같은 규칙).
+
+    왜 DB에 두나 — .env 에 두면 사장님이 직접 연결할 수가 없다. 온보딩 화면에서 받은 값을
+    여기에 저장하고, 비어 있으면 .env(설정)로 폴백한다(개발·시연 편의).
+
+    토큰을 평문으로 둔다 — 지금은 데모 범위다. 실서비스라면 암호화해서 보관해야 한다.
+    (토큰은 약 1시간짜리라 만료되면 다시 연결해야 한다 — 장기 토큰 발급은 미해결 과제.)
+    """
+    __tablename__ = "instagram_account"
+
+    id = Column(Integer, primary_key=True, default=1)
+    user_id = Column(String, default="")
+    access_token = Column(String, default="")
+    username = Column(String, default="")      # 연결 확인 때 받아 둔 계정 이름 — 화면에 보여준다
+    expires_at = Column(String, default="")    # 토큰 만료 예정일(YYYY-MM-DD). 화면에 남은 날짜를 보여주고, 갱신 시점을 정하는 데 쓴다
+    updated_at = Column(String, default="")
+
+
 class HistoryEntry(Base):
     """저장된(다운로드한) 광고 히스토리."""
     __tablename__ = "history"

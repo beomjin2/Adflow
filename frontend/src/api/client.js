@@ -187,6 +187,13 @@ export const StoryboardAPI = {
   // 네컷 + 대사를 한 장으로 구워 준다. 화면 말풍선은 CSS 레이어라 원본만 받으면
   // 대사가 사라진다(backend/app/services/comic_bake.py).
   poster: () => post('/api/storyboard/poster'),
+  // 인스타 계정이 연결됐는지(토큰이 살아 있는지까지 확인한다). 연결 안 됐으면 버튼을 숨긴다.
+  instagramStatus: () => get('/api/storyboard/instagram'),
+  // 온보딩 화면에서 받은 값을 저장한다. 저장 전에 백엔드가 인스타에 물어봐 확인한다.
+  connectInstagram: (user_id, access_token) => post('/api/storyboard/instagram/connect', { user_id, access_token }),
+  disconnectInstagram: () => post('/api/storyboard/instagram/disconnect'),
+  // 완성본 + 캡션을 실제로 게시한다. **되돌릴 수 없다** — 화면에서 확인을 받고 부른다.
+  publishInstagram: (caption) => post('/api/storyboard/instagram', { caption }),
   // 사장님이 컷을 직접 고친다 — 캐릭터 시트의 '수정하기'와 같은 자리.
   updatePlan: (cuts) => put('/api/storyboard/plan', { cuts }).then(mapStoryboard),
 };

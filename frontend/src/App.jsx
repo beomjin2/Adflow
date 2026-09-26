@@ -10,6 +10,7 @@ import Storyboard from './screens/Storyboard.jsx';
 import Result from './screens/Result.jsx';
 import MyShell from './screens/My/MyShell.jsx';
 import MyStore from './screens/MyStore.jsx';
+import InstagramSetup from './screens/InstagramSetup.jsx';
 
 const SCREENS = {
   home: Home,
@@ -21,7 +22,8 @@ const SCREENS = {
   sb: Storyboard,
   result: Result,
   my: MyShell,
-  myStore: MyStore
+  myStore: MyStore,
+  instagram: InstagramSetup
 };
 
 export default function App() {

@@ -45,7 +45,7 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.core.config import settings
 from app.core.database import get_db
-from app.services import comic_bake, director, jobs, sign_check, story_llm, trace
+from app.services import comic_bake, director, instagram, jobs, sign_check, story_llm, trace
 from app.services.chat_ai import (COMIC_GLOBAL_TAGS, COMIC_IDENTITY_FIELDS, character_part, comic_prompt,
                                   comic_prompt_slots, new_pid)
 from app.services.danbooru_lookup import verify_tags
@@ -649,8 +649,7 @@ def update_plan(body: schemas.PlanUpdate, db: Session = Depends(get_db)):
     return schemas.storyboard_out(sb, jobs.queue_depth())
 
 
-@router.post("/poster")
-def make_poster(db: Session = Depends(get_db)):
+def _bake_poster(db: Session) -> str:
     """네컷 + 대사를 **한 장으로 구워** 내려받을 URL을 돌려준다.
 
     화면의 말풍선은 프론트가 그림 위에 얹은 CSS 레이어라, "이미지 저장"으로 받으면
@@ -678,11 +677,105 @@ def make_poster(db: Session = Depends(get_db)):
         raise HTTPException(400, "그림 파일을 찾지 못했어요. 네컷을 다시 그려주세요")
 
     try:
-        url = comic_bake.compose_poster(paths, lines)
+        return comic_bake.compose_poster(paths, lines)
     except Exception:
         logger.exception("완성본 합성 실패")
         raise HTTPException(500, "완성본을 만들지 못했어요")
-    return {"image": url}
+
+
+@router.post("/poster")
+def make_poster(db: Session = Depends(get_db)):
+    """완성본을 굽고 내려받을 URL을 돌려준다. 굽는 일은 _bake_poster 가 한다
+    (인스타 게시도 같은 완성본을 써야 해서 갈라 뒀다)."""
+    return {"image": _bake_poster(db)}
+
+
+def _instagram_status(db: Session) -> schemas.InstagramStatusOut:
+    """연결 상태 한 곳에서 만든다 — 연결/해제 뒤에도 같은 모양을 돌려주려고."""
+    instagram.refresh_if_due()          # 만료가 가까우면 여기서 미리 갱신한다(실패해도 그냥 진행)
+    db.expire_all()                     # 갱신이 토큰을 바꿨을 수 있다 — 다시 읽는다
+    row = db.get(models.InstagramAccount, 1)
+    saved = bool(row and row.user_id and row.access_token)
+    expires_at = (row.expires_at if row else "") or ""
+    left = instagram.days_left(expires_at)
+    if not instagram.available():
+        return schemas.InstagramStatusOut(connected=False, saved=saved,
+                                          reason=instagram.missing_reason())
+    try:
+        return schemas.InstagramStatusOut(connected=True, saved=saved, expires_at=expires_at,
+                                          days_left=left if left is not None else -1,
+                                          username=instagram.account_name())
+    except instagram.InstagramError as e:
+        # 저장은 돼 있는데 토큰이 만료된 경우가 대부분이다 — 화면이 "다시 연결"을 권할 수 있게
+        # saved 는 그대로 true 로 둔다.
+        return schemas.InstagramStatusOut(connected=False, saved=saved, reason=str(e))
+
+
+@router.get("/instagram", response_model=schemas.InstagramStatusOut)
+def instagram_status(db: Session = Depends(get_db)):
+    """인스타 계정이 연결됐는지. 화면은 이 값으로 게시 버튼을 보일지 정한다.
+
+    토큰이 살아 있는지까지 확인한다 — 저장만 돼 있고 만료된 토큰이면 눌러 봐야 실패하니,
+    여기서 계정 이름을 한 번 불러와 본다."""
+    return _instagram_status(db)
+
+
+@router.post("/instagram/connect", response_model=schemas.InstagramStatusOut)
+def instagram_connect(body: schemas.InstagramConnectIn, db: Session = Depends(get_db)):
+    """온보딩 화면에서 받은 사용자 ID·토큰을 저장한다.
+
+    **저장하기 전에 인스타에 한 번 물어본다** — 값이 틀렸는데 저장해 두면, 사장님은 나중에
+    게시를 눌러 보고서야 잘못됐다는 걸 알게 된다. 여기서 막고 이유를 알려준다."""
+    uid = (body.user_id or "").strip()
+    token = (body.access_token or "").strip()
+    if not uid or not token:
+        raise HTTPException(400, "사용자 ID와 액세스 토큰을 모두 넣어주세요")
+    try:
+        username, token, expires_at = instagram.verify(token)
+    except instagram.InstagramError as e:
+        raise HTTPException(400, str(e))
+
+    row = db.get(models.InstagramAccount, 1) or models.InstagramAccount(id=1)
+    row.user_id, row.access_token, row.username = uid, token, username
+    row.expires_at = expires_at
+    row.updated_at = datetime.now(timezone(timedelta(hours=9))).strftime("%Y-%m-%d %H:%M")
+    db.add(row)
+    db.commit()
+    return _instagram_status(db)
+
+
+@router.post("/instagram/disconnect", response_model=schemas.InstagramStatusOut)
+def instagram_disconnect(db: Session = Depends(get_db)):
+    """연결 끊기. 저장해 둔 토큰을 지운다 — 남의 컴퓨터에서 로그인해 둔 걸 푸는 것과 같다."""
+    row = db.get(models.InstagramAccount, 1)
+    if row:
+        db.delete(row)
+        db.commit()
+    return _instagram_status(db)
+
+
+@router.post("/instagram", response_model=schemas.InstagramPublishOut)
+def publish_instagram(body: schemas.InstagramPublishIn, db: Session = Depends(get_db)):
+    """완성본 + 캡션을 인스타에 올린다. **되돌릴 수 없다** — 화면에서 확인을 받고 부른다.
+
+    캡션은 사장님이 화면에서 고친 것을 우선하고, 비어 있으면 GPT가 써 둔 것을 쓴다.
+    올린 뒤 같은 캡션을 DB에도 남긴다 — 무엇을 올렸는지가 기록으로 남아야 한다."""
+    instagram.refresh_if_due()      # 만료 직전이면 여기서 갱신하고 올린다
+    sb = _get(db)
+    caption = (body.caption or sb.caption or '').strip()
+    url = _bake_poster(db)          # 네컷이 없으면 여기서 400 으로 막힌다
+    poster = settings.media_path / url.rsplit('/', 1)[-1]
+    try:
+        result = instagram.publish(poster, caption)
+    except instagram.InstagramError as e:
+        raise HTTPException(400, str(e))
+    except Exception:
+        logger.exception('인스타 게시 실패')
+        raise HTTPException(500, '인스타그램에 올리지 못했어요')
+    if caption and caption != (sb.caption or ''):
+        sb.caption = caption
+        db.commit()
+    return schemas.InstagramPublishOut(**result)
 
 
 @router.post("/reset", response_model=schemas.StoryboardOut)

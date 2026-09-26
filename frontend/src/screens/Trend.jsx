@@ -410,6 +410,11 @@ export default function Trend({ state, actions }) {
       <span style={{ fontSize: 11.5, lineHeight: '18px', color: colors.textFaint, padding: '0 2px' }}>
         유행 시작일은 네이버 검색어트렌드 기준이며, 검색 데이터가 없는 일부 밈은 원문 등록일로 대신 표시합니다.
         {baseDate && ` · 최근 수집 ${baseDate.getFullYear()}.${String(baseDate.getMonth() + 1).padStart(2, '0')}.${String(baseDate.getDate()).padStart(2, '0')}`}
+        {/* "유행 중" 배지를 무엇으로 판정하는지 적어 둔다(강사님 피드백). 판정은 trendStatus():
+            네이버 급등 구간(평소 수준의 3배 또는 최고치의 10% 중 높은 선을 넘은 날들)의 마지막 날이
+            수집 기준일로부터 3일 안이면 유행 중. "3배"만 쓰면 10% 조건이 빠져 부정확해 뭉뚱그려 적는다. */}
+        <br />
+        '유행 중'은 수집일 기준 최근 3일 안까지 네이버 검색량이 평소보다 크게 높게 유지된 밈입니다.
       </span>
 
       {trendRecommendPopupOpen && !trendRecommendResult && (

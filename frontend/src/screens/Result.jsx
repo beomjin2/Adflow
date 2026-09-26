@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { colors } from '../theme.js';
 import { PrimaryButton, SecondaryButton, SoftButton } from '../components/ui/Button.jsx';
 import { buildAdText, adTextForClipboard, copyToClipboard, characterImage } from '../lib/adText.js';
@@ -17,6 +18,33 @@ export default function Result({ state, actions }) {
     actions.toast(ok ? '캡션을 복사했어요' : '복사가 안 돼요 — 아래 캡션을 길게 눌러 직접 복사해주세요');
   };
 
+  // 인스타 연결 상태 — 토큰이 없거나 만료면 버튼 자체를 안 보여준다(게시는 되돌릴 수 없다).
+  const [ig, setIg] = useState(null);       // null=확인 중, {connected, username, reason}
+  const [igAsk, setIgAsk] = useState(false); // 확인 창 열림
+  const [igBusy, setIgBusy] = useState(false);
+  const [igDone, setIgDone] = useState(null); // {permalink}
+
+  useEffect(() => {
+    let alive = true;
+    StoryboardAPI.instagramStatus()
+      .then((r) => { if (alive) setIg(r); })
+      .catch(() => { if (alive) setIg({ connected: false, reason: '' }); });
+    return () => { alive = false; };
+  }, []);
+
+  const publishInstagram = async () => {
+    setIgBusy(true);
+    try {
+      const r = await StoryboardAPI.publishInstagram(adTextForClipboard(state) || caption || '');
+      setIgDone(r);
+      setIgAsk(false);
+      actions.toast('인스타그램에 올렸어요');
+    } catch (e) {
+      actions.toast(String(e?.message || e) || '인스타그램에 올리지 못했어요');
+    } finally {
+      setIgBusy(false);
+    }
+  };
   const saveImages = async () => {
     // 말풍선까지 구운 완성본 한 장을 먼저 받는다 — 화면의 말풍선은 CSS 레이어라
     // 원본 넉 장을 그대로 받으면 대사가 통째로 사라진다.
@@ -125,6 +153,24 @@ export default function Result({ state, actions }) {
             <SoftButton onClick={saveImages} style={{ height: 48, fontSize: 15, flex: 1 }}>이미지 저장</SoftButton>
           )}
         </div>
+        {/* 인스타 게시 — 연결돼 있고 그림이 있을 때만. 누르면 바로 올라가지 않고 확인 창을 거친다. */}
+        {hasImages && ig?.connected && !igDone && (
+          <SoftButton onClick={() => setIgAsk(true)} style={{ height: 48, fontSize: 15 }}>
+            인스타에 올리기
+          </SoftButton>
+        )}
+        {/* 연결 전이면 안내 화면으로 보낸다 — 버튼만 숨기면 왜 없는지 알 수가 없다. */}
+        {hasImages && ig && !ig.connected && (
+          <SoftButton onClick={actions.goInstagram} style={{ height: 48, fontSize: 15 }}>
+            인스타에 바로 올리려면 계정 연결하기
+          </SoftButton>
+        )}
+        {igDone && (
+          <a href={igDone.permalink || '#'} target="_blank" rel="noreferrer"
+             style={{ fontSize: 14, fontWeight: 700, color: colors.primaryHover, textDecoration: 'none', padding: '4px 2px' }}>
+            인스타그램에 올렸어요 — 게시물 보기 →
+          </a>
+        )}
         <SecondaryButton onClick={actions.backToSb} style={{ height: 52, fontSize: 16 }}>대화로 돌아가 고치기</SecondaryButton>
         {/* 보관함에서 옛 항목을 보는 중이면 이미 저장된 것이라 또 저장할 필요가 없다 — 중복 저장 방지. */}
         {!state.viewingHistory && (
@@ -134,6 +180,35 @@ export default function Result({ state, actions }) {
         )}
         <SecondaryButton onClick={actions.goHome}>홈으로</SecondaryButton>
       </div>
+
+      {/* 올리기 전 확인 — 게시는 인스타그램 앱에서만 지울 수 있어서, 한 번 더 묻는다. */}
+      {igAsk && (
+        <div onClick={() => !igBusy && setIgAsk(false)} style={{
+          position: 'fixed', inset: 0, background: 'rgba(15,17,19,.66)', zIndex: 120,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          backdropFilter: 'blur(3px)', WebkitBackdropFilter: 'blur(3px)',
+        }}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            width: '100%', maxWidth: 380, background: '#fff', borderRadius: 18, padding: 22,
+            display: 'flex', flexDirection: 'column', gap: 12, maxHeight: '82vh', overflowY: 'auto',
+            boxShadow: '0 24px 60px rgba(0,0,0,.34)',
+          }}>
+            <span style={{ fontSize: 17, fontWeight: 800 }}>이 내용으로 올릴까요?</span>
+            <span style={{ fontSize: 13, lineHeight: '20px', color: colors.textSub }}>
+              {ig?.username ? `@${ig.username} 계정에 바로 게시됩니다. ` : '연결된 계정에 바로 게시됩니다. '}
+              올린 뒤에는 인스타그램 앱에서만 지울 수 있어요.
+            </span>
+            <span style={{ fontSize: 13, lineHeight: '20px', color: colors.textSub, background: colors.softBg,
+                           borderRadius: 10, padding: '10px 12px', whiteSpace: 'pre-line' }}>
+              {adTextForClipboard(state) || caption || '(캡션 없음)'}
+            </span>
+            <PrimaryButton onClick={publishInstagram} disabled={igBusy} style={{ height: 46 }}>
+              {igBusy ? '올리는 중이에요… (10초쯤 걸려요)' : '올리기'}
+            </PrimaryButton>
+            <SecondaryButton onClick={() => setIgAsk(false)} disabled={igBusy} style={{ height: 44 }}>취소</SecondaryButton>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

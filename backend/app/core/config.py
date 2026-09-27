@@ -47,6 +47,18 @@ class Settings(BaseSettings):
     # 네컷 대사 GPT 모델. mini 는 "세 컷 이상에 밈 틀"을 안 지켰다(09-22: 4컷 한 줄만). 광고 하나에 한 번이라 4o 를 쓴다.
     story_model: str = "gpt-4o"
 
+    # 인스타그램 자동 게시 (Instagram API with Instagram Login, 09-13 실제 게시로 검증).
+    # 비어 있으면 결과 화면의 '인스타에 올리기'가 아예 안 뜬다 — 게시는 되돌릴 수 없어
+    # 설정이 없는 환경(다른 팀원 로컬·운영)에서 실수로 눌리지 않게 막는 쪽을 택했다.
+    # 토큰은 .env 에만 둔다. 짧은 토큰(약 1시간)이라 만료되면 다시 발급받아 넣는다
+    # (장기 토큰 교환은 09-13 테스트에서 OAuthException 452 로 실패했다).
+    instagram_user_id: str = ""
+    instagram_access_token: str = ""
+    instagram_api_base: str = "https://graph.instagram.com/v21.0"
+    # 인스타 서버가 **직접 가져갈 수 있는** 우리 이미지 주소의 앞부분(예: http://35.237.89.149).
+    # localhost 는 인스타가 열 수 없어서, 이 값이 없으면 게시를 막고 이유를 알려준다.
+    public_base_url: str = ""
+
     # deepghs/site_tags(HF, CC-BY-4.0)의 danbooru.donmai.us/tags.parquet 미러 경로.
     # backend/ 기준 상대경로(또는 절대경로) — GPT가 뽑은 태그 후보의 실존·게시물수를 검증한다.
     # 저장소에 없다(gitignore). 없으면 태그 검증을 건너뛰고 화이트리스트로 폴백한다.

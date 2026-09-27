@@ -23,9 +23,11 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import socket
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 from PIL import Image
@@ -38,6 +40,7 @@ TIMEOUT = 30            # 한 번의 API 호출
 REFRESH_BEFORE_DAYS = 20   # 만료가 이만큼 남았으면 미리 갱신한다(장기 토큰은 60일)
 POLL_TRIES, POLL_WAIT = 12, 3   # 컨테이너가 FINISHED 될 때까지 최대 36초
 TARGET_RATIO = 4 / 5    # 인스타 피드 세로 한계
+KEEP_SECONDS = 3600     # 게시용으로 구운 JPEG을 남겨 두는 시간
 
 
 class InstagramError(RuntimeError):
@@ -81,7 +84,8 @@ def missing_reason() -> str:
 
 def _api(method: str, path: str, **params) -> dict:
     url = f"{settings.instagram_api_base.rstrip('/')}/{path.lstrip('/')}"
-    params.setdefault("access_token", creds()[1])
+    if "access_token" not in params:      # 토큰을 직접 넘긴 호출(연결 확인·갱신)은 DB를 보지 않는다
+        params["access_token"] = creds()[1]
     try:
         r = requests.request(method, url, params=params, timeout=TIMEOUT)
     except requests.RequestException as e:
@@ -229,19 +233,50 @@ def _check_reachable(image_url: str) -> None:
     쪽 사정이라 사장님이 손댈 수 있는 게 없다. 그래서 화면에는 "잠시 뒤 다시" 만 말하고,
     주소·상태 코드 같은 건 로그에 남겨 우리가 본다.
     """
-    trouble = ""
+    # 주소의 이름부터 풀어 본다. 이름이 없으면 인스타도 못 찾는다 — 확실한 실패다.
+    host = urlsplit(image_url).hostname or ""
+    try:
+        socket.getaddrinfo(host, None)
+    except socket.gaierror as e:
+        logger.error("이미지 주소의 이름을 찾을 수 없습니다 — %s (%s). "
+                     "PUBLIC_BASE_URL 이 지금 살아 있는 주소인지 확인하세요.", image_url, e)
+        raise InstagramError("지금은 사진을 올릴 수 없어요. 잠시 뒤에 다시 시도해 주세요") from e
+
     try:
         r = requests.get(image_url, timeout=15, stream=True)
         ctype = (r.headers.get("content-type") or "").lower()
         r.close()
-        if r.status_code >= 400 or not ctype.startswith("image/"):
-            trouble = f"HTTP {r.status_code}, content-type={ctype or '없음'}"
     except requests.RequestException as e:
-        trouble = str(e)
-    if trouble:
-        logger.error("이미지 주소가 밖에서 열리지 않습니다 — %s (%s). "
-                     "PUBLIC_BASE_URL 과 공개 주소가 살아 있는지 확인하세요.", image_url, trouble)
+        # 이름은 있는데 우리가 못 붙는 경우 — 서버가 자기 바깥 주소로 되돌아오지 못하는
+        # 망 구성이면 인스타는 멀쩡히 가져가는데 우리만 실패한다. 그런 환경에서 게시를
+        # 막아 버리면 안 되니, 남겨만 두고 인스타에게 판단을 맡긴다.
+        logger.warning("이미지 주소에 우리 쪽에서 붙지 못했습니다 — %s (%s). 그대로 진행합니다.",
+                       image_url, e)
+        return
+    if r.status_code >= 400 or not ctype.startswith("image/"):
+        # 열리긴 했는데 사진이 아니다 — 주소가 틀렸거나 공개 경로가 죽은 것이다. 이건 확실하므로 막는다.
+        logger.error("이미지 주소가 사진을 돌려주지 않습니다 — %s (HTTP %s, content-type=%s). "
+                     "PUBLIC_BASE_URL 을 확인하세요.", image_url, r.status_code, ctype or "없음")
         raise InstagramError("지금은 사진을 올릴 수 없어요. 잠시 뒤에 다시 시도해 주세요")
+
+
+def _sweep_old_jpegs() -> None:
+    """게시용으로 구워 둔 JPEG 중 오래된 것을 지운다.
+
+    왜 필요한가 — 완성본은 세로로 길어 인스타 규격(4:5)에 안 맞아서, 여백을 채운 새 파일을
+    만들어 올린다. 인스타가 그 주소로 가지러 오기 때문에 파일이 실제로 있어야 한다. 그런데
+    이름이 매번 달라 덮어쓰지 않으니, 그냥 두면 게시할 때마다 한 장씩 쌓이기만 한다.
+
+    한 시간이면 진행 중인 게시가 끝나고도 한참 남는다 — 그보다 오래된 것만 지운다.
+    지우다 실패해도 게시를 막을 이유는 없다.
+    """
+    cutoff = time.time() - KEEP_SECONDS
+    for old in settings.media_path.glob("ig_*.jpg"):
+        try:
+            if old.stat().st_mtime < cutoff:
+                old.unlink()
+        except OSError:
+            logger.debug("게시용 임시 파일을 지우지 못했습니다 — %s", old, exc_info=True)
 
 
 def publish(poster: Path, caption: str) -> dict:
@@ -250,6 +285,7 @@ def publish(poster: Path, caption: str) -> dict:
         raise InstagramError(missing_reason())
 
     started = time.monotonic()
+    _sweep_old_jpegs()
     jpeg = to_feed_jpeg(poster)
     image_url = f"{settings.public_base_url.rstrip('/')}/api/media/{jpeg.name}"
     logger.info("인스타 게시 시작 — %s", image_url)

@@ -701,6 +701,14 @@ def _instagram_status(db: Session) -> schemas.InstagramStatusOut:
     if not instagram.available():
         return schemas.InstagramStatusOut(connected=False, saved=saved,
                                           reason=instagram.missing_reason())
+
+    # 저장해 둔 계정 이름과 만료일이 있고 아직 기간이 남았으면 그대로 답한다.
+    # 이 응답은 화면을 열 때마다 불리는데, 그때마다 메타에 물어보면 화면 여는 속도가
+    # 메타 응답 속도에 묶이고, 메타가 잠깐 느린 것만으로 게시 버튼이 사라진다.
+    # 토큰을 중간에 회수당한 경우는 여기서 못 잡지만, 게시할 때 분명한 메시지로 걸린다.
+    if row and row.username and left is not None and left >= 0:
+        return schemas.InstagramStatusOut(connected=True, saved=saved, expires_at=expires_at,
+                                          days_left=left, username=row.username)
     try:
         return schemas.InstagramStatusOut(connected=True, saved=saved, expires_at=expires_at,
                                           days_left=left if left is not None else -1,

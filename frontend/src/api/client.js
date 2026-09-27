@@ -190,7 +190,8 @@ export const StoryboardAPI = {
   // 인스타 계정이 연결됐는지(토큰이 살아 있는지까지 확인한다). 연결 안 됐으면 버튼을 숨긴다.
   instagramStatus: () => get('/api/storyboard/instagram'),
   // 온보딩 화면에서 받은 값을 저장한다. 저장 전에 백엔드가 인스타에 물어봐 확인한다.
-  connectInstagram: (user_id, access_token) => post('/api/storyboard/instagram/connect', { user_id, access_token }),
+  // 토큰만 보낸다 — 사용자 ID 는 서버가 토큰으로 조회한다(콘솔의 앱 ID 와 헷갈리는 실수를 막는다).
+  connectInstagram: (access_token) => post('/api/storyboard/instagram/connect', { access_token }),
   disconnectInstagram: () => post('/api/storyboard/instagram/disconnect'),
   // 완성본 + 캡션을 실제로 게시한다. **되돌릴 수 없다** — 화면에서 확인을 받고 부른다.
   publishInstagram: (caption) => post('/api/storyboard/instagram', { caption }),

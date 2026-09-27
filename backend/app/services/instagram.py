@@ -96,23 +96,25 @@ def _api(method: str, path: str, **params) -> dict:
     return data
 
 
-def verify(token: str) -> tuple[str, str, str]:
-    """온보딩에서 받은 토큰을 확인한다 → (계정 이름, 실제로 저장할 토큰, 만료 예정일).
+def verify(token: str) -> tuple[str, str, str, str]:
+    """온보딩에서 받은 토큰을 확인한다 → (사용자 ID, 계정 이름, 저장할 토큰, 만료 예정일).
 
     앱 대시보드에서 받은 토큰은 이미 60일짜리 장기 토큰이라 ig_exchange_token 으로 바꿀 수
     없다(그래서 09-13·09-25 두 번 452 가 났다). 대신 refresh 를 한 번 시도해 본다 —
     되면 만료일을 정확히 알 수 있고 그 시점부터 다시 60일이 된다. 만들어진 지 24시간이
     안 된 토큰은 refresh 가 안 되므로, 그때는 문서값(60일)으로 만료일을 잡아둔다.
     """
-    username = account_name(token)          # 실패하면 InstagramError 가 그대로 올라간다
+    user_id, username = account_info(token)   # 실패하면 InstagramError 가 그대로 올라간다
+    if not user_id:
+        raise InstagramError("이 토큰으로 계정을 찾지 못했어요 — 토큰을 다시 받아 주세요")
     try:
         data = _api("GET", "refresh_access_token", grant_type="ig_refresh_token", access_token=token)
         fresh = str(data.get("access_token") or "")
         if fresh:
-            return username, fresh, expires_at_from(data.get("expires_in"))
+            return user_id, username, fresh, expires_at_from(data.get("expires_in"))
     except InstagramError:
         logger.info("연결 시점 갱신은 건너뜁니다(24시간 미만이거나 갱신 불가) — 60일로 봅니다")
-    return username, token, expires_at_from(60 * 24 * 3600)
+    return user_id, username, token, expires_at_from(60 * 24 * 3600)
 
 def refresh_if_due() -> str:
     """저장해 둔 장기 토큰이 만료에 가까우면 미리 갱신한다. 갱신했으면 새 만료일을 돌려준다.
@@ -169,15 +171,26 @@ def days_left(expires_at: str):
         return None
 
 
-def account_name(token: str = "") -> str:
-    """연결 확인용. 계정 이름이 돌아오면 토큰이 살아 있는 것이다.
+def account_info(token: str = "") -> tuple[str, str]:
+    """(사용자 ID, 계정 이름). 토큰 하나로 둘 다 알아낸다.
+
+    **사장님에게 사용자 ID를 묻지 않는 이유** — 콘솔 화면에는 비슷한 숫자가 둘 있다
+    (Instagram 앱 ID / Instagram 사용자 ID). 2026-09-27 새 계정으로 온보딩을 다시 밟다가
+    앱 ID 를 넣었는데 연결은 성공으로 뜨고 게시에서야 "Object with ID ... does not exist"
+    로 막혔다. 토큰만 받고 ID 는 여기서 조회하면 그 실수 자체가 생기지 않는다.
 
     token 을 주면 그 토큰으로 확인한다 — 온보딩에서 **저장하기 전에** 값이 맞는지 보려고.
     """
     params = {"fields": "user_id,username"}
     if token:
         params["access_token"] = token
-    return str(_api("GET", "me", **params).get("username") or "")
+    data = _api("GET", "me", **params)
+    return str(data.get("user_id") or ""), str(data.get("username") or "")
+
+
+def account_name(token: str = "") -> str:
+    """연결 확인용. 계정 이름이 돌아오면 토큰이 살아 있는 것이다."""
+    return account_info(token)[1]
 
 
 def to_feed_jpeg(src: Path) -> Path:
@@ -204,13 +217,43 @@ def to_feed_jpeg(src: Path) -> Path:
     return out
 
 
+def _check_reachable(image_url: str) -> None:
+    """인스타에 넘기기 전에 우리 이미지 주소가 밖에서 열리는지 우리가 먼저 열어 본다.
+
+    왜 필요한가 — 인스타는 주소를 받아 자기가 가져간다. 주소가 죽어 있으면 오류 페이지를
+    받아 가고, 돌아오는 말은 "Only photo or video can be accepted as media type" 이다.
+    이 말만 보고 원인을 떠올리기는 어렵다(2026-09-27 cloudflared quick tunnel 이 창은
+    떠 있는 채로 죽어 있어 한참 헤맸다).
+
+    **원인은 로그로, 화면에는 사장님이 할 수 있는 말만.** 이미지 주소가 안 열리는 건 서버
+    쪽 사정이라 사장님이 손댈 수 있는 게 없다. 그래서 화면에는 "잠시 뒤 다시" 만 말하고,
+    주소·상태 코드 같은 건 로그에 남겨 우리가 본다.
+    """
+    trouble = ""
+    try:
+        r = requests.get(image_url, timeout=15, stream=True)
+        ctype = (r.headers.get("content-type") or "").lower()
+        r.close()
+        if r.status_code >= 400 or not ctype.startswith("image/"):
+            trouble = f"HTTP {r.status_code}, content-type={ctype or '없음'}"
+    except requests.RequestException as e:
+        trouble = str(e)
+    if trouble:
+        logger.error("이미지 주소가 밖에서 열리지 않습니다 — %s (%s). "
+                     "PUBLIC_BASE_URL 과 공개 주소가 살아 있는지 확인하세요.", image_url, trouble)
+        raise InstagramError("지금은 사진을 올릴 수 없어요. 잠시 뒤에 다시 시도해 주세요")
+
+
 def publish(poster: Path, caption: str) -> dict:
     """완성본 파일 + 캡션 → 실제 게시. {"media_id", "permalink", "image"} 를 돌려준다."""
     if not available():
         raise InstagramError(missing_reason())
 
+    started = time.monotonic()
     jpeg = to_feed_jpeg(poster)
     image_url = f"{settings.public_base_url.rstrip('/')}/api/media/{jpeg.name}"
+    logger.info("인스타 게시 시작 — %s", image_url)
+    _check_reachable(image_url)
     ig = creds()[0]
 
     created = _api("POST", f"{ig}/media", image_url=image_url, caption=caption or "")
@@ -219,7 +262,8 @@ def publish(poster: Path, caption: str) -> dict:
         raise InstagramError("인스타그램이 게시 준비 번호를 주지 않았어요")
 
     # 인스타가 우리 이미지를 받아 가는 동안 기다린다. 바로 publish 하면 실패한다.
-    for _ in range(POLL_TRIES):
+    polls = 0
+    for polls in range(1, POLL_TRIES + 1):
         st = _api("GET", str(creation_id), fields="status_code,status").get("status_code")
         if st == "FINISHED":
             break
@@ -239,5 +283,8 @@ def publish(poster: Path, caption: str) -> dict:
         permalink = str(_api("GET", str(media_id), fields="permalink").get("permalink") or "")
     except InstagramError:
         logger.warning("게시물 링크 조회 실패 (게시 자체는 성공)")   # 링크는 없어도 게시는 끝났다
+
+    # 걸린 시간을 남긴다 — 발표에서 "몇 초 걸리나"를 물어보면 이 로그가 근거가 된다.
+    logger.info("인스타 게시 완료 — %.1f초 (대기 %d회)", time.monotonic() - started, polls)
 
     return {"media_id": str(media_id), "permalink": permalink, "image": f"/api/media/{jpeg.name}"}

@@ -322,8 +322,11 @@ class InstagramStatusOut(BaseModel):
 
 
 class InstagramConnectIn(BaseModel):
-    """온보딩 화면에서 받은 값. 저장 전에 이 값으로 계정 이름을 불러와 맞는지 확인한다."""
-    user_id: str = ""
+    """온보딩 화면에서 받은 값. 저장 전에 이 토큰으로 계정을 불러와 맞는지 확인한다.
+
+    user_id 는 더 받지 않는다(토큰으로 조회한다). 옛 화면과의 호환을 위해 필드만 남겨 두고
+    값은 무시한다."""
+    user_id: str = ""          # 사용하지 않음 — 서버가 토큰으로 조회한다
     access_token: str = ""
 
 

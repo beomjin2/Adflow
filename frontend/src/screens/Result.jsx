@@ -159,6 +159,15 @@ export default function Result({ state, actions }) {
             인스타에 올리기
           </SoftButton>
         )}
+        {/* 연결돼 있어도 설정 화면으로 가는 길을 남긴다 — 다른 계정으로 바꾸거나, 잘못 연결한 걸
+            되돌리려면 여기 말고는 들어갈 문이 없다(실제로 막혔던 적이 있다). */}
+        {hasImages && ig?.connected && (
+          <button type="button" onClick={actions.goInstagram}
+                  style={{ border: 0, background: 'none', cursor: 'pointer', alignSelf: 'flex-start',
+                           fontSize: 12.5, lineHeight: '18px', color: colors.textFaint, padding: '2px 2px' }}>
+            @{ig.username} 계정으로 올라가요 · 계정 바꾸기
+          </button>
+        )}
         {/* 연결 전이면 안내 화면으로 보낸다 — 버튼만 숨기면 왜 없는지 알 수가 없다. */}
         {hasImages && ig && !ig.connected && (
           <SoftButton onClick={actions.goInstagram} style={{ height: 48, fontSize: 15 }}>

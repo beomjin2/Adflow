@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useAdMakerState } from './state/useAdMakerState.js';
 import AppShell from './components/AppShell.jsx';
 import Home from './screens/Home.jsx';
@@ -28,6 +29,10 @@ const SCREENS = {
 
 export default function App() {
   const { state, actions, charLocked, adLocked } = useAdMakerState();
+
+  // 화면을 옮기면 맨 위부터 보여준다. 긴 화면(인스타 연결 안내처럼)에서 넘어오면
+  // 스크롤이 내려간 채로 남아, 새 화면의 제목도 못 본 자리에서 시작하게 된다.
+  useEffect(() => { window.scrollTo(0, 0); }, [state.screen]);
 
   if (state.loading) {
     return (

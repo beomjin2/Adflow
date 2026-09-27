@@ -722,16 +722,19 @@ def instagram_status(db: Session = Depends(get_db)):
 
 @router.post("/instagram/connect", response_model=schemas.InstagramStatusOut)
 def instagram_connect(body: schemas.InstagramConnectIn, db: Session = Depends(get_db)):
-    """온보딩 화면에서 받은 사용자 ID·토큰을 저장한다.
+    """온보딩 화면에서 받은 토큰을 저장한다. 사용자 ID 는 토큰으로 직접 조회한다.
 
     **저장하기 전에 인스타에 한 번 물어본다** — 값이 틀렸는데 저장해 두면, 사장님은 나중에
-    게시를 눌러 보고서야 잘못됐다는 걸 알게 된다. 여기서 막고 이유를 알려준다."""
-    uid = (body.user_id or "").strip()
+    게시를 눌러 보고서야 잘못됐다는 걸 알게 된다. 여기서 막고 이유를 알려준다.
+
+    **사용자 ID 를 받지 않는 이유** — 콘솔 화면의 비슷한 숫자 둘(앱 ID / 사용자 ID) 중
+    앱 ID 를 넣어도 토큰 확인은 통과해서, 게시 단계에서야 막히는 일이 실제로 있었다.
+    토큰만 받고 ID 는 instagram.verify 가 조회한다."""
     token = (body.access_token or "").strip()
-    if not uid or not token:
-        raise HTTPException(400, "사용자 ID와 액세스 토큰을 모두 넣어주세요")
+    if not token:
+        raise HTTPException(400, "액세스 토큰을 넣어주세요")
     try:
-        username, token, expires_at = instagram.verify(token)
+        uid, username, token, expires_at = instagram.verify(token)
     except instagram.InstagramError as e:
         raise HTTPException(400, str(e))
 

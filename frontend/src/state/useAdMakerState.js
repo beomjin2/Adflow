@@ -254,6 +254,8 @@ export function useAdMakerState() {
   const openProdTab = useCallback(() => { update({ myTab: 'prod', notifOpen: false }); go('my'); }, [go, update]);
   const goData = useCallback(() => { update({ myTab: 'data', notifOpen: false }); go('my'); }, [go, update]);
   const goTrend = useCallback(() => go('trend'), [go]);
+  // 인스타 계정 연결 안내 화면 — 결과 화면에서 "연결하기"를 눌렀을 때만 들어간다.
+  const goInstagram = useCallback(() => go('instagram'), [go]);
 
   /** 트렌드 화면에서 고른 밈을 들고 광고 만들기로 넘어간다. 고른 밈(trendSel)은 상태에 그대로
    *  남아있으니 Ad 화면이 그 id로 다시 찾아서 요약에 보여준다 — 별도 필드를 안 만든다. */
@@ -808,7 +810,7 @@ export function useAdMakerState() {
     charLocked, adLocked,
     actions: {
       set, toast, go, back, goHome, reload,
-      goStore, goChar, goAd, goMy, openProdTab, goData, goTrend, useTrendMeme,
+      goStore, goChar, goAd, goMy, openProdTab, goData, goTrend, goInstagram, useTrendMeme,
       recommendTrendMeme, closeTrendRecommend, useTrendRecommendMeme, selectTrendRecommendMeme,
       openAdEntry, closeAdEntry, pickAdEntryTrend, pickAdEntryDirect,
       editStore, saveStore, toggleClosedDay, uploadStoreImage, deleteStoreImage,

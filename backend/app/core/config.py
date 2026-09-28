@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     # 키는 .env에만 두고 저장소에 넣지 않는다.
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
+    # meme_recommend 전용 모델. 나머지 넷(sheet_llm·story_llm·danbooru_tags·director)은
+    # 위 openai_model을 그대로 쓴다 — 검증 없이 한꺼번에 바꾸지 않으려고 밈 추천만 따로 뺐다
+    # (2026-09-28 사용자 결정, gpt-4o-mini → gpt-5-mini).
+    openai_meme_model: str = "gpt-5-mini"
     # sheet_llm·story_llm이 쓴다(requests로 직접 친다). meme_recommend는 openai SDK(AsyncOpenAI)를
     # 쓰므로 base_url을 보지 않는다.
     openai_base_url: str = "https://api.openai.com/v1"

@@ -5,11 +5,15 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.core.database import get_db
-from app.services.meme_recommend import recommend as recommend_meme
+from app.services.meme_recommend import recommend_split as recommend_meme
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/trend", tags=["trend"])
+
+# 트렌드 확인 화면은 밈을 3개 추천한다(2026-09-22 사용자 결정) — 스토리보드 화면의
+# MEME_OPTIONS(storyboard.py)와 같은 값이지만 두 화면은 서로 다른 상수로 각자 관리한다.
+TREND_MEME_OPTIONS = 3
 
 
 def _sort_key(m: models.Meme) -> str:
@@ -75,9 +79,9 @@ def list_trend(db: Session = Depends(get_db)):
 
 @router.post("/recommend", response_model=schemas.TrendRecommendOut)
 async def recommend(body: schemas.TrendRecommendIn, db: Session = Depends(get_db)):
-    """GPT 호출 한 번으로, 활용 상황(situation)을 먼저 고르고 그 상황 안에서 밈을 하나
-    고른다(meme_recommend.py 참고) — 호출을 나눴더니 매번 왕복 두 번이라 느려서, 한 번의
-    응답 안에 두 단계를 다 넣었다.
+    """GPT 호출 두 번으로, 활용 상황(situation)을 먼저 고르고 그 상황 안에서 밈을 3개
+    고른다(meme_recommend.recommend_split 참고). 밈이 수백~1000개로 늘어도 두 번째 호출이
+    보는 후보는 situation 하나 분량뿐이라 프롬프트 크기가 늘지 않는다.
 
     이 라우트만 async def다 — GPT 호출을 비동기(AsyncOpenAI)로 바꿔서, 응답을 기다리는
     동안 서버가 다른 요청도 같이 처리할 수 있게 했다. DB 조회는 그대로 동기(SQLAlchemy
@@ -85,6 +89,19 @@ async def recommend(body: schemas.TrendRecommendIn, db: Session = Depends(get_db
 
     가게 정보·캐릭터 둘 다 아직 확정 안 됐어도 부른다 — 트렌드 확인 화면은 그 전에도
     들어올 수 있는 화면이라, 있으면 참고하고 없으면 그냥 빼고 추천한다.
+
+    body.exclude — "다른 밈 추천해줘" 버튼이 지금까지 보여준 밈 id를 누적해서 보낸다.
+    후보에서 미리 빼고 GPT에 넘겨서, 같은 밈이 다시 나오지 않는다(빼고 나서 후보가
+    하나도 안 남으면 recommend_split이 뺀 걸 되살린다 — 추천이 아예 안 나오는 것보단
+    같은 게 다시 나오는 편이 낫다).
+
+    body.exclude_situations — 지금까지 나온 situation 이름도 같이 누적해서 보낸다.
+    한 situation이 압도적으로 잘 맞는 입력에서는 매번 같은 situation·같은 밈이 나오기
+    쉬워서, situation 후보 목록 자체에서 뺀다(2026-09-22 사용자 결정). 이것도 다 빼면
+    recommend_split이 되살린다.
+
+    이 화면엔 "오늘 알릴 내용" 입력칸이 없다(2026-09-28 제거) — 가게 정보·캐릭터만으로
+    추천한다.
     """
     # 밈 분류명을 다시 정리하면서 "미분류"도 정상적인 활용 상황 후보 중 하나로 포함한다
     # (예전엔 GPT가 애매할 때 자꾸 이쪽으로 도망가는 경향이 있어 뺐었다 — 분류명 자체가
@@ -107,12 +124,16 @@ async def recommend(body: schemas.TrendRecommendIn, db: Session = Depends(get_db
 
     try:
         result = await recommend_meme(
-            body.note.strip(), character_desc, store_desc,
+            character_desc, store_desc,
             candidates=[
                 {"id": m.id, "name": m.meme_name, "situation": m.situation,
-                 "origin": m.origin, "usage_example": m.usage_example}
+                 "origin": m.origin, "usage_example": m.usage_example,
+                 "origin_brief": m.origin_brief}
                 for m in all_memes
             ],
+            n=TREND_MEME_OPTIONS,
+            exclude=set(body.exclude),
+            exclude_situations=set(body.exclude_situations),
         )
     except RuntimeError as e:
         raise HTTPException(400, str(e))
@@ -123,8 +144,14 @@ async def recommend(body: schemas.TrendRecommendIn, db: Session = Depends(get_db
     by_id = {m.id: m for m in all_memes}
     return schemas.TrendRecommendOut(
         situation=result["situation"],
+        situation_description=result.get("situation_description", ""),
+        situation_candidate_count=result.get("situation_candidate_count", 0),
         picks=[
-            schemas.TrendRecommendPick(meme=_to_meme_out(by_id[p["meme_id"]]), reason=p["reason"])
+            schemas.TrendRecommendPick(
+                meme=_to_meme_out(by_id[p["meme_id"]]),
+                situation_reason=p["situation_reason"], store_reason=p.get("store_reason", ""),
+                origin_summary=p.get("origin_summary", ""), usage_summary=p.get("usage_summary", ""),
+            )
             for p in result["picks"]
         ],
     )

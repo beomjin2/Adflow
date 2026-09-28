@@ -76,9 +76,15 @@ export default function Trend({ state, actions }) {
   // 썸네일 호버 여부. 인라인 스타일이라 :hover 를 못 쓰고 상태로 들고 있는다.
   const [thumbHover, setThumbHover] = useState(false);
 
+  // 추천 카드의 "근거" 펼침 여부(밈 id별). 배지·유래·활용예시 요약을 기본으로 다 보여주면
+  // 사장님 입장에서 정보량이 많아 정작 GPT 이유 한 줄이 묻힌다 — 기본은 접어 두고,
+  // 눌렀을 때만 펼친다. 새 추천을 받으면 이전 밈 id는 더 안 쓰이니 자연히 다시 접힌 채 시작한다.
+  const [expandedPicks, setExpandedPicks] = useState({});
+  const togglePickEvidence = (id) => setExpandedPicks((s) => ({ ...s, [id]: !s[id] }));
+
   const {
     trendItems, trendCollectedAt, trendFilter, trendSearch, trendSort, trendSel, trendOnlyOngoing,
-    trendRecommendNote, trendRecommendLoading, trendRecommendResult, trendRecommendPopupOpen,
+    trendRecommendLoading, trendRecommendResult, trendRecommendPopupOpen,
   } = state;
 
   // 트렌드 확인 화면에 들어올 때마다 추천 팝업을 먼저 보여준다 — 화면 안에 묻혀있던
@@ -430,31 +436,24 @@ export default function Trend({ state, actions }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
               <span style={{ fontSize: 17, fontWeight: 700, letterSpacing: -.3 }}>✨ 밈 추천받기</span>
               <span style={{ fontSize: 13, lineHeight: '19px', color: colors.textSub }}>
-                가게 정보·캐릭터·오늘 알릴 내용을 보고 지금 가장 잘 어울리는 밈을 하나 골라드려요.
+                가게 정보·캐릭터를 보고 지금 가장 잘 어울리는 밈을 골라드려요.
               </span>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: colors.textFaint }}>오늘 알릴 내용 (선택)</span>
-              <TextInput
-                value={trendRecommendNote}
-                onChange={(e) => actions.set('trendRecommendNote', e.target.value)}
-                placeholder="예) 오늘 소금빵 신메뉴 나왔어요"
-                style={{ height: 44 }}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {/* flex-basis를 0으로 둬야 내용 길이와 무관하게 폭이 정확히 반씩 나뉜다
+                ('1 1 auto'는 basis가 내용 크기라서 글자가 짧은 쪽이 더 좁게 나왔었다).
+                minWidth:0 그대로 둬서, 자리가 부족하면 버튼 안 글자가 두 줄로 접힌다. */}
+            <div style={{ display: 'flex', gap: 8 }}>
               <PrimaryButton
                 onClick={actions.recommendTrendMeme}
                 disabled={trendRecommendLoading}
-                style={{ flex: '1 1 160px', height: 46 }}
+                style={{ flex: '1 1 0', minWidth: 0, height: 46 }}
               >
                 {trendRecommendLoading ? '추천 중…' : '추천받기'}
               </PrimaryButton>
               <SecondaryButton
                 onClick={() => actions.set('trendRecommendPopupOpen', false)}
-                style={{ flex: 'none', height: 46, padding: '0 16px' }}
+                style={{ flex: '1 1 0', minWidth: 0, height: 46, padding: '0 12px' }}
               >
                 괜찮아요, 둘러볼게요
               </SecondaryButton>
@@ -476,36 +475,131 @@ export default function Trend({ state, actions }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{ fontSize: 11.5, fontWeight: 800, color: colors.primaryHover, letterSpacing: .02 }}>GPT 추천</span>
               <span style={{ fontSize: 13, color: colors.textSub }}>
-                지금은 <b style={{ color: colors.text }}>{situationLabel(trendRecommendResult.situation)}</b> 쪽 밈이 어울린다고 보고, 그 안에서 하나 골랐어요.
+                지금은 <b style={{ color: colors.text }}>{situationLabel(trendRecommendResult.situation)}</b> 쪽 밈이 어울린다고 보고, 그 안에서 골랐어요.
               </span>
+              {/* GPT가 이 situation을 왜 골랐는지 판단 기준(분류 설명)과, 몇 개 후보 중에서
+                  골랐는지를 밝혀서 "그냥 하나 찍은 것"이 아니라는 근거를 보여준다. */}
+              {(trendRecommendResult.situationDescription || trendRecommendResult.situationCandidateCount > 0) && (
+                <span style={{ fontSize: 11.5, lineHeight: '17px', color: colors.textFaint }}>
+                  {trendRecommendResult.situationDescription && `"${trendRecommendResult.situationDescription}"에 해당하는 상황이에요`}
+                  {trendRecommendResult.situationDescription && trendRecommendResult.situationCandidateCount > 0 && ' · '}
+                  {trendRecommendResult.situationCandidateCount > 0 && `이 상황 후보 ${trendRecommendResult.situationCandidateCount}개 중에서 골랐어요`}
+                </span>
+              )}
             </div>
 
-            {trendRecommendResult.picks.map((pick) => (
-              <div key={pick.meme.id} style={{ display: 'flex', flexDirection: 'column', gap: 9, border: `1px solid ${colors.cardBorder}`, borderRadius: 14, padding: 13 }}>
-                <button
-                  onClick={() => actions.selectTrendRecommendMeme(pick.meme.id)}
-                  title="밈 리스트에서 이 밈 보기"
-                  style={{ display: 'flex', gap: 12, alignItems: 'center', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left' }}
-                >
-                  <div style={{ flex: 'none', width: 52, height: 52, borderRadius: 12, background: colors.bg, overflow: 'hidden' }}>
-                    {pick.meme.image ? (
-                      <img src={pick.meme.image} alt={pick.meme.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                    ) : null}
-                  </div>
-                  <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: -.01, color: colors.text }}>{pick.meme.name}</div>
-                </button>
-                <span style={{ fontSize: 13, lineHeight: '20px', color: colors.textSub, background: colors.softBg, borderRadius: 10, padding: '9px 11px' }}>
-                  {pick.reason}
-                </span>
-                <PrimaryButton onClick={() => actions.useTrendRecommendMeme(pick.meme.id)} style={{ height: 42 }}>
-                  이 밈으로 광고 만들기
-                </PrimaryButton>
-              </div>
-            ))}
+            {trendRecommendResult.picks.map((pick) => {
+              // 추천 이유가 GPT의 서술 한 줄에만 기대지 않도록, 그 아래에 실제 데이터
+              // (상황 분류·유행 여부·유행 시작일·밈 유래·활용예시)를 근거로 같이 보여준다.
+              // 화면 다른 곳(밈 상세 패널)이 이미 쓰는 trendStatus/trendDate를 그대로 쓴다.
+              const status = trendStatus(pick.meme, baseDate);
+              const dateLabel = trendDate(pick.meme) || '정보없음';
+              return (
+                <div key={pick.meme.id} style={{ display: 'flex', flexDirection: 'column', gap: 9, border: `1px solid ${colors.cardBorder}`, borderRadius: 14, padding: 13 }}>
+                  <button
+                    onClick={() => actions.selectTrendRecommendMeme(pick.meme.id)}
+                    title="밈 리스트에서 이 밈 보기"
+                    style={{ display: 'flex', gap: 12, alignItems: 'center', border: 0, background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left' }}
+                  >
+                    <div style={{ flex: 'none', width: 52, height: 52, borderRadius: 12, background: colors.bg, overflow: 'hidden' }}>
+                      {pick.meme.image ? (
+                        <img src={pick.meme.image} alt={pick.meme.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      ) : null}
+                    </div>
+                    <div style={{ fontSize: 16, fontWeight: 700, letterSpacing: -.01, color: colors.text }}>{pick.meme.name}</div>
+                  </button>
 
-            <SecondaryButton onClick={actions.closeTrendRecommend} style={{ height: 44 }}>
-              닫기
-            </SecondaryButton>
+                  {/* 기본으로 보이는 건 "추천 이유"와 "가게 포인트" 두 줄뿐이다 — 배지·유래·
+                      활용예시는 "근거 더보기"를 눌러야 나온다(아래). 한 문단에 섞으면 어디까지가
+                      상황 근거고 어디부터가 가게 얘기인지 구분이 안 돼서 항목을 나눴다. storeReason은
+                      가게·캐릭터 정보가 없으면 빈 문자열이라(GPT가 지어내지 않는다) 그때는 이 줄 자체를
+                      숨긴다. */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, background: colors.softBg, borderRadius: 10, padding: '9px 11px' }}>
+                    <span style={{ fontSize: 13, lineHeight: '20px', color: colors.textSub }}>
+                      <b style={{ color: colors.textFaint, fontWeight: 800, fontSize: 10.5, letterSpacing: .3 }}>추천 이유 · </b>
+                      {pick.situationReason}
+                    </span>
+                    {pick.storeReason && (
+                      <span style={{ fontSize: 13, lineHeight: '20px', color: colors.textSub }}>
+                        <b style={{ color: colors.textFaint, fontWeight: 800, fontSize: 10.5, letterSpacing: .3 }}>가게 포인트 · </b>
+                        {pick.storeReason}
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => togglePickEvidence(pick.meme.id)}
+                    style={{
+                      alignSelf: 'flex-start', border: 0, background: 'transparent', padding: 0,
+                      fontSize: 12, fontWeight: 700, color: colors.primaryHover, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 3,
+                    }}
+                  >
+                    {expandedPicks[pick.meme.id] ? '근거 접기' : '근거 더보기'}
+                    <span style={{ fontSize: 10, transform: expandedPicks[pick.meme.id] ? 'rotate(180deg)' : 'none', transition: 'transform .12s ease' }}>▾</span>
+                  </button>
+
+                  {expandedPicks[pick.meme.id] && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, color: colors.textFaint, letterSpacing: .3 }}>근거</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: colors.textSub, background: colors.softBg, borderRadius: 999, padding: '4px 9px' }}>
+                          {situationLabel(pick.meme.situation)}
+                        </span>
+                        {!status.estimated && status.ongoing && (
+                          <span style={{ fontSize: 11, fontWeight: 700, color: colors.primarySoftText, background: colors.primarySoft, borderRadius: 999, padding: '4px 9px' }}>
+                            ● 유행 중
+                          </span>
+                        )}
+                        <span style={{ fontSize: 11, fontWeight: 700, color: colors.textSub, background: colors.softBg, borderRadius: 999, padding: '4px 9px' }}>
+                          유행 시작 {dateLabel}
+                        </span>
+                      </div>
+
+                      {/* 유래·활용예시는 원문 그대로가 아니라 짧은 요약으로 보여준다(GPT가 만들고,
+                          못 만들었으면 백엔드가 원문을 잘라 대신 채운다 — 항상 값이 있다). */}
+                      {pick.originSummary && (
+                        <span style={{ fontSize: 12, lineHeight: '18px', color: colors.textSub }}>
+                          <b style={{ color: colors.textFaint, fontWeight: 800 }}>유래 · </b>
+                          {pick.originSummary}
+                        </span>
+                      )}
+
+                      {pick.usageSummary && (
+                        <span style={{ fontSize: 12, lineHeight: '18px', color: colors.textSub }}>
+                          <b style={{ color: colors.textFaint, fontWeight: 800 }}>활용예시 · </b>
+                          {pick.usageSummary}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  <PrimaryButton onClick={() => actions.useTrendRecommendMeme(pick.meme.id)} style={{ height: 42 }}>
+                    이 밈으로 광고 만들기
+                  </PrimaryButton>
+                </div>
+              );
+            })}
+
+            {/* 지금까지 보여준 밈은 actions.recommendTrendMeme가 trendRecommendShownIds로
+                기억해서 exclude로 보낸다 — 같은 밈이 다시 나오지 않는다. */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <SecondaryButton
+                onClick={actions.recommendTrendMeme}
+                disabled={trendRecommendLoading}
+                style={{ flex: '1 1 160px', height: 44 }}
+              >
+                {trendRecommendLoading ? '추천 중…' : '다른 밈 추천해줘'}
+              </SecondaryButton>
+              <SecondaryButton
+                onClick={actions.closeTrendRecommend}
+                disabled={trendRecommendLoading}
+                style={{ flex: 'none', height: 44 }}
+              >
+                닫기
+              </SecondaryButton>
+            </div>
           </div>
         </div>
       )}

@@ -110,7 +110,7 @@ export default function AppShell({ state, actions, missingProdsCount, children }
           maxWidth: 'calc(100vw - 32px)', textAlign: 'center',
           background: colors.dark, color: '#fff', fontSize: 14.5, fontWeight: 600,
           padding: '13px 20px', borderRadius: 16, boxShadow: '0 10px 24px rgba(18,22,26,.25)',
-          animation: 'pop .18s ease', zIndex: 40, lineHeight: '21px',
+          animation: 'pop .18s ease', zIndex: 1200, lineHeight: '21px',
         }}>{state.toast}</div>
       )}
     </div>

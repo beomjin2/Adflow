@@ -297,16 +297,36 @@ class TrendOut(BaseModel):
 
 
 class TrendRecommendIn(BaseModel):
-    note: str = ""
+    # "오늘 알릴 내용" 입력칸은 없다(2026-09-28 제거) — note 필드도 같이 뺐다.
+    # "다른 밈 추천해줘" — 이미 보여준 밈의 id. 후보에서 미리 빼고 GPT에 넘긴다
+    # (meme_recommend.recommend_split의 exclude 참고).
+    exclude: list[str] = []
+    # 이미 나온 situation 이름. 한 situation이 압도적으로 잘 맞는 입력에서 매번 같은
+    # situation이 나오는 걸 못 막아서, situation 후보 목록 자체에서 뺀다
+    # (meme_recommend.recommend_split의 exclude_situations 참고).
+    exclude_situations: list[str] = []
 
 
 class TrendRecommendPick(BaseModel):
     meme: MemeOut
-    reason: str
+    # 추천 이유를 "상황 근거"와 "가게·캐릭터 연결"로 나눠 받는다(2026-09-28 사용자 결정) —
+    # 한 문단에 섞으면 어디까지가 상황 근거고 어디부터가 가게 얘기인지 화면에서 구분이 안 됐다.
+    # situation_reason은 항상 있고, store_reason은 가게·캐릭터 정보가 없으면 빈 문자열이다.
+    situation_reason: str
+    store_reason: str = ""
+    # 유래·활용예시 원문 대신 화면에 보여줄 짧은 요약(각 20자 안팎). GPT가 만들거나,
+    # 못 만들었으면 meme_recommend._truncate가 원문을 잘라 대신 채운다 — 항상 값이 있다.
+    origin_summary: str = ""
+    usage_summary: str = ""
 
 
 class TrendRecommendOut(BaseModel):
     situation: str
+    # 이 situation이 뭘 뜻하는지(분류 기준 설명)와, 그중 몇 개 후보에서 골랐는지.
+    # GPT의 reason 문장 하나에만 의존하지 않고 화면이 "근거"로 같이 보여주기 위한 값 —
+    # meme_recommend.recommend_split가 이미 들고 있는 값을 그대로 내려보내는 것뿐이다.
+    situation_description: str = ""
+    situation_candidate_count: int = 0
     picks: list[TrendRecommendPick]
 
 

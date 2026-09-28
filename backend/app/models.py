@@ -170,6 +170,13 @@ class Meme(Base):
     situation_score = Column(Float, nullable=True)
     ad_safe = Column(Boolean, nullable=True)
 
+    # 유래(origin)를 GPT로 미리 30자 안팎 요약해 둔 값(backend/backfill_origin_brief.py,
+    # 2026-09-28 사용자 결정). meme_recommend.py의 "situation 하나가 너무 클 때 먼저
+    # 추리는 호출"(_narrow_lines)이 이 값을 쓴다 — 기계적으로 60자를 자르는 것보다
+    # 후보를 더 정확하게 거를 수 있다. 아직 안 채워졌으면 빈 문자열이고, 그때는
+    # _narrow_lines가 예전처럼 원문을 잘라서 대신 쓴다(요약이 없어도 동작은 한다).
+    origin_brief = Column(String, default="")
+
 
 class Mascot(Base):
     """확정한 마스코트 보관소 — 확정할 때마다 그 시점 시트와 그림을 한 장으로 남긴다.

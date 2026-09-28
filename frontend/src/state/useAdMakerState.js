@@ -80,10 +80,19 @@ function initialState() {
     // 상황 카테고리(무엇에 대한 밈이냐)와는 다른 축이라 칩이 아니라 별도 토글로 둔다 —
     // "재미·밈놀이 중에 지금도 유행 중인 것"처럼 두 조건을 같이 걸 수 있어야 한다.
     trendOnlyOngoing: false,
-    // 활용 상황 안에서 GPT 추천 — note는 "오늘 알릴 내용"(선택). result는 {meme, reason} | null.
+    // 활용 상황 안에서 GPT 추천 — result는 {meme, reason} | null.
     // popupOpen은 트렌드 화면에 들어올 때마다 Trend.jsx가 true로 켠다.
-    trendRecommendNote: '', trendRecommendLoading: false, trendRecommendResult: null,
+    trendRecommendLoading: false, trendRecommendResult: null,
     trendRecommendPopupOpen: false,
+    // "다른 밈 추천해줘" — 이번 추천 세션에서 지금까지 보여준 밈 id 누적. 다음 요청 때
+    // exclude로 보내서 같은 밈이 다시 안 나오게 한다. 결과 팝업을 완전히 벗어나면(닫기·
+    // 이 밈 선택) 다음 세션을 위해 비운다.
+    trendRecommendShownIds: [],
+    // 같은 이유로 지금까지 나온 situation 이름도 누적 — 노트 없이 긍정적인 캐릭터처럼
+    // 한 situation이 압도적으로 잘 맞는 입력이면, 밈만 exclude해서는 매번 같은 situation이
+    // 다시 뽑히기만 한다(그 situation의 다른 밈 3개 안에서 도는 것뿐). situation 자체를
+    // 빼야 GPT가 다른 situation을 고른다.
+    trendRecommendShownSituations: [],
 
     sbMsgs: [], sbInput: '', sbThinking: false,
     plan: [], sbSetOpen: false, sbProdOpen: false, sbStoreOpen: false, pending: {},
@@ -266,34 +275,54 @@ export function useAdMakerState() {
 
   /** 밈 전체 중 GPT 추천을 받는다 — 활용 상황은 이제 사장님이 안 고르고 GPT가 가게·캐릭터·
    *  오늘 알릴 내용을 보고 알아서 판단한다. 성공하면 추천 요청 팝업은 닫고 결과 팝업으로
-   *  넘어간다 — 실패하면 요청 팝업에 그대로 남겨서 한줄입력을 고쳐 다시 시도할 수 있게 한다. */
+   *  넘어간다 — 실패하면 요청 팝업에 그대로 남겨서 한줄입력을 고쳐 다시 시도할 수 있게 한다.
+   *
+   *  결과 팝업의 "다른 밈 추천해줘" 버튼도 같은 함수를 쓴다 — 지금까지 이 세션에서 보여준
+   *  밈 id(trendRecommendShownIds)와 situation 이름(trendRecommendShownSituations)을
+   *  매번 exclude로 실어 보내서, 같은 밈은 물론 같은 situation도 다시 나오지 않게 한다
+   *  (밈만 빼면, 한 situation이 압도적으로 잘 맞는 입력에서는 그 situation 안 다른
+   *  밈끼리만 계속 돈다 — situation 자체를 빼야 GPT가 다른 situation을 고른다).
+   *  성공하면 방금 새로 나온 밈·situation을 각 목록에 더 쌓는다. */
   const recommendTrendMeme = useCallback(async () => {
     const s = stateRef.current;
     update({ trendRecommendLoading: true });
     try {
-      const result = await TrendAPI.recommend(s.trendRecommendNote.trim());
-      update({ trendRecommendResult: result, trendRecommendLoading: false, trendRecommendPopupOpen: false });
+      const result = await TrendAPI.recommend(s.trendRecommendShownIds, s.trendRecommendShownSituations);
+      update({
+        trendRecommendResult: result, trendRecommendLoading: false, trendRecommendPopupOpen: false,
+        trendRecommendShownIds: [...s.trendRecommendShownIds, ...result.picks.map((p) => p.meme.id)],
+        trendRecommendShownSituations: [...new Set([...s.trendRecommendShownSituations, result.situation])],
+      });
     } catch (e) {
       update({ trendRecommendLoading: false });
       fail(e);
     }
   }, [update, fail]);
 
-  const closeTrendRecommend = useCallback(() => update({ trendRecommendResult: null }), [update]);
+  const closeTrendRecommend = useCallback(
+    () => update({ trendRecommendResult: null, trendRecommendShownIds: [], trendRecommendShownSituations: [] }),
+    [update],
+  );
 
-  /** 추천 결과 팝업의 picks는 목록이라(지금은 보통 1개), 어느 걸 눌렀는지 memeId로 받는다.
+  /** 추천 결과 팝업의 picks는 목록이라(지금은 3개), 어느 걸 눌렀는지 memeId로 받는다.
    *  밈 자체를 누르면, 리스트에서 그 밈을 고른 것처럼 선택만 해두고 팝업만 닫는다 —
    *  광고 만들기로 곧장 넘어가지 않아서, 유래·활용예시를 아래 상세 패널에서 먼저
    *  훑어보고 판단할 수 있다. 검색어도 같이 비운다 — 예전에 쳐둔 검색어가 추천된 밈의
    *  이름·유래·활용예시와 안 겹치면 리스트에서 걸러져서, Trend.jsx의 "선택이 안 보이면
    *  맨 위로 되돌리는" 로직이 방금 고른 밈을 곧장 다른 밈으로 덮어써버린다. */
   const selectTrendRecommendMeme = useCallback((memeId) => {
-    update({ trendSel: memeId, trendRecommendResult: null, trendSearch: '' });
+    update({
+      trendSel: memeId, trendRecommendResult: null, trendSearch: '',
+      trendRecommendShownIds: [], trendRecommendShownSituations: [],
+    });
   }, [update]);
 
   /** 고른 후보를 그대로 선택한 걸로 치고 광고 만들기로 넘어간다. */
   const useTrendRecommendMeme = useCallback((memeId) => {
-    update({ trendSel: memeId, trendRecommendResult: null });
+    update({
+      trendSel: memeId, trendRecommendResult: null,
+      trendRecommendShownIds: [], trendRecommendShownSituations: [],
+    });
     goAd();
   }, [update, goAd]);
 

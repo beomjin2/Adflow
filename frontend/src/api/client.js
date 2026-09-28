@@ -238,10 +238,25 @@ export const TrendAPI = {
     trendItems: (r.items || []).map(mapTrendMeme),
     trendSites: r.sites || [],
   })),
-  // 2단계 추천 — GPT가 활용 상황을 먼저 고르고, 그 안에서 밈을 하나 골라 이유와 함께 준다.
-  // note는 "오늘 알릴 내용"(선택, 빈 문자열 가능).
-  recommend: (note) => post('/api/trend/recommend', { note }).then((r) => ({
+  // 2단계 추천 — GPT가 활용 상황을 먼저 고르고, 그 안에서 밈을 3개 골라 이유와 함께 준다.
+  // exclude — "다른 밈 추천해줘"로 이미 보여준 밈 id 누적 목록. excludeSituations — 이미
+  // 나온 situation 이름 누적 목록(온도만으론 한 situation이 압도적으로 잘 맞는 입력에서
+  // 매번 같은 게 나와서 같이 보낸다).
+  recommend: (exclude, excludeSituations) => post('/api/trend/recommend', {
+    exclude: exclude || [], exclude_situations: excludeSituations || [],
+  }).then((r) => ({
     situation: r.situation,
-    picks: (r.picks || []).map((p) => ({ meme: mapTrendMeme(p.meme), reason: p.reason })),
+    // GPT의 reason 한 줄 말고도 화면이 "근거"로 보여줄 값 — 이 상황이 뭘 뜻하는지(설명),
+    // 몇 개 후보 중에서 골랐는지.
+    situationDescription: r.situation_description || '',
+    situationCandidateCount: r.situation_candidate_count || 0,
+    picks: (r.picks || []).map((p) => ({
+      meme: mapTrendMeme(p.meme),
+      // 추천 이유를 "상황 근거"와 "가게·캐릭터 연결"로 나눠 받는다 — storeReason은 가게·캐릭터
+      // 정보가 없으면 빈 문자열로 온다(화면이 그때는 그 줄을 안 그린다).
+      situationReason: p.situation_reason, storeReason: p.store_reason || '',
+      // 유래·활용예시 원문 대신 화면에 보여줄 짧은 요약(백엔드가 항상 채워서 준다).
+      originSummary: p.origin_summary || '', usageSummary: p.usage_summary || '',
+    })),
   })),
 };

@@ -106,6 +106,14 @@ def clothing_negative(tag_text: str) -> str:
 COMIC_IDENTITY_FIELDS = ["look", "outfit", "age"]
 
 
+def comic_identity_key(char) -> str:
+    """네컷 캐릭터 태그가 의존하는 세 칸(외형·옷·나이)의 지문. 미리 계산한 태그가 아직 유효한지 이걸로 본다."""
+    import hashlib
+    from app.services.character_sheet import value_of
+    raw = "|".join(value_of(char, f) for f in COMIC_IDENTITY_FIELDS)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+
+
 def character_sheet_text(char, fields: list[str] | None = None) -> str:
     """시트 칸을 라벨 붙은 여러 줄로. 빈 칸은 줄 자체를 내지 않는다."""
     from app.services.character_sheet import IMAGE_FIELDS, value_of

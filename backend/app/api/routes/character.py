@@ -1003,7 +1003,39 @@ def confirm_character(db: Session = Depends(get_db)):
         raise HTTPException(400, "마음에 드는 그림을 먼저 골라주세요")
     char.confirmed = True
     _archive_mascot(char, db)
+    _precompute_comic_tags(char)
     return _out(char, db)
+
+
+def _precompute_comic_tags(char) -> None:
+    """네컷용 캐릭터 태그(외형·옷·나이 → Danbooru)를 확정 시점에 미리 계산해 둔다.
+
+    네컷 만들기 버튼 뒤의 이 GPT 호출을 없앤다. 결과는 시트 세 칸의 지문(comic_tags_key)과 함께 저장되고,
+    시트가 바뀌면 지문이 안 맞아 _start_cuts 가 다시 계산한다 — 미리 만든 값이 틀린 채로 쓰이는 경우는 없다.
+    GPU 큐(jobs)와 무관한 CPU·네트워크 일이라 별도 스레드. ORM 객체는 세션 밖에서 못 읽으니 값을 먼저 떠 둔다.
+    """
+    import threading
+    from types import SimpleNamespace
+    from app.services.chat_ai import COMIC_IDENTITY_FIELDS, character_part, comic_identity_key
+    snap = SimpleNamespace(**{f: getattr(char, f, "") for f in COMIC_IDENTITY_FIELDS}, keywords=[])
+    key = comic_identity_key(snap)
+
+    def run():
+        try:
+            tags = character_part(snap, COMIC_IDENTITY_FIELDS)
+        except Exception:
+            logger.exception("네컷 캐릭터 태그 미리 계산 실패 — 네컷 때 다시 계산한다")
+            return
+
+        def write(db: Session):
+            c = db.get(models.Character, 1)
+            if c and comic_identity_key(c) == key:   # 그 사이 시트가 바뀌었으면 버린다
+                c.comic_tags = tags
+                c.comic_tags_key = key
+                db.commit()
+        jobs.with_session(write)
+
+    threading.Thread(target=run, name="precompute-comic-tags", daemon=True).start()
 
 
 @router.get("/mascots", response_model=list[schemas.MascotOut])

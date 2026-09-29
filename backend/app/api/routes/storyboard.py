@@ -46,8 +46,8 @@ from app import models, schemas
 from app.core.config import settings
 from app.core.database import get_db
 from app.services import comic_bake, director, instagram, jobs, sign_check, story_llm, trace
-from app.services.chat_ai import (COMIC_GLOBAL_TAGS, COMIC_IDENTITY_FIELDS, character_part, comic_prompt,
-                                  comic_prompt_slots, new_pid)
+from app.services.chat_ai import (COMIC_GLOBAL_TAGS, COMIC_IDENTITY_FIELDS, character_part, comic_identity_key,
+                                  comic_prompt, comic_prompt_slots, new_pid)
 from app.services.danbooru_lookup import verify_tags
 from app.services.image_gen import _save_png, generate_images
 from app.services.meme_recommend import recommend as recommend_meme
@@ -1069,8 +1069,17 @@ def _start_cuts(sb: models.Storyboard, char: models.Character, indexes: list[int
         trace.step("그림 단계 시작", who="code", cuts=indexes, board_lines=board_lines,
                    character_sheet={"look": char.look, "outfit": char.outfit, "age": char.age})
         # 캐릭터 태그는 여기서 한 번만 계산한다(GPT 1회). 생김새·옷·나이만(COMIC_IDENTITY_FIELDS).
-        char_text = character_part(char, COMIC_IDENTITY_FIELDS)
-        trace.step("캐릭터 태그 확정", who="code", character_tags=char_text)
+        key = comic_identity_key(char)
+        if char.comic_tags and char.comic_tags_key == key:
+            char_text = char.comic_tags
+            trace.step("캐릭터 태그 확정", who="code", character_tags=char_text, source="확정 때 미리 계산해 둔 것", sec=0.0)
+        else:
+            with trace.timer() as t:
+                char_text = character_part(char, COMIC_IDENTITY_FIELDS)
+            char.comic_tags, char.comic_tags_key = char_text, key
+            db.commit()
+            trace.step("캐릭터 태그 확정", who="code", character_tags=char_text,
+                       source="지금 계산(미리 계산 없음 또는 시트가 바뀜)", sec=t.sec)
     jobs.submit(_fill_cuts, indexes, scenes, char_text, reference, trace_id, board_lines)
 
 

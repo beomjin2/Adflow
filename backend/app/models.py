@@ -54,6 +54,10 @@ class Character(Base):
     pending = Column(JSON, default=dict)
 
     confirmed = Column(Boolean, default=False)
+    # 네컷용 캐릭터 태그(외형·옷·나이 → Danbooru)를 확정 때 미리 계산해 둔다. comic_tags_key 는 그때의
+    # 세 칸 지문 — 시트가 바뀌면 지문이 달라져 자동으로 무효가 된다(_start_cuts 가 다시 계산).
+    comic_tags = Column(String, default="")
+    comic_tags_key = Column(String, default="")
     candidates = Column(JSON, default=list)  # [{label, image, status}]
     selected_index = Column(Integer, default=-1)
     messages = Column(JSON, default=list)  # [{role, kind, ...}] 채팅 히스토리

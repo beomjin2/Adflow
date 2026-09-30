@@ -77,34 +77,8 @@ sequenceDiagram
     end
 ```
 
-## 4. 밈 추천 (트렌드 확인 화면)
 
-트렌드 확인 화면은 크롤링해 둔 밈을 훑어보는 화면이지만, "밈 추천받기"를 누르면 GPT가
-대신 하나를 골라주는 기능도 있다. 활용 상황(카테고리)도 사장님이 고르지 않는다 — GPT가
-가게·캐릭터·오늘 알릴 내용을 보고 먼저 상황을 판단한 뒤, 그 상황 안에서 밈을 고른다.
-호출을 두 번으로 나눴다가 매번 왕복 두 번이라 느려서, 지금은 한 번의 GPT 호출·한 번의
-비동기(AsyncOpenAI) 요청 안에서 두 판단을 같이 받는다(`meme_recommend.py`).
 
-```mermaid
-flowchart LR
-    U["사장님<br/>오늘 알릴 내용(선택)"] -->|POST| API["/api/trend/recommend"]
-    API --> Q["크롤링 밈 전체<br/>(memes 테이블, 미분류 제외)"]
-    API --> ST[가게 정보<br/>있으면]
-    API --> CH[확정된 캐릭터 정보<br/>있으면]
-    Q --> G["GPT (1회)<br/>① 활용 상황 판단 → ② 그 안에서 밈 선택"]
-    ST --> G
-    CH --> G
-    G -->|"판단한 상황 + 밈 + 고른 이유"| API
-    API --> R[결과 팝업]
-    R --> A["이 밈으로 광고 만들기"]
-    R --> L["리스트에서 그 밈만<br/>선택해두고 더 보기"]
-```
-
-- 후보는 "미분류"(분류 파이프라인이 못 정한 것)를 뺀 크롤링 밈(`memes` 테이블) 전체다 — 개수가 적어 미리 좁힐 필요가 없다.
-- 가게 정보(업종·주소·영업시간·소개)와 확정된 캐릭터 정보(이름·외형·아웃핏·능력·키워드·설명)를 같이 넘긴다.
-- 결과는 밈 하나와 GPT가 판단한 활용 상황, "왜 골랐는지" 한국어 1~2문장. 바로 광고를 만들 수도 있고, 팝업의 밈을 눌러 트렌드 리스트에서 그 밈만 선택해둔 채로 유래·활용예시를 더 살펴볼 수도 있다.
-- 여기서 고른 밈은 광고 설정을 확정할 때(`POST /api/ad/apply`) 스토리보드에 같이 저장돼(`Storyboard.trend_meme_id`), 대화가 스토리를 만들 때 자동으로 반영한다 — 따로 카드를 만들거나 고르는 화면은 없다.
-- 밈 데이터 자체(`memes` 테이블)는 앱과 분리된 오프라인 파이프라인(`crawling/`)이 만든다 — 크롤링 → 문장 임베딩으로 상황 분류
 
 ## 배포
 
@@ -122,8 +96,8 @@ systemctl is-active adflow-backend adflow-frontend  # 둘 다 active여야 한�
 
 ## 참고 자료
 
-- [DB 스키마 (Adflow ERD)](https://claude.ai/code/artifact/f5766efd-aa09-4bfc-881f-29c77c536ee1)
-- [Adflow 아키텍처](https://claude.ai/artifact/7Zb39jAHm9HfeGXuTXXUd2)
+- [DB 스키마](https://claude.ai/artifact/4Cv9aUkDpNSAz3ZsiNna3f)
+- [아키텍처](https://claude.ai/artifact/PddYfocaidTkFWb2Sfi8Aj)
 
 ## 폴더 구조
 
@@ -158,3 +132,20 @@ part4_3team/
 │   └── USER_COMMANDS.md       # 서비스 재시작 등 자동화 안 된 절차
 └── README.md
 ```
+## 기술 스택
+
+| 구분 | 기술 | 용도 |
+| --- | --- | --- |
+| Frontend | React 18 · Vite 5 | 화면 구성, `fetch`로 백엔드 호출 |
+| Backend | FastAPI 0.115 · Uvicorn | REST API 서버 |
+| ORM · 검증 | SQLAlchemy 2.0 · Pydantic 2 · pydantic-settings | DB 모델, 입출력 스키마, `.env` 설정 |
+| Database | SQLite | 가게·캐릭터·스토리보드·생산기록·밈 저장 |
+| 파일 저장 | 서버 로컬 폴더 (`media/`, `uploads/`) | 생성 이미지, 업로드 사진 |
+| LLM | OpenAI (gpt-4o-mini · gpt-4o · gpt-5-mini) | 시트 대화, 스토리·캡션 생성, 연출, 밈 추천 |
+| 이미지 생성 | ComfyUI (Anima 모델, IP-Adapter 워크플로) | 캐릭터 후보·네컷 이미지 생성 |
+| 이미지 후처리 | Pillow | 말풍선·입간판 합성, 2×2 네컷 합치기 |
+| 태그 검증 | pyarrow + Danbooru 태그 사전(parquet) | 그림 프롬프트 태그 검증 |
+| 간판 검사 | WD14 태거 (ONNX, 선택 기능) | 마지막 컷에 간판이 그려졌는지 검사 |
+| 외부 API | Instagram Graph API · 네이버 검색어트렌드 API | 인스타 게시, 밈 유행 기간 측정 |
+| 크롤링 | requests · HTMLParser · OpenAI 임베딩 | 밈 수집, 활용 상황 분류 |
+| 배포 | VM + systemd (`adflow-backend`, `adflow-frontend`) | 수동 배포 스크립트 (`deploy/`) |

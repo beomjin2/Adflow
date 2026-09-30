@@ -98,6 +98,7 @@ systemctl is-active adflow-backend adflow-frontend  # 둘 다 active여야 한�
 
 - [DB 스키마](https://claude.ai/artifact/4Cv9aUkDpNSAz3ZsiNna3f)
 - [아키텍처](https://claude.ai/artifact/PddYfocaidTkFWb2Sfi8Aj)
+- [API 앤드포인트 목록](https://claude.ai/artifact/H2uyDeHBhkDo3LgHTZ5pDn)
 
 ## 폴더 구조
 
@@ -105,8 +106,11 @@ systemctl is-active adflow-backend adflow-frontend  # 둘 다 active여야 한�
 part4_3team/
 ├── backend/                  # FastAPI 서버
 │   ├── app/
-│   │   ├── api/routes/       # 화면 단위 라우터 — store·character·ad·storyboard·production·history·trend
-│   │   ├── services/         # GPT·ComfyUI 연동 — sheet_llm·chat_ai·story_llm·danbooru_tags·image_gen·jobs·meme_recommend
+│   │   ├── api/routes/       # 라우터 — store·character·trend·ad·storyboard·production·history (+ 개발용 debug)
+│   │   ├── services/         # 서비스 14개 — GPT(sheet_llm·story_llm·director·meme_recommend)·
+│   │   │                     #   그림(chat_ai·danbooru_tags·danbooru_lookup·image_gen·sign_check·comic_bake)·
+│   │   │                     #   기타(character_sheet·jobs·instagram·trace)
+│   │   │   └── workflows/     # ComfyUI 워크플로 JSON (캐릭터·네컷)
 │   │   ├── core/              # 설정(config.py), DB 세션(database.py)
 │   │   ├── db/seed.py         # 싱글턴 행 초기화
 │   │   ├── models.py          # SQLAlchemy 모델
@@ -117,21 +121,29 @@ part4_3team/
 │   └── app.db                 # SQLite (git에 안 올림)
 ├── frontend/                  # React + Vite
 │   └── src/
-│       ├── screens/           # 화면별 컴포넌트 — Home·Store·Character·Trend·Ad·Storyboard·Save·My/ 등
-│       ├── components/        # 공용 UI — ChatPanel·ComicPanels·Lightbox·ui/(Button·Field) 등
+│       ├── screens/           # 화면별 컴포넌트 — Home·Store·Character·CharacterInfo·Trend·Ad·Storyboard·Result·InstagramSetup·MyStore·My/
+│       ├── components/        # 공용 UI — AppShell·ChatPanel·ComicPanels·ImageSlot·Lightbox·bubbles/·ui/(Button·Field)
 │       ├── state/useAdMakerState.js  # 전역 상태 훅 하나
 │       ├── api/client.js      # 백엔드 호출 래퍼
+│       ├── lib/               # 광고 문구·다운로드·상황 라벨 도우미
 │       └── theme.js           # 색상·타이포 토큰
-├── crawling/                  # 밈 크롤링 결과 + 상황 분류 스크립트 (앱과 분리된 오프라인 파이프라인)
-│   ├── classify_memes_situation.py  # memes 테이블 → OpenAI 임베딩으로 상황 분류
+├── crawling/                  # 밈 크롤링 파이프라인 (앱과 분리, 사람이 직접 실행)
+│   ├── meme_pipeline.py       # 한 사이클 실행: 수집 → 중복 묶기 → DB 적재 → 상황 분류 → 유행 기간
+│   ├── pipeline_sources.py    # 밈 사이트 3곳 수집
+│   ├── pipeline_dedupe.py     # 사이트 간 중복 밈 묶기 (TF-IDF)
+│   ├── classify_memes_situation.py  # OpenAI 임베딩으로 활용 상황 분류
+│   ├── naver_trend.py         # 네이버 검색어트렌드로 유행 기간 측정
 │   ├── memes_all.json         # 크롤링 결과(중복 병합 완료본)
 │   └── images/                # 밈 대표 이미지 — /api/meme-images/로 직접 서빙
 ├── deploy/                    # 배포 스크립트, VM에서 사람이 직접 할 일 문서
+│   ├── ship.sh                # rebase → push → 배포 → 재시작 → 확인을 순서대로
 │   ├── deploy_from_github.sh  # VM에서 도는 실제 배포 스크립트 (main pull → 빌드 → 교체)
-│   ├── reset_service_data.py  # 데모 데이터 정리
+│   ├── set_openai_key.sh      # 서버 설정 파일에 OpenAI 키 넣기
+│   ├── reset_service_data.py  # 서비스를 처음 쓰는 상태로 되돌림 (데모 데이터 삭제)
 │   └── USER_COMMANDS.md       # 서비스 재시작 등 자동화 안 된 절차
 └── README.md
 ```
+
 ## 기술 스택
 
 | 구분 | 기술 | 용도 |
@@ -148,4 +160,4 @@ part4_3team/
 | 간판 검사 | WD14 태거 (ONNX, 선택 기능) | 마지막 컷에 간판이 그려졌는지 검사 |
 | 외부 API | Instagram Graph API · 네이버 검색어트렌드 API | 인스타 게시, 밈 유행 기간 측정 |
 | 크롤링 | requests · HTMLParser · OpenAI 임베딩 | 밈 수집, 활용 상황 분류 |
-| 배포 | VM + systemd (`adflow-backend`, `adflow-frontend`) | 수동 배포 스크립트 (`deploy/`) |
+| 배포 | GCP Compute Engine VM + nginx + systemd (`adflow-backend`, `adflow-frontend`) | nginx가 경로별로 전달, 수동 배포 스크립트 (`deploy/`) |

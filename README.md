@@ -18,15 +18,17 @@ flowchart LR
     A --> SB
     subgraph SB[스토리보드]
         direction TB
-        B1["AI와 대화<br/>알릴 내용을 적거나<br/>'스토리 제안받기' 버튼"] --> B2[GPT 스토리 제안<br/>트렌드에서 고른 밈 있으면 반영<br/>없으면 GPT가 스스로 살펴봄]
+        B1["AI와 대화<br/>알릴 내용을 적거나<br/>'스토리 제안받기' 버튼"] --> B2[GPT 스토리 제안<br/>트렌드에서 고른 밈이 있으면 그 말 틀로<br/>없으면 밈 없이 씀]
         B2 --> B3[승인]
-        B3 --> B4[네컷 그리기<br/>확정 캐릭터를 참조로 컷마다 생성]
+        B3 --> B4[GPT 연출<br/>컷별 구도·위치·표정·장소·소품]
+        B4 --> B5[네컷 그리기<br/>확정 캐릭터를 참조로 컷마다 생성<br/>마지막 컷은 가게 앞 + 입간판]
     end
-    SB --> R[결과<br/>2×2 만화 + 말풍선 + 올릴 문구 → 저장]
+    SB --> R[결과<br/>말풍선 굽고 2×2 합치기 + 올릴 문구 → 저장]
 ```
 
 - 앞 단계가 안 끝나면 다음 단계 버튼이 잠긴다 (시트 미완 → 그림 못 뽑음, 캐릭터 미확정 → 네컷 못 그림).
 - 그림 생성은 전부 백그라운드다. 요청은 바로 돌아오고 화면이 3초마다 상태를 받아 채운다.
+- 밈은 사장님이 고른 것만 쓴다. 트렌드 화면에서 골라 왔거나, 대화에서 "밈 추천해줘"라고 해서(또는 버튼) GPT가 권한 밈을 **승인**했을 때만 스토리에 들어간다. 안 골랐으면 GPT는 밈 얘기를 꺼내지 않는다.
 
 ## 2. 한국어 설명 → 그림 프롬프트
 
@@ -35,7 +37,7 @@ Anima는 Danbooru 태그로 학습된 모델이라 한국어 문장을 그대로
 
 ```mermaid
 flowchart LR
-    IN["시트 5칸<br/>외형·아웃핏·설명·나이·이름<br/>(또는 컷 문장)"] --> GPT["GPT<br/>Danbooru 태그 후보 생성<br/>gpt-4o-mini · temperature 0"]
+    IN["시트 5칸<br/>외형·아웃핏·설명·나이·이름<br/>(또는 연출 슬롯 한 칸)"] --> GPT["GPT<br/>Danbooru 태그 후보 생성<br/>gpt-4o-mini · temperature 0"]
     GPT --> V{"parquet 검증<br/>실존 태그이고<br/>post_count ≥ 2,000?"}
     V -- 통과 --> OK[검증된 태그]
     V -- 탈락 --> DROP[버림]
@@ -44,8 +46,12 @@ flowchart LR
 ```
 
 - 캐릭터 후보: `STYLE_TAGS + 캐릭터 태그` → `character_practice.json`
-- 네컷 한 컷: `COMIC_STYLE_TAGS + 캐릭터 태그 + 장면 태그 + 구도 태그` → `comic_ipadapter_turbo.json`
+- 네컷 한 컷: `COMIC_GLOBAL_TAGS + 캐릭터 태그 + 구도 태그 + 슬롯 태그` → `comic_ipadapter_turbo.json`
   (확정한 그림 한 장을 IP-Adapter 참조로 넣어 캐릭터를 유지한다)
+  - 캐릭터 태그는 외형·아웃핏·나이 세 칸만 쓴다(성격·능력·키워드는 그림에 안 들어감). 네컷 시작 때 GPT 1회.
+  - 구도 태그는 GPT 연출이 정한 샷 크기·앵글·인원·시선을 **표**로 바꾼다(GPT 안 거침). 위치(왼쪽·가운데·오른쪽)는 맞는 태그가 없어서 1216² 로 넓게 그린 뒤 832×1216 창을 그 쪽으로 잘라낸다.
+  - 슬롯 태그는 표정·자세·장소·소품·빛 다섯 칸을 칸마다 GPT로 1~3개씩 뽑고 parquet 검증. 겹치는 태그는 한 번만.
+  - 연출 결과가 없을 때(GPT 없음)만 옛 경로(`comic_prompt`: 행동 문장 → 장면 태그)로 떨어진다.
 - 태그 사전: HuggingFace `deepghs/site_tags`의 `danbooru.donmai.us/tags.parquet` (`backend/data/danbooru_tags/`, git에 안 올림)
 
 ## 3. 네컷이 그려지는 순서
@@ -59,23 +65,32 @@ sequenceDiagram
     participant CF as ComfyUI (VM)
 
     U->>API: POST /api/storyboard/chat (또는 /suggest)
-    API->>G: 가게·생산 기록·캐릭터 + (트렌드에서 고른 밈 또는 밈 후보) → 컷 구성
-    G-->>API: 컷별 대사·행동·구도 (+ 반영한 밈)
+    API->>G: 가게·생산 기록·캐릭터 (+ 트렌드에서 고른 밈의 유래·활용예시) → 컷 구성
+    G-->>API: 컷별 대사·행동 (+ 실제로 쓴 밈)
     API-->>U: 제안 카드 (승인 / 거절)
     U->>API: POST /api/storyboard/comic
-    API->>CF: 확정 캐릭터 그림 업로드 (참조)
+    API->>G: 대사·행동·광고 느낌 → 컷별 연출<br/>(샷 크기·앵글·인원·위치·시선 / 표정·자세·장소·소품·빛)
+    API->>G: 올릴 문구(캡션)
+    Note over API: 캐릭터 태그 1회 · 입간판 문구(오늘의 빵·생산 기록·영업시간·주소) 준비
     loop 컷 1 → 4
-        API->>G: 행동 문장 → 장면 태그 후보
-        API->>J: 프롬프트 + 참조 이미지
-        J->>CF: 생성 (Turbo 12 step)
+        API->>G: 표정·자세·장소·소품·빛 → 태그 후보 (parquet 검증)
+        API->>J: 프롬프트 + 참조 이미지 + 위치
+        J->>CF: 생성 (Turbo 12 step · 1216² → 위치대로 832×1216 잘라냄)
         CF-->>J: PNG
+        alt 마지막 컷
+            Note over J,CF: 가게 앞 전경 프롬프트로 그림<br/>WD14 태거로 간판 검사 → 모델이 간판을 그려 넣었으면 시드 바꿔 최대 2번 다시<br/>Pillow 로 입간판(오늘의 빵·영업시간·주소) 굽기
+        end
         J-->>API: media/ 저장 · 컷 status = done
     end
+    Note over API: 4컷 다 되면 말풍선 굽기(캐릭터 반대쪽) → 2×2 합치기 → 각 컷 final
     loop 3초마다
         U->>API: GET /api/storyboard
         API-->>U: 컷 상태 · 남은 시간
     end
 ```
+
+- 마지막 컷의 가게 정보는 대사가 아니라 코드가 그린 입간판으로 보여준다. Anima 는 한글을 못 쓰기 때문(직접 그리게 하면 낙서가 된다).
+- 한 편의 모든 단계(스토리 GPT → 연출 → 슬롯별 태그 → 사전 검증 → 그림 → 간판 검사 → 굽기)는 `backend/traces/<run_id>.jsonl` 에 남고, `/api/debug/trace/<run_id>/view`(`latest` 가능)에서 표로 본다.
 
 
 

@@ -218,3 +218,4 @@ part4_3team/
 ## 협업일지
 
 - [전재완](docs/협업일지-전재완.md) — ComfyUI 워크플로우 · 캐릭터 일관성. 날짜를 누르면 그날 일지가 펼쳐진다.
+- 김효섭 : https://app.notion.com/p/3d6ca43afe4f80ab9166f8ccbbf52b0d?source=copy_link

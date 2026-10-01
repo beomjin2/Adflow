@@ -212,3 +212,7 @@ part4_3team/
 | 외부 API | Instagram Graph API · 네이버 검색어트렌드 API | 인스타 게시, 밈 유행 기간 측정 |
 | 크롤링 | requests · HTMLParser · OpenAI 임베딩 | 밈 수집, 활용 상황 분류 |
 | 배포 | GCP Compute Engine VM + nginx + systemd (`adflow-backend`, `adflow-frontend`) | nginx가 경로별로 전달, 수동 배포 스크립트 (`deploy/`) |
+
+## 협업일지
+
+- [전재완](docs/협업일지-전재완.md) — ComfyUI 워크플로우 · 캐릭터 일관성. 날짜를 누르면 그날 일지가 펼쳐진다.

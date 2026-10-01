@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { colors } from '../../theme.js';
 
 export default function DataTab({ state, actions }) {
@@ -57,6 +58,68 @@ export default function DataTab({ state, actions }) {
           fontWeight: 600
         }}>
           {state.backupNote}
+        </div>
+      )}
+
+      <ResetAllCard onReset={actions.resetAll} />
+    </div>
+  );
+}
+
+/** 전부 지우고 처음부터. 되돌릴 수 없으니 팝업으로 한 번 더 묻는다(보관함의 삭제와 같은 모양).
+ *  백업 카드 **아래**에 둔다 — 지우기 전에 백업부터 받으라는 순서가 화면 순서와 같아야 한다. */
+function ResetAllCard({ onReset }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    setBusy(true);
+    const ok = await onReset();
+    // 성공하면 페이지가 새로고침되므로 여기 안 온다. 실패했을 때만 버튼을 다시 열어 준다.
+    if (!ok) { setBusy(false); setOpen(false); }
+  };
+
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${colors.warnBorder}`, borderRadius: 16, padding: '15px 16px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+      <span style={{ fontSize: 14.5, fontWeight: 700 }}>처음 상태로 초기화</span>
+      <span style={{ fontSize: 13.5, lineHeight: '21px', color: colors.textSub }}>
+        가게 정보 · 캐릭터 · 광고 설정 · 광고 대화 · 생산 기록 · 보관한 광고를 전부 지우고 처음 쓰는 상태로 돌아갑니다.
+        마스코트 보관소와 트렌드 밈은 남아요. 지우기 전에 위에서 백업 파일을 받아두세요.
+      </span>
+      <button onClick={() => setOpen(true)} disabled={busy}
+        style={{ height: 52, borderRadius: 12, border: `1.5px solid ${colors.warnAccent}`, background: '#fff', color: colors.warnText, fontSize: 16, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? .6 : 1 }}>
+        처음 상태로 초기화
+      </button>
+
+      {open && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget && !busy) setOpen(false); }}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(15,17,19,.42)', zIndex: 100,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+          }}
+        >
+          <div style={{
+            width: '100%', maxWidth: 340, background: '#fff', borderRadius: 18, padding: 22,
+            display: 'flex', flexDirection: 'column', gap: 14, animation: 'pop .18s ease',
+            boxShadow: '0 20px 50px rgba(0,0,0,.22)',
+          }}>
+            <span style={{ fontSize: 16, fontWeight: 700 }}>전부 지우고 처음부터 할까요?</span>
+            <span style={{ fontSize: 13, lineHeight: '19px', color: colors.textSub }}>
+              가게 정보 · 캐릭터 · 광고 대화 · 생산 기록 · 보관한 광고가 사라지고 되돌릴 수 없어요.
+              백업 파일을 아직 안 받았다면 취소하고 먼저 받아두세요.
+            </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={run} disabled={busy}
+                style={{ flex: 1, height: 46, borderRadius: 11, border: 0, background: colors.warnAccent, color: '#fff', fontSize: 14, fontWeight: 700, cursor: busy ? 'default' : 'pointer', opacity: busy ? .7 : 1 }}>
+                {busy ? '지우는 중…' : '지우고 처음부터'}
+              </button>
+              <button onClick={() => setOpen(false)} disabled={busy}
+                style={{ flex: 'none', height: 46, padding: '0 16px', borderRadius: 11, border: `1.5px solid ${colors.inputBorder}`, background: '#fff', color: colors.text, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                취소
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

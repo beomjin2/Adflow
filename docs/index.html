@@ -1,0 +1,555 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet"><title>Adflow 핵심보고서</title><style>
+@page { size: A4; margin: 11mm 13mm 11mm 13mm; }
+* { box-sizing: border-box; }
+body { max-width: 900px; margin: 0 auto; padding: 24px 16px; font-family: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+       font-size: 10.5pt; line-height: 1.6; color: #111; margin: 0; }
+h1 { font-size: 17pt; line-height: 1.35; margin: 0 0 3pt; }
+h1 + p { color: #555; font-size: 8.6pt; margin: 0 0 10pt; }
+h2 { font-size: 13pt; margin: 13pt 0 5pt; padding-bottom: 2pt; border-bottom: 1.5px solid #222;
+     page-break-after: avoid; }
+h3 { font-size: 11pt; margin: 11pt 0 4pt; color: #222; page-break-after: avoid; }
+p { margin: 3pt 0 5pt; }
+h4 { font-size: 9.8pt; margin: 9pt 0 2pt; page-break-after: avoid; }
+h4 + p { margin-top: 1pt; }
+.blk { page-break-inside: avoid; }
+p:has(> strong:only-child) { break-after: avoid; page-break-after: avoid; }
+p:has(> strong:only-child) + ul, p:has(> strong:only-child) + table { break-before: avoid; page-break-before: avoid; }
+ul { margin: 2pt 0 5pt; padding-left: 16pt; }
+li { margin: 1pt 0; }
+table { border-collapse: collapse; width: 100%; table-layout: fixed; margin: 3pt 0 6pt;
+        font-size: 9.3pt; line-height: 1.42; }
+tr { page-break-inside: avoid; }
+th, td { border: 0.6px solid #999; padding: 3.6pt 5.5pt; vertical-align: top; text-align: left;
+         overflow-wrap: break-word; }
+th { background: #e9e9e9; font-weight: 700; }
+tbody tr:nth-child(even) td { background: #f7f7f7; }
+td:first-child { font-weight: 600; }
+ul.c { margin: 0; padding-left: 11pt; }
+ul.c li { margin: 0 0 0.5pt; }
+ul { margin: 3pt 0 6pt; padding-left: 16pt; }
+td.cont { background: #fafafa; }
+thead { display: table-header-group; }
+.t5 td:nth-child(5) { font-weight: 600; }
+strong { font-weight: 700; }
+.tstat td:nth-child(2) { font-weight: 700; color: #0b3d91; }
+.tstat3 td:nth-child(3) { color: #0b3d91; }
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6pt; margin: 4pt 0 8pt; }
+.tile { border: 0.6px solid #bbb; border-radius: 4pt; padding: 6pt 8pt; background: #fafafa; break-inside: avoid; page-break-inside: avoid; }
+.tile .k { font-size: 8.6pt; color: #444; margin-bottom: 2pt; }
+.tile .n { font-size: 14pt; font-weight: 700; color: #0b3d91; line-height: 1.25; margin-bottom: 2pt; }
+.tile .d { font-size: 8.4pt; color: #555; line-height: 1.35; }
+
+td strong { color: #0b3d91; }
+</style></head><body><p style="text-align:right;font-size:0.85em"><a href="Adflow_핵심보고서.pdf">PDF로 받기</a></p><h1>Adflow — 가게 정보와 한 줄만 넣으면 마스코트 네컷 광고가 나온다</h1>
+<p>코드잇 AI 고급 프로젝트 3팀 (김범진, 강지연, 김효섭, 유재열, 전재완) · github.com/beomjin2/Adflow · 2026-09-30 main 기준</p>
+<h2>한눈에 보기</h2>
+<table class="tb"><colgroup><col style="width:16%"><col style="width:84%"></colgroup>
+<thead>
+<tr>
+<th>구분</th>
+<th>내용</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>푸는 문제</td>
+<td>사장님에게는 광고를 배울 30분이 없다</td>
+</tr>
+<tr>
+<td>만든 것</td>
+<td>알릴 내용 한 줄 → 마스코트가 요즘 밈으로 말하는 네컷 만화 → 인스타그램 게시</td>
+</tr>
+<tr>
+<td>핵심 기술 1</td>
+<td>사장님의 평문을 검증된 Danbooru 태그로 바꾼다</td>
+</tr>
+<tr>
+<td>핵심 기술 2</td>
+<td>캐릭터는 품질 모델, 네컷은 속도 모델로 나눠 쓴다</td>
+</tr>
+<tr>
+<td>핵심 기술 3</td>
+<td>IP-Adapter 구간 제어로 네 컷 내내 같은 캐릭터를 유지한다</td>
+</tr>
+<tr>
+<td>핵심 기술 4</td>
+<td>밈을 상황별로 분류하고, 이 가게에 맞는 밈을 골라 준다</td>
+</tr>
+<tr>
+<td>비용과 속도</td>
+<td>광고 1건 GPT 비용 <strong>약 0.5원</strong>, 네컷 한 편 <strong>약 110초</strong></td>
+</tr>
+</tbody>
+</table>
+<h2>1. 왜 만들었나</h2>
+<table class="tstat"><colgroup><col style="width:30%"><col style="width:25%"><col style="width:45%"></colgroup>
+<thead>
+<tr>
+<th>지표</th>
+<th>숫자</th>
+<th>설명</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>디지털 활동을 전혀 안 하는 소상공인</td>
+<td>72.8%</td>
+<td>광고를 안 하는 사장님이 다수</td>
+</tr>
+<tr>
+<td>안 하는 이유 1위 "인력·지식 부재"</td>
+<td>45.6%</td>
+<td>자금 부족은 21.5%. 돈이 아니라 사람과 시간</td>
+</tr>
+<tr>
+<td>1인 사업체</td>
+<td>79.9%</td>
+<td>광고를 배울 30분이 없다</td>
+</tr>
+<tr>
+<td>음식점 주당 근무시간</td>
+<td>53.5시간</td>
+<td>같은 근거</td>
+</tr>
+<tr>
+<td>전국 제과점</td>
+<td>24,638개</td>
+<td>도메인을 빵집으로</td>
+</tr>
+<tr>
+<td>"오늘 상황 → 오늘 홍보 이미지"를 잇는 빵집 소프트웨어</td>
+<td>4종 중 0종</td>
+<td>시장의 빈칸</td>
+</tr>
+<tr>
+<td>두쫀쿠 유행 때 빵집 매출지수</td>
+<td>100 → 350</td>
+<td>트렌드·SNS가 매출을 흔든다 → 밈을 광고에</td>
+</tr>
+</tbody>
+</table>
+<p>그래서 <strong>사장님이 입력하는 것은 이야기 한 줄뿐</strong>이다. 그림 · 구도 · 말풍선 · 유행 밈은 서비스가 뒤에서 한다. 마스코트 캐릭터(사람 그림의 거부감 없음) · 네컷 만화(캐러셀은 여러 장) · 유행 밈(사장님이 밈을 몰라도 "요즘 말"로)을 택했고, 그 대가로 생긴 기술 결정 여섯 가지가 3절이다.</p>
+<h2>2. 무엇을 만들었나 — 여섯 화면</h2>
+<table class="tb"><colgroup><col style="width:8%"><col style="width:18%"><col style="width:74%"></colgroup>
+<thead>
+<tr>
+<th>순서</th>
+<th>화면</th>
+<th>사장님이 하는 일</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>가게 등록</td>
+<td>가게 정보 입력. 처음 한 번만</td>
+</tr>
+<tr>
+<td>2</td>
+<td>마스코트</td>
+<td><ul class="c"><li>대화로 캐릭터 시트 <strong>7칸</strong> 채우기</li><li>후보 <strong>3장</strong> 중 하나 확정</li></ul></td>
+</tr>
+<tr>
+<td>3</td>
+<td>트렌드</td>
+<td><ul class="c"><li>요즘 밈 목록 보기</li><li>"밈 추천받기"로 밈 <strong>3개</strong>를 이유와 함께 받기</li></ul></td>
+</tr>
+<tr>
+<td>4</td>
+<td>광고 만들기</td>
+<td><ul class="c"><li>알릴 내용 한 줄 입력</li><li>서비스가 쓴 스토리 승인</li></ul></td>
+</tr>
+<tr>
+<td>5</td>
+<td>네컷 그리기</td>
+<td>승인한 스토리대로 네 컷 생성</td>
+</tr>
+<tr>
+<td>6</td>
+<td>완성과 게시</td>
+<td>확인 후 인스타그램 게시</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>앞 단계가 끝나야 다음 화면이 열린다</li>
+<li>그림은 스토리 승인 뒤에만 그린다 → 다시 만들어도 비용은 원 단위</li>
+</ul>
+<table class="tb"><colgroup><col style="width:28%"><col style="width:72%"></colgroup>
+<thead>
+<tr>
+<th>영역</th>
+<th>기술</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>화면</td>
+<td>React</td>
+</tr>
+<tr>
+<td>서버와 DB</td>
+<td>FastAPI, SQLite</td>
+</tr>
+<tr>
+<td>그림 생성</td>
+<td>ComfyUI, Anima</td>
+</tr>
+<tr>
+<td>글과 대화와 추천</td>
+<td>OpenAI (GPT, 임베딩)</td>
+</tr>
+<tr>
+<td>유행 측정</td>
+<td>네이버 데이터랩 검색어 트렌드 API</td>
+</tr>
+<tr>
+<td>장비</td>
+<td>GCP L4 GPU 서버 1대</td>
+</tr>
+</tbody>
+</table>
+<h2>3. 핵심 기술 — 어떻게 했고, 숫자는 어떻게 나왔나</h2>
+<h3>결정 1. 사장님 말 → Danbooru 태그</h3>
+<p>GPT가 태그 후보를 만든다 → 코드가 Danbooru 태그 사전(159만 행)에서 찾는다 → 2,000장 이상 쓰인 일반 태그만 쓴다.</p>
+<table class="tstat"><colgroup><col style="width:58%"><col style="width:42%"></colgroup>
+<thead>
+<tr>
+<th>지표</th>
+<th>숫자</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>쓸 수 있는 태그</td>
+<td>6,340개</td>
+</tr>
+<tr>
+<td>사전에 없던 팀 태그</td>
+<td>11개 → 0</td>
+</tr>
+<tr>
+<td>남의 캐릭터 · 작품 · 작가 태그</td>
+<td>2,070개 → 0</td>
+</tr>
+</tbody>
+</table>
+<h3>결정 2. 태그 구조</h3>
+<p>네 컷 공통 태그(캐릭터)와 컷마다 바뀌는 태그(구도 · 장면)를 나눠 넣는다.</p>
+<table class="tb"><colgroup><col style="width:16%"><col style="width:40%"><col style="width:44%"></colgroup>
+<thead>
+<tr>
+<th>층</th>
+<th>내용</th>
+<th>예</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>전역</td>
+<td>스타일</td>
+<td>masterpiece, (chibi:1.3)</td>
+</tr>
+<tr>
+<td>캐릭터</td>
+<td>외형 · 옷 · 나이</td>
+<td>dog, brown_fur, yellow_apron</td>
+</tr>
+<tr>
+<td>구도</td>
+<td>샷 크기 · 앵글 · 인원 · 시선</td>
+<td>upper_body, from_side, solo</td>
+</tr>
+<tr>
+<td>장면</td>
+<td>표정 · 동작 · 장소 · 소품 · 빛</td>
+<td>smug, holding_tray, shop</td>
+</tr>
+</tbody>
+</table>
+<h3>결정 3. 그림 모델</h3>
+<p>API 이미지 모델 대신 자체 GPU에서 도는 디퓨전 모델을 쓴다. 장당 API 비용 없이 서버 1대로 돌고, 참조 그림(IP-Adapter)과 태그 검증을 직접 걸 수 있다.</p>
+<table class="tb"><colgroup><col style="width:18%"><col style="width:12%"><col style="width:70%"></colgroup>
+<thead>
+<tr>
+<th>후보</th>
+<th>크기</th>
+<th>판단</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Anima · 채택</strong></td>
+<td>2B DiT</td>
+<td>Danbooru 태그 + 자연어로 학습. L4 24GB 1장 · RAM 15GB에서 돌고, 12스텝 Turbo 변형과 전용 IP-Adapter 노드가 있다</td>
+</tr>
+<tr>
+<td>Qwen-Image-Edit</td>
+<td>22.6GB</td>
+<td>4컷 행동 100% · 소품 100%로 품질은 더 좋았으나, RAM 15GB VM이 3번 멈춰 폐기</td>
+</tr>
+</tbody>
+</table>
+<table class="tb"><colgroup><col style="width:16%"><col style="width:30%"><col style="width:54%"></colgroup>
+<thead>
+<tr>
+<th>용도</th>
+<th>모델</th>
+<th>왜</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>캐릭터 후보 3장</td>
+<td>Anima aesthetic v1.1 · 30스텝 · cfg 5</td>
+<td>사장님이 한 번만 고르는 그림이라 품질 우선. cfg 5라 사람 · 노출 차단 프롬프트가 듣는다. 1장 56초여도 한 번뿐</td>
+</tr>
+<tr>
+<td>네컷</td>
+<td>CapAnima Turbo 1.1 · 12스텝 · cfg 1</td>
+<td>매번 네 장을 그리니 속도 우선. 컷당 35.4초 → 8.7초(3종 36장 비교). nginx 60초 한도 안에 든다</td>
+</tr>
+</tbody>
+</table>
+<p><strong>속도 — 무엇을 바꿔서 얼마나 빨라졌나</strong></p>
+<table class="tb"><colgroup><col style="width:22%"><col style="width:18%"><col style="width:14%"><col style="width:46%"></colgroup>
+<thead>
+<tr>
+<th>무엇</th>
+<th>전</th>
+<th>후</th>
+<th>바꾼 것</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>캐릭터 후보 3장</td>
+<td>168초</td>
+<td><strong>86초</strong></td>
+<td>1장씩 3번 → 한 번에 배치 생성</td>
+</tr>
+<tr>
+<td>네컷 컷당</td>
+<td>35.4초</td>
+<td><strong>8.7초</strong></td>
+<td>Anima base 30스텝 → Turbo 12스텝</td>
+</tr>
+<tr>
+<td>태그 사전 읽기</td>
+<td>66.6초 (502 오류)</td>
+<td><strong>8.9초</strong></td>
+<td>요청마다 읽기 → 서버 시작 때 한 번 + 잠금</td>
+</tr>
+<tr>
+<td>스토리 씨앗 3개</td>
+<td>15초</td>
+<td><strong>5초</strong></td>
+<td>순차 생성 → 병렬 생성</td>
+</tr>
+<tr>
+<td>밈 추천 응답</td>
+<td>10초 초과</td>
+<td><strong>수 초</strong></td>
+<td>gpt-5-mini 추론 강도 기본 → 최소</td>
+</tr>
+<tr>
+<td>네컷 한 편</td>
+<td>—</td>
+<td><strong>약 110초</strong></td>
+<td>실제 API 순서</td>
+</tr>
+</tbody>
+</table>
+<h3>결정 4. 네 컷 내내 같은 캐릭터</h3>
+<p>확정한 마스코트 그림 1장을 참조(IP-Adapter)로 넣는다. 앞 30% 스텝은 끄고 뒤에만 켠다.</p>
+<table class="tstat"><colgroup><col style="width:58%"><col style="width:42%"></colgroup>
+<thead>
+<tr>
+<th>지표</th>
+<th>숫자</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>시킨 행동 · 소품이 나온 비율</td>
+<td>9% → 41%</td>
+</tr>
+<tr>
+<td>캐릭터 특징 4개 유지 (4점 만점)</td>
+<td>1.38 → 2.62</td>
+</tr>
+<tr>
+<td>기준 그림과 닮은 정도 (DINOv2)</td>
+<td>0.678 → 0.833</td>
+</tr>
+</tbody>
+</table>
+<h3>결정 5. 만화답게 — 컷마다 구도를 다르게</h3>
+<ul>
+<li>컷마다 GPT가 구도를 정한다. 캐릭터를 얼마나 크게, 어느 각도에서, 어느 쪽에 둘지, 어디를 볼지</li>
+<li>말풍선은 GPT가 비워 둔 쪽에 넣는다</li>
+</ul>
+<table class="tstat"><colgroup><col style="width:58%"><col style="width:42%"></colgroup>
+<thead>
+<tr>
+<th>지표</th>
+<th>숫자</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>캐릭터가 좌/우에 놓여 말풍선 자리가 생긴 컷</td>
+<td>12컷 중 9컷</td>
+</tr>
+<tr>
+<td>정면이 아닌 각도로 그려진 컷</td>
+<td>12컷 중 7컷</td>
+</tr>
+<tr>
+<td>모델이 그린 간판과 겹치지 않은 컷</td>
+<td>17컷 중 12컷</td>
+</tr>
+</tbody>
+</table>
+<h3>결정 6. 밈 — 묶고, 나누고, 고른다</h3>
+<table class="tb"><colgroup><col style="width:14%"><col style="width:40%"><col style="width:46%"></colgroup>
+<thead>
+<tr>
+<th>단계</th>
+<th>어떻게</th>
+<th>핵심 수치</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>같은 밈 묶기</td>
+<td><ul class="c"><li>이름 유사도 + 유래 유사도 (TF-IDF, 0~1)</li></ul></td>
+<td><ul class="c"><li>이름 유사도: 같은 밈 <strong>0.491</strong> / 다른 밈 <strong>0.003</strong></li><li>중복 처리해서 31건 → <strong>25건</strong> (정답 7쌍 전부, 잘못 묶음 0)</li></ul></td>
+</tr>
+<tr>
+<td>상황 분류</td>
+<td><ul class="c"><li>밈 글을 임베딩으로 바꿔 상황 <strong>6개</strong> 중 가장 닮은 곳에 넣는다 (코사인 유사도)</li></ul></td>
+<td><ul class="c"><li>가장 닮은 상황과의 유사도 <strong>0.206~0.530</strong> (중앙 0.330)</li><li><strong>0.228</strong> 미만이면 미분류 → 2건 (0.225, 0.206)</li><li>25건 → 재미 <strong>16</strong> · 기다림 <strong>3</strong> · 전후 <strong>3</strong> · 감탄 <strong>1</strong> · 미분류 <strong>2</strong></li></ul></td>
+</tr>
+<tr>
+<td>유행 판정</td>
+<td><ul class="c"><li>검색량 평소의 <strong>3배</strong> = 유행</li><li>끝이 수집일 <strong>3일</strong> 안 = 유행 중</li></ul></td>
+<td><ul class="c"><li>25건 중 <strong>20건</strong></li></ul></td>
+</tr>
+<tr>
+<td>추천</td>
+<td><ul class="c"><li>상황 <strong>1개</strong> → 밈 <strong>3개</strong></li></ul></td>
+<td><ul class="c"><li>10초 → <strong>수 초</strong></li></ul></td>
+</tr>
+</tbody>
+</table>
+<h2>4. 역할</h2>
+<table class="tb"><colgroup><col style="width:18%"><col style="width:82%"></colgroup>
+<thead>
+<tr>
+<th>이름</th>
+<th>담당</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>김범진 (팀장)</td>
+<td>백엔드 · 프론트 · 디자인 · 시트 대화 규칙 · 이미지 생성과 크롤링 전략 참여 · 배포</td>
+</tr>
+<tr>
+<td>강지연</td>
+<td>프론트 · 백엔드 · 밈 상황 분류 · 스토리와 밈 추천 GPT · 캡션 · README</td>
+</tr>
+<tr>
+<td>김효섭</td>
+<td>트렌드 크롤링 파이프라인 · 인스타 게시 · 온보딩 · 토큰 갱신</td>
+</tr>
+<tr>
+<td>유재열</td>
+<td>LoRA · 배경 일관성 워크플로우</td>
+</tr>
+<tr>
+<td>전재완</td>
+<td>태그 검증 · IP-Adapter 구간 제어 · 연출 · 간판 · 실험과 채점 도구</td>
+</tr>
+</tbody>
+</table>
+<h2>5. 출처</h2>
+<table class="tb"><colgroup><col style="width:16%"><col style="width:84%"></colgroup>
+<thead>
+<tr>
+<th>구분</th>
+<th>출처</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>통계</td>
+<td><ul class="c"><li>중기부, 소진공 「2024년 기준 소상공인실태조사」(2026-03-13, mss.go.kr)</li><li>국세청 「100대 생활업종 사업자 현황」(2026-03, data.go.kr)</li></ul></td>
+</tr>
+<tr>
+<td>기사</td>
+<td><ul class="c"><li>인천일보 2026 「두쫀쿠, 버터떡 가고…」 (트렌드 매출지수)</li></ul></td>
+</tr>
+<tr>
+<td>모델과 도구</td>
+<td><ul class="c"><li>circlestone-labs/Anima (huggingface.co)</li><li>LuciferTC9527/ComfyUI-Anima_IP-Adapter (github)</li><li>deepghs/site_tags</li><li>SmilingWolf/wd-vit-tagger-v3</li><li>ComfyUI</li></ul></td>
+</tr>
+<tr>
+<td>외부 API</td>
+<td><ul class="c"><li>OpenAI API (gpt-4o-mini, gpt-4o, gpt-5-mini, text-embedding-3-small)</li><li>Instagram Platform Content Publishing (developers.facebook.com)</li><li>네이버 데이터랩 검색어 트렌드 API</li></ul></td>
+</tr>
+<tr>
+<td>밈 수집원</td>
+<td><ul class="c"><li>메일리 Trend A Word</li><li>고구마팜</li><li>위픽레터 밈피디아</li></ul></td>
+</tr>
+<tr>
+<td>프로젝트 기록</td>
+<td><ul class="c"><li>저장소 github.com/beomjin2/Adflow (main 2026-09-30) 코드 주석과 scratch_safe 실험 JSON</li><li>노션 「엔드투엔드 개발 기록」, 「문제 나무」</li></ul></td>
+</tr>
+</tbody>
+</table>
+<p>상세 목록은 기술 보고서 7절.</p>
+<h2>부록. 용어</h2>
+<table class="tb"><colgroup><col style="width:20%"><col style="width:80%"></colgroup>
+<thead>
+<tr>
+<th>용어</th>
+<th>뜻</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Danbooru 태그</td>
+<td>애니 그림 모델이 학습한 영어 키워드. 한국어 문장보다 이 태그를 훨씬 잘 알아듣는다</td>
+</tr>
+<tr>
+<td>태그 사전</td>
+<td>Danbooru 태그 159만 행 목록. 태그마다 쓰인 그림 장수가 적혀 있다</td>
+</tr>
+<tr>
+<td>태거</td>
+<td>그림을 보고 거꾸로 태그를 붙이는 모델(wd-vit-tagger-v3). 채점과 간판 검사에 쓴다</td>
+</tr>
+<tr>
+<td>IP-Adapter</td>
+<td>참조 그림 한 장을 보고 닮게 그리게 하는 장치</td>
+</tr>
+<tr>
+<td>임베딩</td>
+<td>글을 숫자 벡터로 바꾼 것. 뜻이 비슷하면 벡터도 가깝다</td>
+</tr>
+<tr>
+<td>DINOv2</td>
+<td>그림을 숫자 벡터로 바꾸는 모델. 피사체의 생김새 비교에 흔히 쓴다</td>
+</tr>
+<tr>
+<td>코사인 유사도</td>
+<td>두 벡터가 얼마나 같은 방향인지. 똑같으면 1, 관계없으면 0</td>
+</tr>
+<tr>
+<td>TF-IDF</td>
+<td>글자 조각의 빈도로 두 글의 유사도를 재는 방법</td>
+</tr>
+</tbody>
+</table></body></html>

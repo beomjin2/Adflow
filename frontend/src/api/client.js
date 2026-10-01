@@ -260,3 +260,10 @@ export const TrendAPI = {
     })),
   })),
 };
+
+// ---------- reset ----------
+// 서비스를 처음 쓰는 상태로. 가게·캐릭터·광고 설정·광고 대화·생산 기록·보관한 광고가 전부
+// 사라진다. 마스코트 보관소·트렌드 밈은 남는다(backend/app/api/routes/reset.py).
+export const ResetAPI = {
+  all: () => post('/api/reset'),
+};

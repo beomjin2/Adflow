@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  AdAPI, CharacterAPI, HistoryAPI, ProductionAPI, StoreAPI, StoryboardAPI, TrendAPI,
+  AdAPI, CharacterAPI, HistoryAPI, ProductionAPI, ResetAPI, StoreAPI, StoryboardAPI, TrendAPI,
 } from '../api/client.js';
 
 /** 그림 생성 진행을 확인하는 간격. 백엔드가 generating=false를 주면 멈춘다. */
@@ -834,6 +834,21 @@ export function useAdMakerState() {
     update({ backupNote: '불러오기는 아직 준비 중이에요. 내보내기는 지금도 됩니다.', backupErr: true });
   }, [update]);
 
+  /** 서비스를 처음 쓰는 상태로. 가게·캐릭터·광고 설정·광고 대화·생산 기록·보관한 광고가 전부
+   *  사라진다. 마스코트 보관소와 트렌드 밈은 백엔드가 남긴다(routes/reset.py).
+   *  끝나면 새로고침해 서버 상태를 그대로 다시 받는다 — 화면마다 흩어진 상태를 하나하나 비우는
+   *  것보다 확실하다. 마지막 화면 기억도 지워 홈에서 시작한다. 실패하면 false 를 돌려줘
+   *  버튼이 다시 눌리게 한다. */
+  const resetAll = useCallback(async () => {
+    try {
+      stopPolling();
+      await ResetAPI.all();
+    } catch (e) { fail(e); return false; }
+    try { sessionStorage.removeItem(SCREEN_NAV_KEY); } catch { /* 세션 저장소가 막혀 있어도 초기화는 됐다 */ }
+    window.location.reload();
+    return true;
+  }, [stopPolling, fail]);
+
   return {
     state,
     charLocked, adLocked,
@@ -852,7 +867,7 @@ export function useAdMakerState() {
       openResult, backToSb, download,
       myHistory, myMascots, loadMascots, useMascot, deleteMascot, myStoreTab, myChar, editStoreFromMy, openHistoryItem, delHistoryItem,
       addItem, delItem, renameItem, addProd, patchProd, setSoldOut, delProd,
-      exportData, importFile,
+      exportData, importFile, resetAll,
     },
   };
 }

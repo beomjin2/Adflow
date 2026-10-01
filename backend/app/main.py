@@ -76,3 +76,5 @@ app.include_router(history.router)
 app.include_router(trend.router)
 from app.api.routes import debug as _debug  # noqa: E402  뜯어보기(단계별 기록) — 개발용
 app.include_router(_debug.router)
+from app.api.routes import reset as _reset  # noqa: E402  처음 상태로 초기화 — 내 정보 > 백업 · 초기화
+app.include_router(_reset.router)

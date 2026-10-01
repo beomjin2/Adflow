@@ -29,7 +29,7 @@ export default function MyShell({ state, actions }) {
         </button>
         <button onClick={actions.myStoreTab} style={{ height: 48, borderRadius: 12, border: 0, fontSize: 15, fontWeight: 700, cursor: 'pointer', textAlign: 'left', padding: '0 16px', background: colors.softBg, color: colors.text }}>내 가게 정보</button>
         <button onClick={actions.myChar} style={{ height: 48, borderRadius: 12, border: 0, fontSize: 15, fontWeight: 700, cursor: 'pointer', textAlign: 'left', padding: '0 16px', background: colors.softBg, color: colors.text }}>내 캐릭터 정보</button>
-        <button onClick={actions.goData} style={tabButton('data')}>백업 내려받기</button>
+        <button onClick={actions.goData} style={tabButton('data')}>백업 · 초기화</button>
       </div>
       <div style={{ flex: '3 1 430px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
         {state.myTab === 'history' && <HistoryTab state={state} actions={actions} />}
